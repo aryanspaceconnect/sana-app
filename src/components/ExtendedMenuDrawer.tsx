@@ -11,6 +11,7 @@ interface ExtendedMenuDrawerProps {
   onOpenSettings: () => void;
   onOpenReports: () => void;
   onOpenRoutine: () => void;
+  onOpenVault: () => void;
 }
 
 export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
@@ -20,7 +21,8 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
   onOpenScan,
   onOpenSettings,
   onOpenReports,
-  onOpenRoutine
+  onOpenRoutine,
+  onOpenVault
 }) => {
   const [dragStartY, setDragStartY] = useState<number | null>(null);
 
@@ -155,6 +157,25 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
                   </div>
                 </div>
                 <Icon icon="solar:alt-arrow-right-linear" className="w-5 h-5 text-[#a0a7b4] group-hover:translate-x-0.5 transition-transform" />
+              </button>
+
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenVault();
+                }}
+                className="w-full p-4 rounded-[22px] bg-slate-900 text-white border border-slate-800 shadow-md hover:bg-black transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 rounded-2xl bg-white/10 text-white group-hover:bg-emerald-500 transition-colors">
+                    <Icon icon="solar:vault-linear" className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[14px] font-semibold text-white">Sana Agent Vault</p>
+                    <p className="text-[12px] text-slate-300">Memory sessions, incidents, version diffs</p>
+                  </div>
+                </div>
+                <Icon icon="solar:alt-arrow-right-linear" className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
 
               <button

@@ -15,6 +15,7 @@ import { CalendarModal } from './components/CalendarModal';
 import { FacialScanModal } from './components/FacialScanModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ReportsModal } from './components/ReportsModal';
+import { SanaVaultModal } from './components/SanaVaultModal';
 import { AuthScreen } from './components/AuthScreen';
 import { SanaLogoIcon } from './components/SanaLogoIcon';
 
@@ -29,6 +30,7 @@ export default function App() {
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
+  const [isVaultOpen, setIsVaultOpen] = useState(false);
 
   // Facial Scan & Daily Data
   const [latestScan, setLatestScan] = useState<FacialScanResult | null>(null);
@@ -205,6 +207,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenReports={() => setIsReportsOpen(true)}
         onOpenRoutine={() => setActiveTab('home')}
+        onOpenVault={() => setIsVaultOpen(true)}
       />
 
       {/* PopUp Notification Card (Daily Check-in) */}
@@ -238,6 +241,13 @@ export default function App() {
         isOpen={isReportsOpen}
         onClose={() => setIsReportsOpen(false)}
         userProfile={userProfile}
+      />
+
+      {/* Sana Agent Vault Modal */}
+      <SanaVaultModal
+        isOpen={isVaultOpen}
+        onClose={() => setIsVaultOpen(false)}
+        userId={userProfile?.uid || 'guest_user'}
       />
     </MobileContainer>
   );

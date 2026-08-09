@@ -2,7 +2,19 @@ import { z } from 'zod';
 import { ToolDefinition, UniversalQuery, AgentContext, ActionProposal } from './types.js';
 import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
-import { saveAgentVaultDocument, searchAgentVault, parseDocumentContent } from './agentVault.js';
+import {
+  saveAgentVaultDocument,
+  searchAgentVault,
+  parseDocumentContent,
+  vaultSearch,
+  saveVaultIncident,
+  saveVaultEvent,
+  saveVaultGoal,
+  saveVaultUserData,
+  saveVaultSkinComposition,
+  getVaultHistory,
+  toAbsoluteTime
+} from './agentVault.js';
 
 // Universal Search Tool
 export const universalSearchToolSchema = z.object({
@@ -322,9 +334,198 @@ export const searchAgentVaultTool: ToolDefinition = {
   }
 };
 
+// Multi-Scope Advanced Vault Search Tool
+export const vaultSearchSchema = z.object({
+  scope: z.enum(['sessions', 'incidents', 'events', 'goals', 'skin_profile', 'user_data', 'notes', 'documents', 'all']).optional().default('all'),
+  mode: z.enum(['keyword', 'vector', 'auto']).optional().default('auto'),
+  query: z.string(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  limit: z.number().optional().default(10)
+});
+
+export const vaultSearchTool: ToolDefinition = {
+  name: 'vault_search',
+  description: 'Multi-scope, date-filtered search across Sana Agent Vault: conversation sessions, flare/reaction incidents, scheduled events, skin goals, skin composition, user identity, notes, or uploaded documents.',
+  parameters: vaultSearchSchema,
+  execute: async (args: z.infer<typeof vaultSearchSchema>, context: AgentContext) => {
+    const results = await vaultSearch(context.userId, {
+      scope: args.scope,
+      mode: args.mode,
+      query: args.query,
+      dateFrom: args.dateFrom,
+      dateTo: args.dateTo,
+      limit: args.limit
+    });
+    return {
+      success: true,
+      query: args.query,
+      scope: args.scope,
+      results
+    };
+  }
+};
+
+// Save Vault Incident Tool
+export const saveVaultIncidentSchema = z.object({
+  title: z.string(),
+  occurredAt: z.string().optional(), // Can be relative like 'yesterday', '2 days ago' or ISO
+  type: z.enum(['reaction', 'breakout', 'flare', 'allergy', 'other']).optional().default('flare'),
+  severity: z.enum(['mild', 'moderate', 'severe']).optional().default('mild'),
+  bodyAreas: z.array(z.string()).optional().default(['face']),
+  description: z.string().optional(),
+  suspectedTriggers: z.array(z.string()).optional().default([]),
+  relatedProducts: z.array(z.string()).optional().default([]),
+  relatedIngredients: z.array(z.string()).optional().default([]),
+  notes: z.string().optional()
+});
+
+export const saveVaultIncidentTool: ToolDefinition = {
+  name: 'save_vault_incident',
+  description: 'Directly record a skin reaction, flare-up, breakout, or allergy incident into Vault long-term memory. Automatically converts relative time expressions to absolute timestamps.',
+  parameters: saveVaultIncidentSchema,
+  execute: async (args: z.infer<typeof saveVaultIncidentSchema>, context: AgentContext) => {
+    const saved = await saveVaultIncident(context.userId, args, 'sana');
+    return {
+      success: true,
+      message: `Incident '${saved.title}' logged in Vault with absolute time (${saved.occurredAtDate}).`,
+      incident: saved
+    };
+  }
+};
+
+// Save Vault Event Tool
+export const saveVaultEventSchema = z.object({
+  title: z.string(),
+  scheduledAt: z.string().optional(), // Absolute or relative (e.g. 'tomorrow', '2026-08-10')
+  category: z.string().optional().default('routine'),
+  preparationProtocolId: z.string().optional(),
+  outcomeNotes: z.string().optional()
+});
+
+export const saveVaultEventTool: ToolDefinition = {
+  name: 'save_vault_event',
+  description: 'Record a calendar regimen event or milestone in Vault with state machine status tracking (upcoming, today, completed, missed).',
+  parameters: saveVaultEventSchema,
+  execute: async (args: z.infer<typeof saveVaultEventSchema>, context: AgentContext) => {
+    const saved = await saveVaultEvent(context.userId, args, 'sana');
+    return {
+      success: true,
+      message: `Event '${saved.title}' created in Vault (status: ${saved.status}, date: ${saved.scheduledAtDate}).`,
+      event: saved
+    };
+  }
+};
+
+// Save Vault Goal Tool
+export const saveVaultGoalSchema = z.object({
+  title: z.string(),
+  description: z.string().optional(),
+  targetDate: z.string().optional(),
+  metrics: z.array(z.object({
+    name: z.string(),
+    baseline: z.union([z.string(), z.number()]).optional(),
+    current: z.union([z.string(), z.number()]).optional(),
+    target: z.union([z.string(), z.number()]).optional()
+  })).optional().default([]),
+  status: z.enum(['active', 'achieved', 'abandoned', 'paused']).optional().default('active')
+});
+
+export const saveVaultGoalTool: ToolDefinition = {
+  name: 'save_vault_goal',
+  description: 'Create or update long-term skin health goals with tracked progress metrics and target dates.',
+  parameters: saveVaultGoalSchema,
+  execute: async (args: z.infer<typeof saveVaultGoalSchema>, context: AgentContext) => {
+    const saved = await saveVaultGoal(context.userId, args, 'sana');
+    return {
+      success: true,
+      message: `Goal '${saved.title}' saved in Vault.`,
+      goal: saved
+    };
+  }
+};
+
+// Save User Identity Data Tool
+export const saveUserIdentitySchema = z.object({
+  preferredName: z.string().optional(),
+  ageRange: z.string().optional(),
+  sexOrHormonalContext: z.string().optional(),
+  locationOrClimate: z.string().optional(),
+  occupationOrLifestyle: z.string().optional(),
+  languages: z.array(z.string()).optional(),
+  permanentFacts: z.array(z.string()).optional()
+});
+
+export const saveUserIdentityTool: ToolDefinition = {
+  name: 'save_user_identity',
+  description: 'Record core human identity facts in Vault user_data/identity (e.g. climate zone, hormonal context, permanent user facts) with Git-like versioning.',
+  parameters: saveUserIdentitySchema,
+  execute: async (args: z.infer<typeof saveUserIdentitySchema>, context: AgentContext) => {
+    const saved = await saveVaultUserData(context.userId, 'identity', args, 'sana', 'Updated identity data');
+    return {
+      success: true,
+      message: 'User identity facts updated in Vault with new version snapshot.',
+      identity: saved
+    };
+  }
+};
+
+// Update Skin Composition Tool
+export const updateSkinCompositionSchema = z.object({
+  skinTypeTendency: z.string().optional(),
+  barrierStatusPatterns: z.string().optional(),
+  pigmentationTendency: z.string().optional(),
+  texturePoreElasticity: z.string().optional(),
+  knownTriggers: z.array(z.string()).optional()
+});
+
+export const updateSkinCompositionTool: ToolDefinition = {
+  name: 'update_skin_composition',
+  description: 'Progressively update user skin profile composition in Vault skin_profile/composition (skin type, barrier behavior, pigmentation, known triggers).',
+  parameters: updateSkinCompositionSchema,
+  execute: async (args: z.infer<typeof updateSkinCompositionSchema>, context: AgentContext) => {
+    const saved = await saveVaultSkinComposition(context.userId, args, 'sana', 'Progressive skin composition update');
+    return {
+      success: true,
+      message: 'Skin composition profile updated in Vault with version history.',
+      composition: saved
+    };
+  }
+};
+
+// Get Vault Document History Tool
+export const getVaultHistorySchema = z.object({
+  category: z.string(),
+  docId: z.string(),
+  limit: z.number().optional().default(5)
+});
+
+export const getVaultHistoryTool: ToolDefinition = {
+  name: 'get_vault_history',
+  description: 'Retrieve lightweight version history diffs for any document in Vault. Returns all versions if total <= 3.',
+  parameters: getVaultHistorySchema,
+  execute: async (args: z.infer<typeof getVaultHistorySchema>, context: AgentContext) => {
+    const history = await getVaultHistory(context.userId, args.category, args.docId, args.limit);
+    return {
+      success: true,
+      category: args.category,
+      docId: args.docId,
+      versionCount: history.length,
+      history
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   universalSearchTool,
+  vaultSearchTool,
   saveMemoryNoteTool,
+  saveVaultIncidentTool,
+  saveVaultEventTool,
+  saveVaultGoalTool,
+  saveUserIdentityTool,
+  updateSkinCompositionTool,
+  getVaultHistoryTool,
   ingestDocumentTool,
   searchAgentVaultTool,
   proposeUpdateSettingTool,

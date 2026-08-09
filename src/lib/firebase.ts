@@ -12,7 +12,8 @@ import {
   User 
 } from "firebase/auth";
 import { 
-  getFirestore, 
+  getFirestore,
+  initializeFirestore, 
   doc, 
   setDoc, 
   getDoc, 
@@ -43,9 +44,38 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize Firestore with database ID specified in config if present
+// Utility to recursively remove undefined values which Firestore rejects
+export function sanitizeForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) return null as any;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForFirestore(item)) as any;
+  }
+  // Preserve Firestore FieldValues (e.g., serverTimestamp)
+  if (obj && typeof obj === 'object' && ('_methodName' in obj || (obj as any).constructor?.name === 'FieldValue')) {
+    return obj;
+  }
+  const clean: Record<string, any> = {};
+  for (const key of Object.keys(obj as Record<string, any>)) {
+    const value = (obj as Record<string, any>)[key];
+    if (value !== undefined) {
+      clean[key] = sanitizeForFirestore(value);
+    }
+  }
+  return clean as T;
+}
+
+// Initialize Firestore with database ID specified in config if present and auto-detect long polling for robust connection
 const databaseId = firebaseConfigData.firestoreDatabaseId || "(default)";
-export const db = getFirestore(app, databaseId);
+export const db = (() => {
+  try {
+    return initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true
+    }, databaseId);
+  } catch (e) {
+    return getFirestore(app, databaseId);
+  }
+})();
 
 // Auth Helpers
 export const signInWithGoogle = async () => {
@@ -174,9 +204,10 @@ export const subscribeFacialScans = (userId: string, callback: (scans: any[]) =>
 export const saveChatMessage = async (userId: string, chatId: string, messages: any[]) => {
   try {
     const chatRef = doc(db, "chats", chatId);
+    const sanitizedMessages = sanitizeForFirestore(messages);
     await setDoc(chatRef, {
       userId,
-      messages,
+      messages: sanitizedMessages,
       updatedAt: serverTimestamp()
     }, { merge: true });
   } catch (err) {

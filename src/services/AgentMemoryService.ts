@@ -1,4 +1,4 @@
-import { db } from '../lib/firebase';
+import { db, sanitizeForFirestore } from '../lib/firebase';
 import {
   doc,
   setDoc,
@@ -70,12 +70,13 @@ export class AgentMemoryService {
     try {
       const sessionDocRef = doc(db, 'users', userId, 'agent_memory', 'chat_sessions', 'list', sessionId);
       const lastMsg = messages.length > 0 ? messages[messages.length - 1].text : '';
+      const sanitizedMessages = sanitizeForFirestore(messages);
       
       await setDoc(sessionDocRef, {
         sessionId,
         userId,
-        messages,
-        lastMessage: lastMsg.substring(0, 150),
+        messages: sanitizedMessages,
+        lastMessage: (lastMsg || '').substring(0, 150),
         messageCount: messages.length,
         updatedAt: new Date().toISOString(),
         serverTime: serverTimestamp()
@@ -124,8 +125,9 @@ export class AgentMemoryService {
     if (!userId) return;
     try {
       const msgColRef = collection(db, 'users', userId, 'agent_memory', 'chat_messages', sessionId);
+      const sanitizedMsg = sanitizeForFirestore(message);
       await addDoc(msgColRef, {
-        ...message,
+        ...sanitizedMsg,
         userId,
         sessionId,
         createdAt: new Date().toISOString(),
@@ -144,9 +146,10 @@ export class AgentMemoryService {
     if (!userId || !key) return;
     try {
       const itemRef = doc(db, 'users', userId, 'agent_memory', 'context_items', 'items', key);
+      const sanitizedData = sanitizeForFirestore(data);
       await setDoc(itemRef, {
         key,
-        data,
+        data: sanitizedData,
         category,
         updatedAt: new Date().toISOString(),
         serverTime: serverTimestamp()

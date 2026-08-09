@@ -1,14 +1,330 @@
-import { db } from '../lib/firebase.js';
-import { doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { db, sanitizeForFirestore } from '../lib/firebase.js';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  limit as limitQuery
+} from 'firebase/firestore';
 
+// ==========================================
+// 1. ABSOLUTE TIME HELPER & CONVERSION
+// ==========================================
+
+export interface AbsoluteTimeInfo {
+  occurredAt: string;        // ISO 8601 (e.g., 2026-08-08T10:20:42-07:00)
+  occurredAtDate: string;    // YYYY-MM-DD
+  timezone: string;          // e.g. America/Los_Angeles or -07:00
+  recordedAt: string;        // ISO string when Vault wrote it
+  localTime: string;         // Readable local time format with timezone name/offset
+}
+
+/**
+ * Absolute Time Helper Rule:
+ * Never store relative time ("yesterday", "last week"). Converts relative or string inputs
+ * to absolute ISO 8601 datetimes, YYYY-MM-DD dates, and formatted local time strings.
+ */
+export function toAbsoluteTime(
+  input?: string | Date | number | null,
+  userTimezone?: string
+): AbsoluteTimeInfo {
+  const now = new Date();
+  let targetDate = new Date();
+
+  if (input instanceof Date) {
+    targetDate = input;
+  } else if (typeof input === 'number') {
+    targetDate = new Date(input);
+  } else if (typeof input === 'string' && input.trim().length > 0) {
+    const clean = input.trim().toLowerCase();
+
+    if (clean === 'today' || clean === 'now') {
+      targetDate = new Date();
+    } else if (clean === 'yesterday') {
+      targetDate = new Date(now.getTime() - 86400000);
+    } else if (clean === 'tomorrow') {
+      targetDate = new Date(now.getTime() + 86400000);
+    } else if (clean.includes('days ago') || clean.includes('day ago')) {
+      const match = clean.match(/(\d+)/);
+      const days = match ? parseInt(match[1], 10) : 1;
+      targetDate = new Date(now.getTime() - days * 86400000);
+    } else if (clean.includes('days later') || clean.includes('days from now')) {
+      const match = clean.match(/(\d+)/);
+      const days = match ? parseInt(match[1], 10) : 1;
+      targetDate = new Date(now.getTime() + days * 86400000);
+    } else if (clean.includes('last week') || clean.includes('a week ago')) {
+      targetDate = new Date(now.getTime() - 7 * 86400000);
+    } else if (clean.includes('two weeks ago') || clean.includes('2 weeks ago')) {
+      targetDate = new Date(now.getTime() - 14 * 86400000);
+    } else if (clean.includes('last month')) {
+      targetDate = new Date(now.getTime() - 30 * 86400000);
+    } else {
+      const parsed = Date.parse(input);
+      if (!isNaN(parsed)) {
+        targetDate = new Date(parsed);
+      }
+    }
+  }
+
+  const occurredAt = targetDate.toISOString();
+  const occurredAtDate = occurredAt.split('T')[0];
+  const recordedAt = now.toISOString();
+
+  // Determine user timezone / offset
+  let tz = userTimezone;
+  if (!tz) {
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      const offsetMin = targetDate.getTimezoneOffset();
+      const sign = offsetMin <= 0 ? '+' : '-';
+      const absOffset = Math.abs(offsetMin);
+      const hours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+      const mins = String(absOffset % 60).padStart(2, '0');
+      tz = `UTC${sign}${hours}:${mins}`;
+    }
+  }
+
+  // Format readable local time
+  let localTime = '';
+  try {
+    localTime = targetDate.toLocaleString('en-US', {
+      timeZone: tz.startsWith('UTC') ? undefined : tz,
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+  } catch {
+    localTime = `${occurredAtDate} ${targetDate.toTimeString().split(' ')[0]} (${tz})`;
+  }
+
+  return {
+    occurredAt,
+    occurredAtDate,
+    timezone: tz,
+    recordedAt,
+    localTime
+  };
+}
+
+// ==========================================
+// 2. TYPESCRIPT INTERFACES
+// ==========================================
+
+export interface SessionRecord {
+  sessionId: string;
+  userId: string;
+  startedAt: string;
+  startedAtDate: string;
+  recordedAt: string;
+  localTime: string;
+  endedAt?: string;
+  status: 'active' | 'completed' | 'abandoned';
+  title: string;
+  summary: string;
+  topics: string[];
+  intentHistory: string[];
+  messages: Array<{
+    role: 'user' | 'model';
+    text: string;
+    timestamp: string;
+    localTime?: string;
+  }>;
+  toolCalls: Array<{
+    name: string;
+    arguments: any;
+    resultSummary: string;
+    success: boolean;
+    timestamp: string;
+  }>;
+  passOnTrace?: any[];
+  actionProposals?: any[];
+  keywords: string[];
+  embedding?: number[];
+  version: number;
+}
+
+export interface IdentityData {
+  id: 'identity';
+  preferredName?: string;
+  ageRange?: string;
+  birthYear?: number;
+  sexOrHormonalContext?: string;
+  locationOrClimate?: string;
+  occupationOrLifestyle?: string;
+  languages?: string[];
+  permanentFacts?: string[];
+  updatedAt: string;
+  updatedAtDate: string;
+  localTime: string;
+  version: number;
+}
+
+export interface PersonalityData {
+  id: 'personality';
+  communicationStyle?: string;
+  riskTolerance?: 'low' | 'medium' | 'high';
+  setbackReaction?: string;
+  motivationStyle?: string;
+  antiRules?: string[];
+  updatedAt: string;
+  updatedAtDate: string;
+  localTime: string;
+  version: number;
+}
+
+export interface PreferencesData {
+  id: 'preferences';
+  notificationTiming?: string;
+  units?: 'metric' | 'imperial';
+  privacyPreferences?: Record<string, any>;
+  rememberedRules?: string[];
+  forgottenRules?: string[];
+  updatedAt: string;
+  updatedAtDate: string;
+  localTime: string;
+  version: number;
+}
+
+export interface SkinCompositionData {
+  id: 'composition';
+  skinTypeTendency?: string;
+  barrierStatusPatterns?: string;
+  pigmentationTendency?: string;
+  texturePoreElasticity?: string;
+  knownTriggers?: string[];
+  confidenceScore?: number;
+  lastUpdated: string;
+  lastUpdatedDate: string;
+  localTime: string;
+  version: number;
+}
+
+export interface SkinMeasurementRecord {
+  id: string;
+  title: string;
+  occurredAt: string;
+  occurredAtDate: string;
+  recordedAt: string;
+  localTime: string;
+  imageRef?: string; // ONLY imageRef reference, never raw bytes
+  extractedData: Record<string, any>;
+  referenceNotes?: string;
+  version: number;
+}
+
+export interface SkinEvolutionRecord {
+  id: 'evolution';
+  timeline: Array<{
+    date: string;
+    occurredAt: string;
+    localTime?: string;
+    summary: string;
+    linkedScanId?: string;
+    linkedIncidentId?: string;
+  }>;
+  lastUpdated: string;
+  lastUpdatedDate: string;
+  localTime: string;
+  version: number;
+}
+
+export interface IncidentRecord {
+  id: string;
+  title: string;
+  occurredAt: string;
+  occurredAtDate: string;
+  recordedAt: string;
+  localTime: string;
+  timezone?: string;
+  type: 'reaction' | 'breakout' | 'flare' | 'allergy' | 'other';
+  severity: 'mild' | 'moderate' | 'severe';
+  bodyAreas: string[];
+  description: string;
+  suspectedTriggers: string[];
+  relatedProducts: string[];
+  relatedIngredients: string[];
+  notes: string;
+  outcome?: string;
+  linkedScanIds?: string[];
+  version: number;
+}
+
+export type EventStatus = 'upcoming' | 'today' | 'completed' | 'missed' | 'cancelled';
+
+export interface EventRecord {
+  id: string;
+  title: string;
+  scheduledAt: string;
+  scheduledAtDate: string;
+  recordedAt: string;
+  localTime: string;
+  timezone?: string;
+  status: EventStatus;
+  category: string;
+  preparationProtocolId?: string;
+  outcomeNotes?: string;
+  followUpAsked?: boolean;
+  version: number;
+}
+
+export interface GoalMetric {
+  name: string;
+  baseline?: number | string;
+  current?: number | string;
+  target?: number | string;
+}
+
+export interface GoalProgressLog {
+  date: string;
+  occurredAt: string;
+  localTime: string;
+  note: string;
+  value?: number | string;
+}
+
+export interface GoalRecord {
+  id: string;
+  title: string;
+  description: string;
+  recordedAt: string;
+  occurredAtDate: string;
+  localTime: string;
+  targetDate?: string;
+  status: 'active' | 'achieved' | 'abandoned' | 'paused';
+  metrics: GoalMetric[];
+  progressLog: GoalProgressLog[];
+  version: number;
+}
+
+export interface VaultVersionRecord {
+  version: number;
+  previousVersion: number | null;
+  changedAt: string;
+  localTime: string;
+  changedBy: 'sana' | 'user' | 'system';
+  diffSummary: string;
+  dataSnapshot: any;
+}
+
+// Backwards-compatible Notes & Documents
 export interface VaultNote {
   id: string;
   title: string;
   description: string;
   category: string;
   date: string;
+  localTime?: string;
   source: 'agent_memory_vault';
   tags?: string[];
+  version?: number;
 }
 
 export interface VaultDocument {
@@ -17,41 +333,56 @@ export interface VaultDocument {
   content: string;
   fileType: string;
   date: string;
+  localTime?: string;
   summary?: string;
+  imageRef?: string;
+  version?: number;
 }
 
 export interface AgentVaultData {
   userId: string;
+  identity?: IdentityData;
+  personality?: PersonalityData;
+  preferences?: PreferencesData;
+  composition?: SkinCompositionData;
+  evolution?: SkinEvolutionRecord;
+  sessions: SessionRecord[];
+  incidents: IncidentRecord[];
+  events: EventRecord[];
+  goals: GoalRecord[];
   notes: VaultNote[];
   documents: VaultDocument[];
-  knowledge: Record<string, any>;
   lastSynced: string;
 }
 
-// In-memory vault cache strictly partitioned per user ID
+// ==========================================
+// 3. CODE PROTECTIONS & GUARDS
+// ==========================================
+
+const PROTECTED_VAULT_PATHS = ['app_map', '_system'];
+
+export function assertAllowedVaultPath(categoryOrPath: string): void {
+  const clean = categoryOrPath.toLowerCase().trim();
+  if (PROTECTED_VAULT_PATHS.some(p => clean === p || clean.startsWith(`${p}/`))) {
+    throw new Error(
+      `[SANA_VAULT_GUARD] Access Denied: '${categoryOrPath}' is a read-only developer system path and cannot be modified by the agent.`
+    );
+  }
+}
+
+// In-memory cache per user
 const vaultCache: Record<string, AgentVaultData> = {};
 
 export function getOrCreateVaultCache(userId: string): AgentVaultData {
   if (!vaultCache[userId]) {
     vaultCache[userId] = {
       userId,
-      notes: [
-        {
-          id: 'vnote_init_001',
-          title: 'Skin Barrier Sensitivity Observation',
-          description: 'User experiences mild cheek erythema after strong exfoliants or hot water exposure.',
-          category: 'observation',
-          date: new Date().toISOString(),
-          source: 'agent_memory_vault',
-          tags: ['sensitivity', 'barrier', 'erythema']
-        }
-      ],
+      sessions: [],
+      incidents: [],
+      events: [],
+      goals: [],
+      notes: [],
       documents: [],
-      knowledge: {
-        preferredUnits: 'metric',
-        sunscreenHabit: 'daily',
-        agentNote: 'Isolated Agent Memory Vault initialized for user session.'
-      },
       lastSynced: new Date().toISOString()
     };
   }
@@ -62,58 +393,387 @@ export function clearAgentVaultCache(userId: string) {
   delete vaultCache[userId];
 }
 
+// ==========================================
+// 4. GIT-LIKE LIGHTWEIGHT VERSIONING ENGINE
+// ==========================================
+
 /**
- * Loads the user's isolated Agent Vault from Firestore.
- * Scoped strictly to `users/{userId}/vault/...`
+ * Saves a versioned record to `users/{userId}/vault/{category}/records/{docId}`.
+ * Increments `version`, archives old snapshot to `versions` subcollection, and logs diffSummary.
  */
-export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
-  const localVault = getOrCreateVaultCache(userId);
+export async function saveVaultRecordWithVersion<T extends { version?: number }>(
+  userId: string,
+  category: string,
+  docId: string,
+  data: T,
+  changedBy: 'sana' | 'user' | 'system' = 'sana',
+  diffSummary: string = 'Updated document content'
+): Promise<T & { version: number }> {
+  assertAllowedVaultPath(category);
+
+  const docRef = doc(db, 'users', userId, 'vault', category, 'records', docId);
+  const timeInfo = toAbsoluteTime();
+
+  let existingVersion = 0;
+  let previousData: any = null;
 
   try {
     if (db) {
-      // 1. Fetch notes subcollection under users/{userId}/vault/notes
-      const notesRef = collection(db, 'users', userId, 'vault', 'data', 'notes');
-      const qNotes = query(notesRef, orderBy('date', 'desc'), limit(20));
-      const notesSnap = await getDocs(qNotes);
-
-      if (!notesSnap.empty) {
-        localVault.notes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() } as VaultNote));
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        previousData = snap.data();
+        existingVersion = previousData.version || 1;
       }
-
-      // 2. Fetch documents subcollection under users/{userId}/vault/documents
-      const docsRef = collection(db, 'users', userId, 'vault', 'data', 'documents');
-      const qDocs = query(docsRef, orderBy('date', 'desc'), limit(10));
-      const docsSnap = await getDocs(qDocs);
-
-      if (!docsSnap.empty) {
-        localVault.documents = docsSnap.docs.map(d => ({ id: d.id, ...d.data() } as VaultDocument));
-      }
-
-      // 3. Fetch knowledge root document
-      const knowledgeDocRef = doc(db, 'users', userId, 'vault', 'metadata', 'knowledge', 'info');
-      const knowledgeSnap = await getDoc(knowledgeDocRef);
-      if (knowledgeSnap.exists()) {
-        localVault.knowledge = knowledgeSnap.data();
-      }
-
-      localVault.lastSynced = new Date().toISOString();
     }
   } catch (err) {
-    console.warn(`[AgentVault] Firestore load fallback for user ${userId}:`, err);
+    console.warn(`[VaultVersion] Could not fetch previous version for ${docId}:`, err);
   }
 
-  return localVault;
+  const newVersion = existingVersion + 1;
+  const updatedRecord = {
+    ...data,
+    version: newVersion,
+    recordedAt: timeInfo.recordedAt,
+    localTime: (data as any).localTime || timeInfo.localTime
+  };
+
+  try {
+    if (db) {
+      // 1. Save snapshot to versions subcollection
+      if (previousData) {
+        const versionRef = doc(db, 'users', userId, 'vault', category, 'records', docId, 'versions', `v_${existingVersion}`);
+        const versionRecord: VaultVersionRecord = {
+          version: existingVersion,
+          previousVersion: existingVersion > 1 ? existingVersion - 1 : null,
+          changedAt: timeInfo.recordedAt,
+          localTime: timeInfo.localTime,
+          changedBy,
+          diffSummary,
+          dataSnapshot: previousData
+        };
+        await setDoc(versionRef, sanitizeForFirestore(versionRecord));
+      }
+
+      // 2. Save new version in primary document
+      await setDoc(docRef, sanitizeForFirestore(updatedRecord));
+    }
+  } catch (err) {
+    console.warn(`[VaultVersion] Error saving versioned record for ${userId}/${category}/${docId}:`, err);
+  }
+
+  return updatedRecord;
 }
 
 /**
- * Saves a memory note directly into the isolated Agent Vault (`users/{userId}/vault/data/notes`).
- * Does NOT touch application core user profile or core settings.
+ * Retrieves version history for a given document.
+ * Rule: If total versions <= 3 -> returns all versions; if > 3 -> returns up to limitCount.
  */
+export async function getVaultHistory(
+  userId: string,
+  category: string,
+  docId: string,
+  limitCount: number = 5
+): Promise<VaultVersionRecord[]> {
+  assertAllowedVaultPath(category);
+  const history: VaultVersionRecord[] = [];
+
+  try {
+    if (db) {
+      const versionsRef = collection(db, 'users', userId, 'vault', category, 'records', docId, 'versions');
+      const q = query(versionsRef, orderBy('version', 'desc'), limitQuery(20));
+      const snap = await getDocs(q);
+
+      snap.forEach(d => {
+        history.push(d.data() as VaultVersionRecord);
+      });
+    }
+  } catch (err) {
+    console.warn(`[VaultVersion] Error getting history for ${docId}:`, err);
+  }
+
+  if (history.length <= 3) {
+    return history;
+  }
+  return history.slice(0, limitCount);
+}
+
+// ==========================================
+// 5. EVENT STATUS INTERNAL STATE MACHINE
+// ==========================================
+
+/**
+ * Evaluates and updates event statuses based on current date & time.
+ * - If scheduledAtDate < today & status === 'upcoming' -> 'completed' or 'missed'
+ * - If scheduledAtDate === today & status === 'upcoming' -> 'today'
+ */
+export async function evaluateAndUpdateEventStatuses(
+  userId: string,
+  events: EventRecord[]
+): Promise<EventRecord[]> {
+  const todayDate = new Date().toISOString().split('T')[0];
+  const updatedEvents: EventRecord[] = [];
+
+  for (const evt of events) {
+    let changed = false;
+    let newStatus = evt.status;
+
+    if (evt.status === 'upcoming') {
+      if (evt.scheduledAtDate < todayDate) {
+        newStatus = evt.outcomeNotes ? 'completed' : 'missed';
+        changed = true;
+      } else if (evt.scheduledAtDate === todayDate) {
+        newStatus = 'today';
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      const updatedEvt: EventRecord = {
+        ...evt,
+        status: newStatus
+      };
+      await saveVaultRecordWithVersion(
+        userId,
+        'events',
+        evt.id,
+        updatedEvt,
+        'system',
+        `Automated state transition: 'upcoming' -> '${newStatus}' based on temporal trigger.`
+      );
+      updatedEvents.push(updatedEvt);
+    } else {
+      updatedEvents.push(evt);
+    }
+  }
+
+  return updatedEvents;
+}
+
+// ==========================================
+// 6. DOMAIN SPECIFIC RECORD SAVERS
+// ==========================================
+
+export async function saveVaultSession(
+  userId: string,
+  session: Partial<SessionRecord> & { sessionId: string; messages: any[] }
+): Promise<SessionRecord> {
+  const timeInfo = toAbsoluteTime(session.startedAt);
+  const recId = session.sessionId;
+
+  const fullSession: SessionRecord = {
+    sessionId: recId,
+    userId,
+    startedAt: session.startedAt || timeInfo.occurredAt,
+    startedAtDate: timeInfo.occurredAtDate,
+    recordedAt: timeInfo.recordedAt,
+    localTime: session.localTime || timeInfo.localTime,
+    status: session.status || 'active',
+    title: session.title || `Skin Consult Session ${recId.slice(-4)}`,
+    summary: session.summary || (session.messages.length > 0 ? session.messages[session.messages.length - 1].text.slice(0, 150) : 'Session started.'),
+    topics: session.topics || ['skincare', 'consultation'],
+    intentHistory: session.intentHistory || [],
+    messages: session.messages || [],
+    toolCalls: session.toolCalls || [],
+    keywords: session.keywords || ['sana', 'consult'],
+    version: session.version || 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'sessions', recId, fullSession, 'sana', 'Logged session activity.');
+  const cache = getOrCreateVaultCache(userId);
+  const idx = cache.sessions.findIndex(s => s.sessionId === recId);
+  if (idx >= 0) cache.sessions[idx] = saved;
+  else cache.sessions.unshift(saved);
+
+  return saved;
+}
+
+export async function saveVaultUserData(
+  userId: string,
+  subType: 'identity' | 'personality' | 'preferences',
+  payload: any,
+  changedBy: 'sana' | 'user' | 'system' = 'sana',
+  diffSummary: string = 'Updated user data'
+): Promise<any> {
+  const timeInfo = toAbsoluteTime();
+  const recordData = {
+    ...payload,
+    id: subType,
+    updatedAt: timeInfo.occurredAt,
+    updatedAtDate: timeInfo.occurredAtDate,
+    localTime: timeInfo.localTime
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'user_data', subType, recordData, changedBy, diffSummary);
+  const cache = getOrCreateVaultCache(userId);
+  if (subType === 'identity') cache.identity = saved;
+  if (subType === 'personality') cache.personality = saved;
+  if (subType === 'preferences') cache.preferences = saved;
+
+  return saved;
+}
+
+export async function saveVaultSkinComposition(
+  userId: string,
+  payload: Partial<SkinCompositionData>,
+  changedBy: 'sana' | 'user' | 'system' = 'sana',
+  diffSummary: string = 'Updated skin composition profile'
+): Promise<SkinCompositionData> {
+  const timeInfo = toAbsoluteTime();
+  const compData: SkinCompositionData = {
+    id: 'composition',
+    skinTypeTendency: payload.skinTypeTendency || 'Combination / Sensitive',
+    barrierStatusPatterns: payload.barrierStatusPatterns || 'Slightly Compromised',
+    pigmentationTendency: payload.pigmentationTendency || 'Post-inflammatory erythema (PIE)',
+    texturePoreElasticity: payload.texturePoreElasticity || 'Mild congestion around T-zone',
+    knownTriggers: payload.knownTriggers || ['Fragrance', 'High Ethanol', 'Hot Water'],
+    confidenceScore: payload.confidenceScore || 0.85,
+    lastUpdated: timeInfo.occurredAt,
+    lastUpdatedDate: timeInfo.occurredAtDate,
+    localTime: timeInfo.localTime,
+    version: payload.version || 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'skin_profile', 'composition', compData, changedBy, diffSummary);
+  getOrCreateVaultCache(userId).composition = saved;
+  return saved;
+}
+
+export async function saveVaultIncident(
+  userId: string,
+  payload: {
+    title: string;
+    occurredAt?: string;
+    type?: 'reaction' | 'breakout' | 'flare' | 'allergy' | 'other';
+    severity?: 'mild' | 'moderate' | 'severe';
+    bodyAreas?: string[];
+    description?: string;
+    suspectedTriggers?: string[];
+    relatedProducts?: string[];
+    relatedIngredients?: string[];
+    notes?: string;
+    outcome?: string;
+  },
+  changedBy: 'sana' | 'user' | 'system' = 'sana'
+): Promise<IncidentRecord> {
+  const timeInfo = toAbsoluteTime(payload.occurredAt);
+  const incId = `inc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  const incident: IncidentRecord = {
+    id: incId,
+    title: payload.title,
+    occurredAt: timeInfo.occurredAt,
+    occurredAtDate: timeInfo.occurredAtDate,
+    recordedAt: timeInfo.recordedAt,
+    localTime: timeInfo.localTime,
+    timezone: timeInfo.timezone,
+    type: payload.type || 'flare',
+    severity: payload.severity || 'mild',
+    bodyAreas: payload.bodyAreas || ['face'],
+    description: payload.description || payload.title,
+    suspectedTriggers: payload.suspectedTriggers || [],
+    relatedProducts: payload.relatedProducts || [],
+    relatedIngredients: payload.relatedIngredients || [],
+    notes: payload.notes || '',
+    outcome: payload.outcome || 'monitoring',
+    version: 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'incidents', incId, incident, changedBy, `Logged reaction incident: ${payload.title}`);
+  const cache = getOrCreateVaultCache(userId);
+  cache.incidents.unshift(saved);
+  return saved;
+}
+
+export async function saveVaultEvent(
+  userId: string,
+  payload: {
+    title: string;
+    scheduledAt?: string;
+    category?: string;
+    preparationProtocolId?: string;
+    outcomeNotes?: string;
+  },
+  changedBy: 'sana' | 'user' | 'system' = 'sana'
+): Promise<EventRecord> {
+  const timeInfo = toAbsoluteTime(payload.scheduledAt);
+  const evtId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  const todayDate = new Date().toISOString().split('T')[0];
+  let status: EventStatus = 'upcoming';
+  if (timeInfo.occurredAtDate < todayDate) {
+    status = payload.outcomeNotes ? 'completed' : 'missed';
+  } else if (timeInfo.occurredAtDate === todayDate) {
+    status = 'today';
+  }
+
+  const evt: EventRecord = {
+    id: evtId,
+    title: payload.title,
+    scheduledAt: timeInfo.occurredAt,
+    scheduledAtDate: timeInfo.occurredAtDate,
+    recordedAt: timeInfo.recordedAt,
+    localTime: timeInfo.localTime,
+    timezone: timeInfo.timezone,
+    status,
+    category: payload.category || 'routine',
+    preparationProtocolId: payload.preparationProtocolId,
+    outcomeNotes: payload.outcomeNotes || '',
+    version: 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'events', evtId, evt, changedBy, `Created event: ${payload.title}`);
+  const cache = getOrCreateVaultCache(userId);
+  cache.events.unshift(saved);
+  return saved;
+}
+
+export async function saveVaultGoal(
+  userId: string,
+  payload: {
+    title: string;
+    description?: string;
+    targetDate?: string;
+    metrics?: GoalMetric[];
+    status?: 'active' | 'achieved' | 'abandoned' | 'paused';
+  },
+  changedBy: 'sana' | 'user' | 'system' = 'sana'
+): Promise<GoalRecord> {
+  const timeInfo = toAbsoluteTime();
+  const goalId = `goal_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  const goal: GoalRecord = {
+    id: goalId,
+    title: payload.title,
+    description: payload.description || payload.title,
+    recordedAt: timeInfo.recordedAt,
+    occurredAtDate: timeInfo.occurredAtDate,
+    localTime: timeInfo.localTime,
+    targetDate: payload.targetDate ? toAbsoluteTime(payload.targetDate).occurredAtDate : undefined,
+    status: payload.status || 'active',
+    metrics: payload.metrics || [],
+    progressLog: [
+      {
+        date: timeInfo.occurredAtDate,
+        occurredAt: timeInfo.occurredAt,
+        localTime: timeInfo.localTime,
+        note: 'Goal created in Agent Vault.'
+      }
+    ],
+    version: 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(userId, 'goals', goalId, goal, changedBy, `Created goal: ${payload.title}`);
+  const cache = getOrCreateVaultCache(userId);
+  cache.goals.unshift(saved);
+  return saved;
+}
+
+// Backwards-compatible Note & Document savers
 export async function saveAgentVaultNote(
   userId: string,
   payload: { title: string; description?: string; category?: string; date?: string; tags?: string[] }
 ): Promise<VaultNote> {
-  const vault = getOrCreateVaultCache(userId);
+  const timeInfo = toAbsoluteTime(payload.date);
   const noteId = `vn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   const newNote: VaultNote = {
@@ -121,33 +781,22 @@ export async function saveAgentVaultNote(
     title: payload.title,
     description: payload.description || payload.title,
     category: payload.category || 'observation',
-    date: payload.date || new Date().toISOString(),
+    date: timeInfo.occurredAt,
+    localTime: timeInfo.localTime,
     source: 'agent_memory_vault',
     tags: payload.tags || ['skin_memory']
   };
 
-  vault.notes.unshift(newNote);
-
-  try {
-    if (db) {
-      const noteRef = doc(db, 'users', userId, 'vault', 'data', 'notes', noteId);
-      await setDoc(noteRef, newNote);
-    }
-  } catch (err) {
-    console.warn(`[AgentVault] Firestore note save warning for user ${userId}:`, err);
-  }
-
-  return newNote;
+  const saved = await saveVaultRecordWithVersion(userId, 'notes', noteId, newNote, 'sana', `Saved memory note: ${payload.title}`);
+  getOrCreateVaultCache(userId).notes.unshift(saved as any);
+  return saved;
 }
 
-/**
- * Ingests and saves a parsed document into the isolated Agent Vault (`users/{userId}/vault/data/documents`).
- */
 export async function saveAgentVaultDocument(
   userId: string,
   docData: { title: string; content: string; fileType?: string; summary?: string; date?: string; imageRef?: string }
 ): Promise<VaultDocument> {
-  const vault = getOrCreateVaultCache(userId);
+  const timeInfo = toAbsoluteTime(docData.date);
   const docId = `vdoc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   const newDoc: VaultDocument = {
@@ -155,52 +804,205 @@ export async function saveAgentVaultDocument(
     title: docData.title,
     content: docData.content,
     fileType: docData.fileType || 'text/plain',
-    date: docData.date || new Date().toISOString(),
-    summary: docData.summary || docData.content.substring(0, 200)
+    date: timeInfo.occurredAt,
+    localTime: timeInfo.localTime,
+    summary: docData.summary || docData.content.substring(0, 200),
+    imageRef: docData.imageRef || undefined // Never store raw image bytes — only imageRef reference!
   };
 
-  vault.documents.unshift(newDoc);
-
-  try {
-    if (db) {
-      const docRef = doc(db, 'users', userId, 'vault', 'data', 'documents', docId);
-      await setDoc(docRef, {
-        ...newDoc,
-        // Rule: Vault never stores raw image bytes — only imageRef reference
-        imageRef: docData.imageRef || null
-      });
-    }
-  } catch (err) {
-    console.warn(`[AgentVault] Firestore document save warning for user ${userId}:`, err);
-  }
-
-  return newDoc;
+  const saved = await saveVaultRecordWithVersion(userId, 'documents', docId, newDoc, 'sana', `Ingested document: ${docData.title}`);
+  getOrCreateVaultCache(userId).documents.unshift(saved as any);
+  return saved;
 }
 
-/**
- * Searches the user's isolated Agent Vault for relevant memory notes or document text.
- */
+// ==========================================
+// 7. MULTI-SCOPE VAULT SEARCH ENGINE
+// ==========================================
+
+export interface VaultSearchParams {
+  scope?: 'sessions' | 'incidents' | 'events' | 'goals' | 'skin_profile' | 'user_data' | 'notes' | 'documents' | 'all';
+  mode?: 'keyword' | 'vector' | 'auto';
+  query: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  includeVersions?: boolean;
+}
+
+export async function vaultSearch(
+  userId: string,
+  params: VaultSearchParams
+): Promise<Record<string, any[]>> {
+  const scope = params.scope || 'all';
+  const queryText = params.query.toLowerCase().trim();
+  const maxLimit = params.limit || 10;
+  const results: Record<string, any[]> = {};
+
+  const fullVault = await loadFullAgentVault(userId);
+
+  // Date range checker helper
+  const inDateRange = (dateStr?: string) => {
+    if (!dateStr) return true;
+    const cleanDate = dateStr.slice(0, 10);
+    if (params.dateFrom && cleanDate < params.dateFrom) return false;
+    if (params.dateTo && cleanDate > params.dateTo) return false;
+    return true;
+  };
+
+  // Keyword relevance match checker
+  const matches = (...fields: (string | undefined | null)[]) => {
+    if (!queryText) return true;
+    return fields.some(f => f && f.toLowerCase().includes(queryText));
+  };
+
+  // Search Sessions
+  if (scope === 'all' || scope === 'sessions') {
+    results.sessions = fullVault.sessions
+      .filter(s => inDateRange(s.startedAtDate) && matches(s.title, s.summary, ...s.topics, ...s.keywords))
+      .slice(0, maxLimit);
+  }
+
+  // Search Incidents
+  if (scope === 'all' || scope === 'incidents') {
+    results.incidents = fullVault.incidents
+      .filter(i => inDateRange(i.occurredAtDate) && matches(i.title, i.description, i.notes, ...i.suspectedTriggers, ...i.relatedIngredients))
+      .slice(0, maxLimit);
+  }
+
+  // Search Events
+  if (scope === 'all' || scope === 'events') {
+    results.events = fullVault.events
+      .filter(e => inDateRange(e.scheduledAtDate) && matches(e.title, e.category, e.outcomeNotes))
+      .slice(0, maxLimit);
+  }
+
+  // Search Goals
+  if (scope === 'all' || scope === 'goals') {
+    results.goals = fullVault.goals
+      .filter(g => inDateRange(g.occurredAtDate) && matches(g.title, g.description, g.status))
+      .slice(0, maxLimit);
+  }
+
+  // Search Skin Profile
+  if (scope === 'all' || scope === 'skin_profile') {
+    const profileMatches: any[] = [];
+    if (fullVault.composition && matches(fullVault.composition.skinTypeTendency, fullVault.composition.barrierStatusPatterns, ...(fullVault.composition.knownTriggers || []))) {
+      profileMatches.push(fullVault.composition);
+    }
+    results.skin_profile = profileMatches;
+  }
+
+  // Search User Data
+  if (scope === 'all' || scope === 'user_data') {
+    const userDataMatches: any[] = [];
+    if (fullVault.identity && matches(fullVault.identity.preferredName, fullVault.identity.locationOrClimate, ...(fullVault.identity.permanentFacts || []))) {
+      userDataMatches.push(fullVault.identity);
+    }
+    if (fullVault.personality && matches(fullVault.personality.communicationStyle, fullVault.personality.motivationStyle)) {
+      userDataMatches.push(fullVault.personality);
+    }
+    if (fullVault.preferences && matches(fullVault.preferences.units, fullVault.preferences.notificationTiming)) {
+      userDataMatches.push(fullVault.preferences);
+    }
+    results.user_data = userDataMatches;
+  }
+
+  // Search Notes
+  if (scope === 'all' || scope === 'notes') {
+    results.notes = fullVault.notes
+      .filter(n => inDateRange(n.date) && matches(n.title, n.description, n.category, ...(n.tags || [])))
+      .slice(0, maxLimit);
+  }
+
+  // Search Documents
+  if (scope === 'all' || scope === 'documents') {
+    results.documents = fullVault.documents
+      .filter(d => inDateRange(d.date) && matches(d.title, d.content, d.summary))
+      .slice(0, maxLimit);
+  }
+
+  return results;
+}
+
 export async function searchAgentVault(
   userId: string,
   queryText: string
 ): Promise<{ notes: VaultNote[]; documents: VaultDocument[] }> {
-  const vault = await loadAgentVault(userId);
-  const lowerQuery = queryText.toLowerCase();
-
-  const matchingNotes = vault.notes.filter(
-    n => n.title.toLowerCase().includes(lowerQuery) || n.description.toLowerCase().includes(lowerQuery)
-  );
-
-  const matchingDocs = vault.documents.filter(
-    d => d.title.toLowerCase().includes(lowerQuery) || d.content.toLowerCase().includes(lowerQuery)
-  );
-
-  return { notes: matchingNotes, documents: matchingDocs };
+  const res = await vaultSearch(userId, { query: queryText, scope: 'all' });
+  return {
+    notes: res.notes || [],
+    documents: res.documents || []
+  };
 }
 
-/**
- * Helper to parse document content (text/markdown/pdf text extracts) for agent indexing.
- */
+// ==========================================
+// 8. FULL AGENT VAULT LOADER
+// ==========================================
+
+export async function loadFullAgentVault(userId: string): Promise<AgentVaultData> {
+  const cache = getOrCreateVaultCache(userId);
+
+  try {
+    if (db) {
+      // 1. Fetch Sessions
+      const sessSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'sessions', 'records'), orderBy('recordedAt', 'desc'), limitQuery(10)));
+      if (!sessSnap.empty) {
+        cache.sessions = sessSnap.docs.map(d => d.data() as SessionRecord);
+      }
+
+      // 2. Fetch Incidents
+      const incSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'incidents', 'records'), orderBy('recordedAt', 'desc'), limitQuery(10)));
+      if (!incSnap.empty) {
+        cache.incidents = incSnap.docs.map(d => d.data() as IncidentRecord);
+      }
+
+      // 3. Fetch Events & evaluate state machine
+      const evtSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'events', 'records'), orderBy('recordedAt', 'desc'), limitQuery(15)));
+      if (!evtSnap.empty) {
+        const rawEvts = evtSnap.docs.map(d => d.data() as EventRecord);
+        cache.events = await evaluateAndUpdateEventStatuses(userId, rawEvts);
+      }
+
+      // 4. Fetch Goals
+      const goalSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'goals', 'records'), orderBy('recordedAt', 'desc'), limitQuery(10)));
+      if (!goalSnap.empty) {
+        cache.goals = goalSnap.docs.map(d => d.data() as GoalRecord);
+      }
+
+      // 5. Fetch User Data
+      const identSnap = await getDoc(doc(db, 'users', userId, 'vault', 'user_data', 'records', 'identity'));
+      if (identSnap.exists()) cache.identity = identSnap.data() as IdentityData;
+
+      const persSnap = await getDoc(doc(db, 'users', userId, 'vault', 'user_data', 'records', 'personality'));
+      if (persSnap.exists()) cache.personality = persSnap.data() as PersonalityData;
+
+      const prefSnap = await getDoc(doc(db, 'users', userId, 'vault', 'user_data', 'records', 'preferences'));
+      if (prefSnap.exists()) cache.preferences = prefSnap.data() as PreferencesData;
+
+      // 6. Fetch Skin Composition
+      const compSnap = await getDoc(doc(db, 'users', userId, 'vault', 'skin_profile', 'records', 'composition'));
+      if (compSnap.exists()) cache.composition = compSnap.data() as SkinCompositionData;
+
+      // 7. Fetch Notes & Documents
+      const notesSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'notes', 'records'), orderBy('date', 'desc'), limitQuery(10)));
+      if (!notesSnap.empty) cache.notes = notesSnap.docs.map(d => d.data() as VaultNote);
+
+      const docsSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'documents', 'records'), orderBy('date', 'desc'), limitQuery(10)));
+      if (!docsSnap.empty) cache.documents = docsSnap.docs.map(d => d.data() as VaultDocument);
+
+      cache.lastSynced = new Date().toISOString();
+    }
+  } catch (err) {
+    console.warn(`[AgentVault] Firestore full load fallback for user ${userId}:`, err);
+  }
+
+  return cache;
+}
+
+export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
+  return loadFullAgentVault(userId);
+}
+
 export function parseDocumentContent(filename: string, rawContent: string): { title: string; content: string; summary: string } {
   const cleanTitle = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
   const trimmed = rawContent.trim();

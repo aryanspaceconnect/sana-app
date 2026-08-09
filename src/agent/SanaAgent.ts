@@ -12,6 +12,7 @@ import {
 import { SANA_SOUL, SANA_HARD_CONSTRAINTS, SANA_APP_MAP } from './soul.js';
 import { SANA_TOOL_REGISTRY } from './tools.js';
 import { loadContextForAgent } from './workspace.js';
+import { saveVaultSession, toAbsoluteTime } from './agentVault.js';
 
 // In-memory sessions store
 const activeSessions: Record<string, Session> = {};
@@ -314,6 +315,27 @@ Evaluate results and produce the NEXT PassOn JSON object. If you have sufficient
     }
 
     session.passOnTrace.push(...passOnTrace);
+
+    // Save full execution trace and session into Vault long-term memory
+    try {
+      const messagesList = (params.history || []).map(h => ({
+        role: h.role as 'user' | 'model',
+        text: h.text,
+        timestamp: new Date().toISOString()
+      })).concat([{ role: 'model', text: finalOutputText, timestamp: new Date().toISOString() }]);
+
+      await saveVaultSession(params.userId, {
+        sessionId: session.sessionId,
+        startedAt: new Date(session.lastActive).toISOString(),
+        status: 'active',
+        summary: finalOutputText.slice(0, 200),
+        messages: messagesList,
+        intentHistory: passOnTrace.map(p => p.intent),
+        passOnTrace
+      });
+    } catch (err) {
+      console.warn('[SanaAgent] Error saving session to Vault:', err);
+    }
 
     return {
       text: finalOutputText,

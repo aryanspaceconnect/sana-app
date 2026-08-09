@@ -356,7 +356,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             title="Upload Document to Agent Memory Vault"
             className="p-2.5 rounded-2xl text-[#64748b] hover:text-[#1a1c1e] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
           >
-            <Icon icon="solar:paperclip-bold-duotone" className="w-5 h-5" />
+            <Icon icon="solar:add-circle-linear" className="w-5.5 h-5.5" />
           </button>
           <input
             type="text"
