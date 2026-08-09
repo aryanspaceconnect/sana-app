@@ -13,10 +13,10 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenSettings, onO
   const [isExpanded, setIsExpanded] = useState(true);
 
   useEffect(() => {
-    // Text "sana" naturally slides into the logo icon after 6 seconds
+    // Text "sana" naturally slides into the logo icon after 5 seconds
     const timer = setTimeout(() => {
       setIsExpanded(false);
-    }, 6000);
+    }, 5000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -27,22 +27,22 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenSettings, onO
 
   return (
     <header className="relative w-full px-6 pt-5 pb-2 flex items-center justify-between z-20 pointer-events-auto">
-      {/* Interactive SANA Brand with SVG Logo & Sliding Blurred Text */}
+      {/* Interactive SANA Brand with SVG Logo & Natural In-Logo Slide + Blur */}
       <div
         className="flex items-center space-x-2 cursor-pointer select-none group py-1"
         onClick={handleToggle}
-        title="SANA Logo"
+        title="Toggle SANA logo text"
       >
         {/* SVG Logo Icon Mark */}
         <motion.div
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.94 }}
-          className="shrink-0 z-10 flex items-center justify-center"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="shrink-0 z-20 flex items-center justify-center"
         >
           <SanaLogoIcon size={22} color="#1a1c1e" />
         </motion.div>
 
-        {/* Text Container Mask: 'sana' text enters inside logo with localized blur */}
+        {/* Sliding Text Mask Window */}
         <motion.div
           initial={false}
           animate={{
@@ -54,33 +54,27 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenSettings, onO
             ease: [0.16, 1, 0.3, 1],
           }}
           className="relative overflow-hidden flex items-center h-7"
+          style={{
+            // Apply gradient mask ONLY during collapse transition so text blurs as it enters logo
+            maskImage: isExpanded
+              ? 'none'
+              : 'linear-gradient(to right, transparent 0px, rgba(0,0,0,0.2) 4px, black 14px, black 100%)',
+            WebkitMaskImage: isExpanded
+              ? 'none'
+              : 'linear-gradient(to right, transparent 0px, rgba(0,0,0,0.2) 4px, black 14px, black 100%)',
+          }}
         >
-          {/* Edge Blur & Dissolve Threshold Mask */}
-          <div
-            className="absolute left-0 top-0 bottom-0 w-3 z-10 pointer-events-none"
-            style={{
-              background: 'linear-gradient(to right, rgba(248,249,251,1) 0%, rgba(248,249,251,0) 100%)',
-              backdropFilter: 'blur(3px)',
-              WebkitBackdropFilter: 'blur(3px)',
-            }}
-          />
-
           <motion.div
             initial={false}
             animate={{
-              x: isExpanded ? 0 : -36,
-              filter: isExpanded ? 'blur(0px)' : 'blur(6px)',
-              opacity: isExpanded ? 1 : 0,
+              x: isExpanded ? 0 : -35,
+              filter: isExpanded ? 'blur(0px)' : 'blur(4px)',
             }}
             transition={{
               duration: 0.75,
               ease: [0.16, 1, 0.3, 1],
             }}
-            className="flex items-baseline pl-0.5 whitespace-nowrap"
-            style={{
-              maskImage: 'linear-gradient(to right, transparent 0px, transparent 4px, black 16px, black 100%)',
-              WebkitMaskImage: 'linear-gradient(to right, transparent 0px, transparent 4px, black 16px, black 100%)',
-            }}
+            className="whitespace-nowrap px-0.5"
           >
             <span className="text-[19px] font-bold tracking-tight text-[#1a1c1e] lowercase">
               sana
