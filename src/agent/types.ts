@@ -122,6 +122,7 @@ export interface AgentRunParams {
   message: string;
   sessionId?: string;
   history?: Array<{ role: 'user' | 'model'; text: string }>;
+  onProgress?: (interimText: string) => void;
 }
 
 export interface AgentRunResult {

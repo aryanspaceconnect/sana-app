@@ -82,7 +82,15 @@ ${constraintsList}
 - Writing to or querying the Agent Memory Vault does NOT modify the user's primary application settings or core profile, and DOES NOT require user approval cards.
 - When the user asks to remember, log, or store an observation, pimple, flare-up, symptom, or skin memory note (e.g., 'Can u remember that i had a pimple yesterday'), use the \`save_memory_note\` tool directly.
 - When the user provides or uploads a document/PDF/routine guide, use the \`ingest_document_to_vault\` tool to parse and index it into their isolated vault.
-- When you need to retrieve past memory notes or documents from the vault, use \`search_agent_vault\` or set \`vault: true\` in \`memoryNeeds\`.
+- When you need to retrieve past memory notes or documents from the vault, use \`vault_search\` or \`search_agent_vault\` or set \`vault: true\` in \`memoryNeeds\`.
+
+### MANDATORY DATA RETRIEVAL & FULFILLMENT PROTOCOL:
+1. NEVER output an interim message like "I am retrieving...", "Please allow a moment...", "Compiling your records...", or "Let me check..." with \`status: "ready"\`.
+2. When the user asks "What have you stored?", "Retrieve everything", "Show my skin memories", "Check my past incidents", "What do you know about me?", or any query requiring data compilation or memory vault retrieval:
+   - You MUST set \`status: "need_info"\`.
+   - You MUST include \`vault_search\` in \`nextTools\` with \`scope: "all"\` and \`query: "all"\`, OR set \`memoryNeeds: { vault: true, profile: true }\`.
+   - In \`finalResponse\`, you MAY set a brief interim note (e.g., "I am retrieving all stored information from your personal vault. Please allow a moment for me to compile this.").
+3. In the subsequent iteration after tools return the vault data, you MUST compile and synthesize ALL returned records into a clean, well-organized response with headers (e.g. ### 👤 Identity & Profile, ### 📝 Skin Memories & Incidents, ### 📅 Scheduled Events & Goals, ### 📄 Uploaded Vault Documents) and set \`status: "ready"\`. Never stop on the interim message without compiling the actual retrieved content!
 
 ### AVAILABLE TOOLS:
 ${toolsDescription}
@@ -259,12 +267,30 @@ You MUST respond ONLY with a raw, valid JSON object matching the following struc
     let currentPassOn = this.parsePassOn(rawPassOn);
     passOnTrace.push(currentPassOn);
 
+    // Auto-detect if user requested retrieval/stored data or if LLM promised retrieval but had empty tools/ready status
+    const isRetrievalIntent = /(retrieve|what (have|did) you (store|remember|log|save)|show.*(vault|memories|incidents|history)|get.*everything|compile|fetch)/i.test(params.message);
+    const promisesRetrievalText = /retriev|compil|allow a moment|search.*vault|gathering/i.test(currentPassOn.finalResponse || '');
+
+    if ((isRetrievalIntent || promisesRetrievalText) && (!currentPassOn.nextTools || currentPassOn.nextTools.length === 0)) {
+      currentPassOn.status = 'need_info';
+      currentPassOn.nextTools = [
+        { name: 'vault_search', arguments: { scope: 'all', query: 'all' } }
+      ];
+      if (!currentPassOn.memoryNeeds) {
+        currentPassOn.memoryNeeds = { vault: true, profile: true };
+      }
+    }
+
     const MAX_ITERATIONS = 4;
     let iteration = 0;
 
     // Step 2: Multi-step loop while status === 'need_info'
     while (currentPassOn.status === 'need_info' && iteration < MAX_ITERATIONS) {
       iteration++;
+
+      if (params.onProgress && currentPassOn.finalResponse) {
+        params.onProgress(currentPassOn.finalResponse);
+      }
 
       // Load requested memory layers
       if (currentPassOn.memoryNeeds) {
@@ -292,7 +318,7 @@ You MUST respond ONLY with a raw, valid JSON object matching the following struc
 Context Snapshot: ${JSON.stringify(currentContext)}
 Tool Execution Output: ${JSON.stringify(toolResults)}
 
-Evaluate results and produce the NEXT PassOn JSON object. If you have sufficient information or proposal ready, set status to 'ready' or 'need_approval'.`
+MANDATORY INSTRUCTION: Evaluate tool execution output above and synthesize a complete, detailed, well-structured response for the user in 'finalResponse'. List all retrieved skin memories, incidents, profile composition, and identity facts under markdown headers. Set status to 'ready' or 'need_approval'. Do NOT repeat interim statements like "I am retrieving...".`
           }]
         }
       ];
@@ -302,8 +328,24 @@ Evaluate results and produce the NEXT PassOn JSON object. If you have sufficient
       passOnTrace.push(currentPassOn);
     }
 
-    // Step 3: Guardrail Check
+    // Step 3: Guardrail Check & Fallback Fulfillment
     let finalOutputText = currentPassOn.finalResponse || "I am SANA, your skin health agent. How can I assist with your routine today?";
+
+    // If finalOutputText is still a placeholder like "I am retrieving...", synthesize context directly
+    if (/retriev|allow a moment|compil/i.test(finalOutputText) && currentContext.agentVault) {
+      const vault = currentContext.agentVault;
+      const notesList = (vault.notes || []).map((n: any) => `- **${n.title}** (${n.date?.slice(0, 10) || 'Recent'}): ${n.description}`).join('\n');
+      const incList = (vault.incidents || []).map((i: any) => `- **${i.title}** (${i.occurredAtDate || 'Recent'}): ${i.description || i.notes || 'Logged flare'}`).join('\n');
+      const docsList = (vault.documents || []).map((d: any) => `- **${d.title}**: ${d.summary || 'Indexed document'}`).join('\n');
+      const profileInfo = vault.composition ? `- **Skin Type**: ${vault.composition.skinTypeTendency || 'Sensitive'}\n- **Known Triggers**: ${vault.composition.knownTriggers?.join(', ') || 'None'}` : '';
+
+      finalOutputText = `Here is everything currently recorded in your personal Sana Agent Vault:\n\n` +
+        (notesList ? `### 📝 Logged Skin Memories & Notes\n${notesList}\n\n` : '') +
+        (incList ? `### 🩺 Tracked Reaction & Flare Incidents\n${incList}\n\n` : '') +
+        (docsList ? `### 📄 Uploaded Vault Documents\n${docsList}\n\n` : '') +
+        (profileInfo ? `### 👤 Skin Profile & Composition\n${profileInfo}\n\n` : '') +
+        (!notesList && !incList && !docsList && !profileInfo ? `*Your personal vault is active and ready. No previous incident records were found.*` : `\nIs there a specific skin memory or record you would like to edit or explore further?`);
+    }
 
     for (const guardrail of this.config.outputGuardrails) {
       const check = guardrail(finalOutputText);

@@ -849,9 +849,11 @@ export async function vaultSearch(
     return true;
   };
 
+  const isWildcard = !queryText || ['all', 'everything', 'retrieve', '*', 'all memories', 'all notes', 'retrieve everything', 'get everything', 'stored'].includes(queryText);
+
   // Keyword relevance match checker
   const matches = (...fields: (string | undefined | null)[]) => {
-    if (!queryText) return true;
+    if (isWildcard) return true;
     return fields.some(f => f && f.toLowerCase().includes(queryText));
   };
 
