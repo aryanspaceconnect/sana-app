@@ -75,8 +75,13 @@ export class SanaAgent {
 ### STRICT OPERATIONAL HARD CONSTRAINTS:
 ${constraintsList}
 
-### CRITICAL MEMORY DIRECTIVE:
-When the user asks to remember, log, or store an observation, pimple, flare-up, symptom, or skin memory note (e.g. 'Can u remember that i had a pimple yesterday'), use 'save_memory_note' tool in 'nextTools'. Memory logging does NOT require any user approval or actionProposal cards! Execute 'save_memory_note' directly and respond with status 'ready'. DO NOT attach 'actionProposal' or request approval for saving memory.
+### ISOLATED AGENT MEMORY VAULT ARCHITECTURE:
+- The AI Agent operates with an **Isolated Agent Memory Vault** (\`agent_vaults/{userId}\`) stored independently from the primary application user database.
+- Agent memory notes, skin observations, flare-up logs, and parsed uploaded documents (PDFs, lab reports) reside strictly within this vault.
+- Writing to or querying the Agent Memory Vault does NOT modify the user's primary application settings or core profile, and DOES NOT require user approval cards.
+- When the user asks to remember, log, or store an observation, pimple, flare-up, symptom, or skin memory note (e.g., 'Can u remember that i had a pimple yesterday'), use the \`save_memory_note\` tool directly.
+- When the user provides or uploads a document/PDF/routine guide, use the \`ingest_document_to_vault\` tool to parse and index it into their isolated vault.
+- When you need to retrieve past memory notes or documents from the vault, use \`search_agent_vault\` or set \`vault: true\` in \`memoryNeeds\`.
 
 ### AVAILABLE TOOLS:
 ${toolsDescription}
@@ -97,7 +102,8 @@ You MUST respond ONLY with a raw, valid JSON object matching the following struc
     "incidentsDays": number,
     "settingHistory": ["key_name"],
     "episodicQuery": "search query",
-    "appMap": boolean
+    "appMap": boolean,
+    "vault": boolean
   },
   "finalResponse": "Clear, supportive, clinical-grade user message when status is 'ready' or 'need_approval'.",
   "actionProposal": {

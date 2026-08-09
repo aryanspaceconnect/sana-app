@@ -2,6 +2,7 @@ import { AgentContext, MemoryNeeds, ActionProposal, StateEvent } from './types.j
 import { db } from '../lib/firebase.js';
 import { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { SANA_APP_MAP } from './soul.js';
+import { loadAgentVault, saveAgentVaultNote } from './agentVault.js';
 
 // In-memory fallback workspace store per user
 const memoryStore: Record<string, {
@@ -77,9 +78,12 @@ function getOrCreateUserMemoryStore(userId: string) {
 
 export async function loadContextForAgent(userId: string, sessionId: string, needs?: MemoryNeeds): Promise<AgentContext> {
   const localStore = getOrCreateUserMemoryStore(userId);
+  const vaultData = await loadAgentVault(userId);
+
   const context: AgentContext = {
     userId,
-    sessionId
+    sessionId,
+    agentVault: vaultData
   };
 
   // If no memoryNeeds specified, default to lean profile + appMap
@@ -242,30 +246,12 @@ export async function executeActionProposal(userId: string, proposal: ActionProp
 }
 
 export async function saveMemoryNoteDirectly(userId: string, payload: { title: string; description?: string; category?: string; date?: string }) {
-  const localStore = getOrCreateUserMemoryStore(userId);
-  const incId = `inc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const record = {
-    id: incId,
+  const note = await saveAgentVaultNote(userId, {
     title: payload.title,
     description: payload.description || payload.title,
-    category: payload.category || 'incident',
-    date: payload.date || new Date().toISOString(),
-    severity: 'mild',
-    triggers: [],
-    status: 'logged'
-  };
+    category: payload.category || 'observation',
+    date: payload.date || new Date().toISOString()
+  });
 
-  localStore.incidents = localStore.incidents || [];
-  localStore.incidents.push(record);
-
-  try {
-    if (db) {
-      const incRef = doc(db, 'users', userId, 'incidents', incId);
-      await setDoc(incRef, record);
-    }
-  } catch (err) {
-    console.warn('Firestore direct incident save warning:', err);
-  }
-
-  return record;
+  return note;
 }

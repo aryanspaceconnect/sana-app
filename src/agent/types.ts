@@ -10,6 +10,7 @@ export const MemoryNeedsSchema = z.object({
   settingHistory: z.union([z.array(z.string()), z.string()]).transform(v => typeof v === 'string' ? [v] : v).optional().nullable(),
   episodicQuery: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any()), z.boolean(), z.number()]).transform(v => typeof v === 'string' ? v : JSON.stringify(v)).optional().nullable(),
   appMap: z.boolean().optional().nullable(),
+  vault: z.boolean().optional().nullable(),
 }).passthrough();
 
 export type MemoryNeeds = z.infer<typeof MemoryNeedsSchema>;
@@ -86,6 +87,7 @@ export interface AgentContext {
   settingsHistory?: Record<string, any[]>;
   episodicData?: any[];
   appMap?: Record<string, any>;
+  agentVault?: any;
 }
 
 export interface ToolDefinition {

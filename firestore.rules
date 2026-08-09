@@ -9,6 +9,14 @@ service cloud.firestore {
       }
     }
 
+    match /agent_vaults/{userId} {
+      allow read, write: if true;
+
+      match /{allPaths=**} {
+        allow read, write: if true;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if true;
     }

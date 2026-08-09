@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ToolDefinition, UniversalQuery, AgentContext, ActionProposal } from './types.js';
 import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
+import { saveAgentVaultDocument, searchAgentVault, parseDocumentContent } from './agentVault.js';
 
 // Universal Search Tool
 export const universalSearchToolSchema = z.object({
@@ -257,7 +258,7 @@ export const saveMemoryNoteSchema = z.object({
 
 export const saveMemoryNoteTool: ToolDefinition = {
   name: 'save_memory_note',
-  description: 'Directly save an observation, symptom, pimple/flare-up incident, or skin memory note into user memory. DOES NOT require action approval cards.',
+  description: 'Directly save an observation, symptom, pimple/flare-up incident, or skin memory note into user isolated Agent Memory Vault. DOES NOT require action approval cards.',
   parameters: saveMemoryNoteSchema,
   execute: async (args: z.infer<typeof saveMemoryNoteSchema>, context: AgentContext) => {
     const record = await saveMemoryNoteDirectly(context.userId, {
@@ -268,8 +269,55 @@ export const saveMemoryNoteTool: ToolDefinition = {
     });
     return {
       success: true,
-      message: `Memory note '${args.title}' was directly saved into user skin memory.`,
+      message: `Memory note '${args.title}' was directly saved into user skin memory vault.`,
       savedRecord: record
+    };
+  }
+};
+
+// Ingest Document into Agent Vault
+export const ingestDocumentSchema = z.object({
+  filename: z.string(),
+  content: z.string(),
+  fileType: z.string().optional()
+});
+
+export const ingestDocumentTool: ToolDefinition = {
+  name: 'ingest_document_to_vault',
+  description: 'Parse and index an uploaded PDF, document, routine guide, or lab report text directly into the user isolated Agent Memory Vault for future recall.',
+  parameters: ingestDocumentSchema,
+  execute: async (args: z.infer<typeof ingestDocumentSchema>, context: AgentContext) => {
+    const parsed = parseDocumentContent(args.filename, args.content);
+    const savedDoc = await saveAgentVaultDocument(context.userId, {
+      title: parsed.title,
+      content: parsed.content,
+      summary: parsed.summary,
+      fileType: args.fileType || 'text/plain'
+    });
+    return {
+      success: true,
+      message: `Document '${args.filename}' successfully parsed and indexed in user's isolated Agent Vault.`,
+      documentId: savedDoc.id,
+      summary: savedDoc.summary
+    };
+  }
+};
+
+// Search Agent Memory Vault
+export const searchAgentVaultSchema = z.object({
+  query: z.string()
+});
+
+export const searchAgentVaultTool: ToolDefinition = {
+  name: 'search_agent_vault',
+  description: 'Query the user isolated Agent Memory Vault for past observations, skin memory notes, or uploaded documents.',
+  parameters: searchAgentVaultSchema,
+  execute: async (args: z.infer<typeof searchAgentVaultSchema>, context: AgentContext) => {
+    const results = await searchAgentVault(context.userId, args.query);
+    return {
+      success: true,
+      query: args.query,
+      results
     };
   }
 };
@@ -277,6 +325,8 @@ export const saveMemoryNoteTool: ToolDefinition = {
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   universalSearchTool,
   saveMemoryNoteTool,
+  ingestDocumentTool,
+  searchAgentVaultTool,
   proposeUpdateSettingTool,
   proposeCreateEventTool,
   proposeLogIncidentTool,

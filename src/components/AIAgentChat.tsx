@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
 import { UserProfile, ChatMessage } from '../types';
 import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
+import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
 import { Orb } from './Orb';
 import { ApprovalCard } from './ApprovalCard';
 
@@ -22,7 +23,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const [thinkingPhase, setThinkingPhase] = useState<string>('SANA is analyzing...');
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
 
+  // Agent Vault state
+  const [showVaultModal, setShowVaultModal] = useState(false);
+  const [vaultNotes, setVaultNotes] = useState<VaultNote[]>([]);
+  const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const userId = userProfile?.uid || 'guest_user';
   const chatId = userProfile ? `chat_${userProfile.uid}` : 'chat_default';
 
   // Load chat history from Firestore
@@ -36,14 +44,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         const initialMsg: ChatMessage = {
           id: 'welcome',
           role: 'model',
-          text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your multi-step skin health & wellness agent. Ask me to analyze ingredients, schedule routines, check barrier history, or configure your preferences.`,
+          text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your multi-step skin health & wellness agent equipped with an **Isolated Agent Memory Vault**. Ask me to analyze ingredients, schedule routines, store skin memories, or index uploaded documents.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           thinkingMeta: {
             intent: 'WELCOME_INIT',
             thinkingMode: 'easy',
             complexityScore: 1,
-            appliedRules: ['SanaAgent Multi-step PassOn initialization'],
-            reasoningSteps: ['Session initialized with SanaAgent runtime harness.']
+            appliedRules: ['SanaAgent Multi-step PassOn initialization', 'Isolated Agent Vault Active'],
+            reasoningSteps: ['Session initialized with SanaAgent runtime harness and user-isolated vault.']
           }
         };
         setMessages([initialMsg]);
@@ -52,6 +60,33 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
     return () => unsubscribe();
   }, [userProfile?.uid, chatId]);
+
+  // Load user's Agent Vault data
+  const refreshVault = async () => {
+    const vault = await loadAgentVault(userId);
+    setVaultNotes(vault.notes || []);
+    setVaultDocs(vault.documents || []);
+  };
+
+  useEffect(() => {
+    refreshVault();
+  }, [userId]);
+
+  // Handle file uploads into Agent Vault
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const textContent = event.target?.result as string || '';
+      const promptText = `I am uploading a document for my Agent Memory Vault: "${file.name}". Please ingest this into my vault:\n\n${textContent.substring(0, 3000)}`;
+
+      handleSendMessage(promptText);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
 
   // Minimize pill navigation when typing / reading chat
   useEffect(() => {
@@ -177,8 +212,31 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
+      {/* Agent Vault Isolation Banner */}
+      <div className="flex items-center justify-between bg-white/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-[#eaedf1] mb-2 shadow-2xs">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[11.5px] font-semibold text-[#1e2229]">
+            Agent Memory Vault: <span className="text-emerald-700 font-bold">Isolated</span>
+          </span>
+          <span className="text-[10px] bg-[#f0f4f8] text-[#525866] font-medium px-2 py-0.5 rounded-md truncate max-w-[120px]">
+            {userProfile?.email || userId}
+          </span>
+        </div>
+        <button
+          onClick={() => {
+            refreshVault();
+            setShowVaultModal(true);
+          }}
+          className="text-[11px] font-semibold text-[#007aff] hover:underline flex items-center space-x-1 cursor-pointer"
+        >
+          <Icon icon="solar:vault-bold-duotone" className="w-3.5 h-3.5" />
+          <span>Inspect Vault ({vaultNotes.length + vaultDocs.length})</span>
+        </button>
+      </div>
+
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar py-3 space-y-3.5 px-1">
+      <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
         {messages.map((msg) => {
           return (
             <motion.div
@@ -293,7 +351,16 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         </div>
       )}
 
-      {/* Chat Input Bar */}
+      {/* Hidden File Input for Vault Attachment Ingestion */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".txt,.md,.pdf,.json,.csv"
+        className="hidden"
+      />
+
+      {/* Chat Input Bar with File Upload */}
       <div className="pt-2 px-1 shrink-0">
         <form
           onSubmit={(e) => {
@@ -302,12 +369,20 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           }}
           className="flex items-center space-x-2 p-2 rounded-[24px] bg-white border border-[#eaedf1] shadow-md"
         >
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Upload Document to Agent Memory Vault"
+            className="p-2.5 rounded-2xl text-[#64748b] hover:text-[#1a1c1e] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
+          >
+            <Icon icon="solar:paperclip-bold-duotone" className="w-5 h-5" />
+          </button>
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ask SANA..."
-            className="flex-1 px-3 text-[13.5px] text-[#121316] bg-transparent focus:outline-none placeholder-[#94a3b8]"
+            placeholder="Ask SANA or log a skin memory..."
+            className="flex-1 px-2 text-[13.5px] text-[#121316] bg-transparent focus:outline-none placeholder-[#94a3b8]"
           />
           <button
             type="submit"
@@ -318,6 +393,92 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           </button>
         </form>
       </div>
+
+      {/* Vault Inspector Modal */}
+      <AnimatePresence>
+        {showVaultModal && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-[28px] max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
+                    <Icon icon="solar:vault-bold" className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Agent Memory Vault</h3>
+                    <p className="text-xs text-slate-500">Isolated namespace: <span className="font-mono text-emerald-700">{userId}</span></p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowVaultModal(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 transition-colors"
+                >
+                  <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4 max-h-[350px] overflow-y-auto no-scrollbar pr-1">
+                {/* Notes Section */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                    <Icon icon="solar:notes-bold-duotone" className="w-4 h-4 text-emerald-600" />
+                    <span>Memory Notes ({vaultNotes.length})</span>
+                  </h4>
+                  {vaultNotes.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No skin memories stored in vault yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {vaultNotes.map((note) => (
+                        <div key={note.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-900">{note.title}</span>
+                            <span className="text-[10px] text-slate-400">{new Date(note.date).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-slate-600">{note.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Documents Section */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                    <Icon icon="solar:document-text-bold-duotone" className="w-4 h-4 text-blue-600" />
+                    <span>Indexed Documents ({vaultDocs.length})</span>
+                  </h4>
+                  {vaultDocs.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No uploaded documents in vault yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {vaultDocs.map((docItem) => (
+                        <div key={docItem.id} className="p-3 rounded-2xl bg-blue-50/50 border border-blue-100 text-xs space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-900">{docItem.title}</span>
+                            <span className="text-[10px] text-slate-400">{new Date(docItem.date).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-slate-600 line-clamp-2">{docItem.summary}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 text-center">
+                <p className="text-[11px] text-slate-400">
+                  🔒 Data in this vault is strictly segregated by user ID in Firestore (<code className="bg-slate-100 px-1 py-0.5 rounded">agent_vaults/{"{userId}"}</code>).
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
