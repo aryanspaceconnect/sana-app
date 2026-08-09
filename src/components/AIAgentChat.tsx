@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import { UserProfile, ChatMessage } from '../types';
 import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
 import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
+import { AgentMemoryService } from '../services/AgentMemoryService';
 import { Orb } from './Orb';
 import { ApprovalCard } from './ApprovalCard';
 
@@ -178,6 +179,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
       if (userProfile?.uid) {
         saveChatMessage(userProfile.uid, chatId, finalMessages);
+        AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
       }
     } catch (err) {
       console.error('SanaAgent Chat error:', err);
@@ -195,6 +197,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
       if (userProfile?.uid) {
         saveChatMessage(userProfile.uid, chatId, finalMessages);
+        AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
       }
     } finally {
       clearTimeout(timer1);
@@ -275,6 +278,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                           });
                           if (userProfile?.uid) {
                             saveChatMessage(userProfile.uid, chatId, nextMsgs);
+                            AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
                           }
                           return nextMsgs;
                         });

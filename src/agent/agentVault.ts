@@ -64,15 +64,15 @@ export function clearAgentVaultCache(userId: string) {
 
 /**
  * Loads the user's isolated Agent Vault from Firestore.
- * Scoped strictly to `agent_vaults/{userId}`
+ * Scoped strictly to `users/{userId}/vault/...`
  */
 export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
   const localVault = getOrCreateVaultCache(userId);
 
   try {
     if (db) {
-      // 1. Fetch notes subcollection
-      const notesRef = collection(db, 'agent_vaults', userId, 'notes');
+      // 1. Fetch notes subcollection under users/{userId}/vault/notes
+      const notesRef = collection(db, 'users', userId, 'vault', 'data', 'notes');
       const qNotes = query(notesRef, orderBy('date', 'desc'), limit(20));
       const notesSnap = await getDocs(qNotes);
 
@@ -80,8 +80,8 @@ export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
         localVault.notes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() } as VaultNote));
       }
 
-      // 2. Fetch documents subcollection
-      const docsRef = collection(db, 'agent_vaults', userId, 'documents');
+      // 2. Fetch documents subcollection under users/{userId}/vault/documents
+      const docsRef = collection(db, 'users', userId, 'vault', 'data', 'documents');
       const qDocs = query(docsRef, orderBy('date', 'desc'), limit(10));
       const docsSnap = await getDocs(qDocs);
 
@@ -90,7 +90,7 @@ export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
       }
 
       // 3. Fetch knowledge root document
-      const knowledgeDocRef = doc(db, 'agent_vaults', userId, 'metadata', 'knowledge');
+      const knowledgeDocRef = doc(db, 'users', userId, 'vault', 'metadata', 'knowledge', 'info');
       const knowledgeSnap = await getDoc(knowledgeDocRef);
       if (knowledgeSnap.exists()) {
         localVault.knowledge = knowledgeSnap.data();
@@ -106,7 +106,7 @@ export async function loadAgentVault(userId: string): Promise<AgentVaultData> {
 }
 
 /**
- * Saves a memory note directly into the isolated Agent Vault (`agent_vaults/{userId}/notes`).
+ * Saves a memory note directly into the isolated Agent Vault (`users/{userId}/vault/data/notes`).
  * Does NOT touch application core user profile or core settings.
  */
 export async function saveAgentVaultNote(
@@ -130,7 +130,7 @@ export async function saveAgentVaultNote(
 
   try {
     if (db) {
-      const noteRef = doc(db, 'agent_vaults', userId, 'notes', noteId);
+      const noteRef = doc(db, 'users', userId, 'vault', 'data', 'notes', noteId);
       await setDoc(noteRef, newNote);
     }
   } catch (err) {
@@ -141,11 +141,11 @@ export async function saveAgentVaultNote(
 }
 
 /**
- * Ingests and saves a parsed document into the isolated Agent Vault (`agent_vaults/{userId}/documents`).
+ * Ingests and saves a parsed document into the isolated Agent Vault (`users/{userId}/vault/data/documents`).
  */
 export async function saveAgentVaultDocument(
   userId: string,
-  docData: { title: string; content: string; fileType?: string; summary?: string; date?: string }
+  docData: { title: string; content: string; fileType?: string; summary?: string; date?: string; imageRef?: string }
 ): Promise<VaultDocument> {
   const vault = getOrCreateVaultCache(userId);
   const docId = `vdoc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -163,8 +163,12 @@ export async function saveAgentVaultDocument(
 
   try {
     if (db) {
-      const docRef = doc(db, 'agent_vaults', userId, 'documents', docId);
-      await setDoc(docRef, newDoc);
+      const docRef = doc(db, 'users', userId, 'vault', 'data', 'documents', docId);
+      await setDoc(docRef, {
+        ...newDoc,
+        // Rule: Vault never stores raw image bytes — only imageRef reference
+        imageRef: docData.imageRef || null
+      });
     }
   } catch (err) {
     console.warn(`[AgentVault] Firestore document save warning for user ${userId}:`, err);

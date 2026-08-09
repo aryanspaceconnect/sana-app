@@ -8,6 +8,16 @@
         "settings": "object",
         "createdAt": "timestamp"
       },
+      "subcollections": {
+        "agent_memory": {
+          "schema": {
+            "userId": "string",
+            "updatedAt": "timestamp",
+            "messages": "array",
+            "data": "map"
+          }
+        }
+      },
       "indexes": []
     },
     "facial_scans": {

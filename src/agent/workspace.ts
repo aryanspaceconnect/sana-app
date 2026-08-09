@@ -3,6 +3,7 @@ import { db } from '../lib/firebase.js';
 import { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { SANA_APP_MAP } from './soul.js';
 import { loadAgentVault, saveAgentVaultNote } from './agentVault.js';
+import { AgentMemoryService } from '../services/AgentMemoryService.js';
 
 // In-memory fallback workspace store per user
 const memoryStore: Record<string, {
@@ -79,11 +80,15 @@ function getOrCreateUserMemoryStore(userId: string) {
 export async function loadContextForAgent(userId: string, sessionId: string, needs?: MemoryNeeds): Promise<AgentContext> {
   const localStore = getOrCreateUserMemoryStore(userId);
   const vaultData = await loadAgentVault(userId);
+  const contextItems = await AgentMemoryService.getAllContextItems(userId);
 
   const context: AgentContext = {
     userId,
     sessionId,
-    agentVault: vaultData
+    agentVault: {
+      ...vaultData,
+      isolatedContextItems: contextItems
+    }
   };
 
   // If no memoryNeeds specified, default to lean profile + appMap
