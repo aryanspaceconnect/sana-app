@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
+import { TextLoader } from "generative-loaders";
+import "generative-loaders/styles.css";
 import { UserProfile, ChatMessage } from '../types';
 import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
 import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
@@ -236,21 +238,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                   <p className="whitespace-pre-wrap">{msg.text}</p>
                 ) : (
                   <div className="text-[13.5px] leading-relaxed">
-                    <Markdown
-                      components={{
-                        p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>,
-                        ul: ({ children }) => <ul className="list-disc pl-5 mb-2.5 space-y-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-5 mb-2.5 space-y-1">{children}</ol>,
-                        li: ({ children }) => <li className="leading-normal">{children}</li>,
-                        h1: ({ children }) => <h1 className="text-base font-bold mb-2 mt-3 text-[#111827]">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-sm font-bold mb-1.5 mt-2.5 text-[#111827]">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-xs font-bold mb-1 mt-2 text-[#111827]">{children}</h3>,
-                        strong: ({ children }) => <strong className="font-semibold text-[#111827]">{children}</strong>,
-                        em: ({ children }) => <em className="italic opacity-90">{children}</em>,
-                      }}
-                    >
-                      {msg.text}
-                    </Markdown>
+                    <TextLoader text={msg.text} variant="cascade" />
                   </div>
                 )}
 
