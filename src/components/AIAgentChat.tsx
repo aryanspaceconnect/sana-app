@@ -212,29 +212,6 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
-      {/* Agent Vault Isolation Banner */}
-      <div className="flex items-center justify-between bg-white/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-[#eaedf1] mb-2 shadow-2xs">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11.5px] font-semibold text-[#1e2229]">
-            Agent Memory Vault: <span className="text-emerald-700 font-bold">Isolated</span>
-          </span>
-          <span className="text-[10px] bg-[#f0f4f8] text-[#525866] font-medium px-2 py-0.5 rounded-md truncate max-w-[120px]">
-            {userProfile?.email || userId}
-          </span>
-        </div>
-        <button
-          onClick={() => {
-            refreshVault();
-            setShowVaultModal(true);
-          }}
-          className="text-[11px] font-semibold text-[#007aff] hover:underline flex items-center space-x-1 cursor-pointer"
-        >
-          <Icon icon="solar:vault-bold-duotone" className="w-3.5 h-3.5" />
-          <span>Inspect Vault ({vaultNotes.length + vaultDocs.length})</span>
-        </button>
-      </div>
-
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
         {messages.map((msg) => {
