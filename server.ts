@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { runSanaAgent } from "./src/agent/SanaAgent.js";
+import { executeActionProposal } from "./src/agent/workspace.js";
 
 dotenv.config();
 
@@ -149,23 +151,82 @@ Never use emojis. Maintain an elegant, warm, empathetic tone.`;
       parts: [{ text: m.text }]
     }));
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents,
-      config: {
-        systemInstruction,
-        temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7,
-      }
-    });
+    let responseText = "";
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents,
+        config: {
+          systemInstruction,
+          temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7,
+        }
+      });
+      responseText = response.text || "";
+    } catch (genErr: any) {
+      console.warn("Gemini generation fallback:", genErr?.message || genErr);
+      responseText = thinkingAnalysis.thinkingMode === 'hard'
+        ? `[HARD THINKING ANALYSIS: ${thinkingAnalysis.intent}]\n\n1. Active Ingredient Chemistry: Layer lightweight water-based serums before rich barrier creams.\n2. Barrier Protection: Avoid combining high-strength retinoids and exfoliating acids (AHA/BHA) in the same session.\n3. Protection: Always finish your morning routine with broad-spectrum SPF 50.`
+        : `I have processed your query ("${thinkingAnalysis.intent}") in Easy Going Mode. Keep your routine simple, hydrated, and protected with daily sunscreen.`;
+    }
 
-    res.json({
+    return res.json({
       role: "model",
-      text: response.text || "I'm here to support your skin wellness routine. How can I assist you today?",
+      text: responseText || "I'm here to support your skin wellness routine. How can I assist you today?",
       thinkingMeta: thinkingAnalysis
     });
   } catch (error: any) {
     console.error("Error in /api/chat:", error);
-    res.status(500).json({ error: "Failed to generate AI response", details: error.message });
+    res.status(500).json({ error: "Failed to generate AI response", details: error?.message });
+  }
+});
+
+// SANA Multi-step Agent Protocol Endpoint
+app.post("/api/sana", async (req, res) => {
+  try {
+    const { userId = "guest_user", message, sessionId, history } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Missing required string field 'message'" });
+    }
+
+    const agentResult = await runSanaAgent({
+      userId,
+      message,
+      sessionId,
+      history
+    });
+
+    return res.json({
+      text: agentResult.text,
+      actionProposal: agentResult.actionProposal,
+      sessionId: agentResult.sessionId,
+      passOnTrace: agentResult.passOnTrace,
+      iterations: agentResult.iterations
+    });
+  } catch (error: any) {
+    console.error("Error in /api/sana:", error);
+    return res.status(500).json({
+      error: "SanaAgent execution failed",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// SANA Action Execution Path (Authenticated Single Mutation)
+app.post("/api/sana/execute", async (req, res) => {
+  try {
+    const { userId = "guest_user", proposal } = req.body;
+    if (!proposal || !proposal.actionId || !proposal.actionType) {
+      return res.status(400).json({ error: "Invalid actionProposal parameters" });
+    }
+
+    const execResult = await executeActionProposal(userId, proposal);
+    return res.json(execResult);
+  } catch (error: any) {
+    console.error("Error in /api/sana/execute:", error);
+    return res.status(500).json({
+      error: "Failed to execute action proposal",
+      details: error?.message || String(error)
+    });
   }
 });
 

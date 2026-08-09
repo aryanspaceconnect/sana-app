@@ -106,26 +106,30 @@ export const logoutUser = async () => {
 // User Profile Sync
 export const syncUserProfile = async (user: User, customSettings?: Record<string, any>) => {
   if (!user) return;
-  const userRef = doc(db, "users", user.uid);
-  const snap = await getDoc(userRef);
+  try {
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
 
-  if (!snap.exists()) {
-    await setDoc(userRef, {
-      displayName: user.displayName || "SANA User",
-      email: user.email || "guest@sana.app",
-      photoURL: user.photoURL || "",
-      settings: {
-        temperatureUnit: "C",
-        scanNotificationTime: "06:00",
-        theme: "light",
-        ...customSettings
-      },
-      createdAt: serverTimestamp()
-    });
-  } else if (customSettings) {
-    await updateDoc(userRef, {
-      "settings": customSettings
-    });
+    if (!snap.exists()) {
+      await setDoc(userRef, {
+        displayName: user.displayName || "SANA User",
+        email: user.email || "guest@sana.app",
+        photoURL: user.photoURL || "",
+        settings: {
+          temperatureUnit: "C",
+          scanNotificationTime: "06:00",
+          theme: "light",
+          ...customSettings
+        },
+        createdAt: serverTimestamp()
+      });
+    } else if (customSettings) {
+      await updateDoc(userRef, {
+        "settings": customSettings
+      });
+    }
+  } catch (err) {
+    console.warn("syncUserProfile Firestore warning:", err);
   }
 };
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { Icon } from '@iconify/react';
-import { UserProfile, ChatMessage, ThinkingMeta } from '../types';
+import Markdown from 'react-markdown';
+import { UserProfile, ChatMessage } from '../types';
 import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
 import { Orb } from './Orb';
+import { ApprovalCard } from './ApprovalCard';
 
 interface AIAgentChatProps {
   userProfile: UserProfile | null;
@@ -17,8 +19,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [thinkingPhase, setThinkingPhase] = useState<string>('Analyzing intent...');
-  const [expandedThoughtId, setExpandedThoughtId] = useState<string | null>(null);
+  const [thinkingPhase, setThinkingPhase] = useState<string>('SANA is analyzing...');
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatId = userProfile ? `chat_${userProfile.uid}` : 'chat_default';
@@ -34,14 +36,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         const initialMsg: ChatMessage = {
           id: 'welcome',
           role: 'model',
-          text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your skin health and personal wellness thinking agent. Ask me about your routine, active ingredients, or skin barrier!`,
+          text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your multi-step skin health & wellness agent. Ask me to analyze ingredients, schedule routines, check barrier history, or configure your preferences.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           thinkingMeta: {
             intent: 'WELCOME_INIT',
             thinkingMode: 'easy',
             complexityScore: 1,
-            appliedRules: ['Fast-path greetings & initialization rule'],
-            reasoningSteps: ['Phase 1: Session initialized with default welcome strategy.']
+            appliedRules: ['SanaAgent Multi-step PassOn initialization'],
+            reasoningSteps: ['Session initialized with SanaAgent runtime harness.']
           }
         };
         setMessages([initialMsg]);
@@ -79,37 +81,61 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     setInputText('');
     setLoading(true);
 
-    // Animated thinking phases with Orb
-    setThinkingPhase('Analyzing intent & reference query...');
+    // Animated thinking phases for multi-step loop
+    setThinkingPhase('Planner Step: Generating PassOn Protocol...');
     const timer1 = setTimeout(() => {
-      setThinkingPhase('Evaluating swift rules & complexity...');
-    }, 700);
+      setThinkingPhase('Context Step: Loading requested workspace memory layers...');
+    }, 800);
     const timer2 = setTimeout(() => {
-      setThinkingPhase('Determining hard vs easy thinking strategy...');
-    }, 1400);
+      setThinkingPhase('Execution Step: Running tool calls & evaluating guardrails...');
+    }, 1600);
 
     if (userProfile?.uid) {
       saveChatMessage(userProfile.uid, chatId, updatedMessages);
     }
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/sana', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: updatedMessages.map(m => ({ role: m.role, text: m.text })),
-          userProfile
+          userId: userProfile?.uid || 'guest_user',
+          message: text.trim(),
+          sessionId,
+          history: updatedMessages.map(m => ({ role: m.role, text: m.text }))
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
       const data = await response.json();
-      
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+      }
+
+      const lastPassOn = data.passOnTrace && data.passOnTrace.length > 0
+        ? data.passOnTrace[data.passOnTrace.length - 1]
+        : null;
+
       const modelMsg: ChatMessage = {
         id: `mod_${Date.now()}`,
         role: 'model',
-        text: data.text || "I'm analyzing your request to refine your skin routine.",
+        text: data.text || "I am processing your skincare query with SanaAgent.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        thinkingMeta: data.thinkingMeta
+        actionProposal: data.actionProposal,
+        passOnTrace: data.passOnTrace,
+        sessionId: data.sessionId,
+        thinkingMeta: {
+          intent: lastPassOn?.intent || 'AGENT_LOOP',
+          thinkingMode: (data.iterations && data.iterations > 1) ? 'hard' : 'easy',
+          complexityScore: data.iterations ? Math.min(10, data.iterations * 3) : 3,
+          appliedRules: ['SanaAgent PassOn Protocol', 'Grok Build Runtime Harness'],
+          reasoningSteps: data.passOnTrace
+            ? data.passOnTrace.map((p: any, idx: number) => `Iteration ${idx + 1} [${p.intent}]: ${p.thought}`)
+            : ['Executed SanaAgent PassOn loop']
+        }
       };
 
       const finalMessages = [...updatedMessages, modelMsg];
@@ -119,14 +145,22 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         saveChatMessage(userProfile.uid, chatId, finalMessages);
       }
     } catch (err) {
-      console.error('Chat error:', err);
+      console.error('SanaAgent Chat error:', err);
+
+      const fallbackText = "I encountered a transient network connection error. For your skin safety, always maintain hydrated skin barrier repair and apply SPF 50 daily.";
       const errorMsg: ChatMessage = {
-        id: `err_${Date.now()}`,
+        id: `fallback_${Date.now()}`,
         role: 'model',
-        text: "I experienced a brief connection pause. Please try asking again.",
+        text: fallbackText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setMessages(prev => [...prev, errorMsg]);
+
+      const finalMessages = [...updatedMessages, errorMsg];
+      setMessages(finalMessages);
+
+      if (userProfile?.uid) {
+        saveChatMessage(userProfile.uid, chatId, finalMessages);
+      }
     } finally {
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -143,36 +177,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
-      {/* Agent Header Banner with Dynamic Thinking Strategy Indicator */}
-      <div className="flex items-center justify-between px-2 py-2 border-b border-[#eaedf1] shrink-0 bg-white/60 backdrop-blur-md rounded-2xl mb-1">
-        <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-2xl bg-[#1a1c1e] text-white flex items-center justify-center shadow-xs">
-            <Icon icon="solar:atom-bold-duotone" className="w-5 h-5 text-[#38bdf8]" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-1.5">
-              <h2 className="text-[14.5px] font-semibold text-[#121316] tracking-tight">SANA Thinking Agent</h2>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]">
-                Autonomous Mode
-              </span>
-            </div>
-            <p className="text-[10.5px] text-[#6b7280]">Intent Analysis & Dynamic Thinking Classifier Active</p>
-          </div>
-        </div>
-
-        {/* Live Orb Indicator */}
-        <div className="shrink-0">
-          <Orb variant="B4" size={18} pill label={loading ? "Thinking..." : "Ready"} />
-        </div>
-      </div>
-
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-3 space-y-3.5 px-1">
         {messages.map((msg) => {
-          const isModel = msg.role === 'model';
-          const meta = msg.thinkingMeta;
-          const isExpanded = expandedThoughtId === msg.id;
-
           return (
             <motion.div
               key={msg.id}
@@ -180,68 +187,6 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
             >
-              {/* Optional Thinking Process Toggle Bar for Model Messages */}
-              {isModel && meta && (
-                <div className="mb-1.5 ml-1">
-                  <button
-                    onClick={() => setExpandedThoughtId(isExpanded ? null : msg.id)}
-                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-100/80 hover:bg-slate-200/80 text-[11px] font-medium text-slate-700 transition-all cursor-pointer border border-slate-200/60"
-                  >
-                    <Orb variant="B4" size={14} />
-                    <span>
-                      Agent Strategy: <strong className={meta.thinkingMode === 'hard' ? 'text-amber-700 font-bold' : 'text-emerald-700 font-bold'}>{meta.thinkingMode === 'hard' ? 'Hard Thinking (Deep)' : 'Easy Going (Fast)'}</strong>
-                    </span>
-                    <span className="text-[10px] text-slate-400">({meta.complexityScore}/10)</span>
-                    <Icon icon={isExpanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"} className="w-3 h-3 text-slate-500 ml-1" />
-                  </button>
-
-                  {/* Expanded Thought Breakdown Box */}
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-2 p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm max-w-[90%] space-y-2 text-xs text-slate-700 overflow-hidden"
-                      >
-                        <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                          <span className="font-bold text-slate-900 flex items-center space-x-1">
-                            <Icon icon="solar:cpu-bold" className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Intent & Thinking Breakdown</span>
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            meta.thinkingMode === 'hard' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            {meta.intent}
-                          </span>
-                        </div>
-
-                        <div>
-                          <p className="font-semibold text-slate-800 mb-0.5 text-[11px]">Applied Agent Rules:</p>
-                          <ul className="list-disc list-inside text-[11px] space-y-0.5 text-slate-600">
-                            {meta.appliedRules.map((r, i) => (
-                              <li key={i}>{r}</li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div>
-                          <p className="font-semibold text-slate-800 mb-0.5 text-[11px]">Reasoning Execution Logs:</p>
-                          <div className="space-y-1 bg-slate-50 p-2 rounded-xl text-[10.5px] font-mono text-slate-600 border border-slate-100">
-                            {meta.reasoningSteps.map((step, i) => (
-                              <div key={i} className="flex items-start space-x-1.5">
-                                <span className="text-indigo-500 font-bold">›</span>
-                                <span>{step}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
               <div
                 className={`max-w-[88%] p-4 rounded-[22px] text-[13.5px] leading-relaxed shadow-xs ${
                   msg.role === 'user'
@@ -249,7 +194,60 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                     : 'bg-white border border-[#eaedf1] text-[#1e2229] rounded-bl-xs'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
+                {msg.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                ) : (
+                  <div className="text-[13.5px] leading-relaxed">
+                    <Markdown
+                      components={{
+                        p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>,
+                        ul: ({ children }) => <ul className="list-disc pl-5 mb-2.5 space-y-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-5 mb-2.5 space-y-1">{children}</ol>,
+                        li: ({ children }) => <li className="leading-normal">{children}</li>,
+                        h1: ({ children }) => <h1 className="text-base font-bold mb-2 mt-3 text-[#111827]">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-sm font-bold mb-1.5 mt-2.5 text-[#111827]">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-xs font-bold mb-1 mt-2 text-[#111827]">{children}</h3>,
+                        strong: ({ children }) => <strong className="font-semibold text-[#111827]">{children}</strong>,
+                        em: ({ children }) => <em className="italic opacity-90">{children}</em>,
+                      }}
+                    >
+                      {msg.text}
+                    </Markdown>
+                  </div>
+                )}
+
+                {/* Render Approval Card if message carries an Action Proposal */}
+                {msg.actionProposal && (
+                  <div className="mt-3">
+                    <ApprovalCard
+                      proposal={msg.actionProposal}
+                      userId={userProfile?.uid || 'guest_user'}
+                      onExecuted={(res) => {
+                        setMessages((prevMsgs) => {
+                          const nextMsgs = prevMsgs.map((m) => {
+                            if (m.id === msg.id && m.actionProposal) {
+                              return {
+                                ...m,
+                                actionProposal: {
+                                  ...m.actionProposal,
+                                  status: res.success ? 'approved' : 'denied',
+                                  executed: res.success,
+                                  executedMessage: res.message
+                                }
+                              };
+                            }
+                            return m;
+                          });
+                          if (userProfile?.uid) {
+                            saveChatMessage(userProfile.uid, chatId, nextMsgs);
+                          }
+                          return nextMsgs;
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+
                 <span
                   className={`text-[10px] mt-1.5 block text-right font-medium ${
                     msg.role === 'user' ? 'text-white/60' : 'text-[#8e95a2]'
@@ -308,7 +306,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ask SANA (auto-selects hard/easy thinking mode)..."
+            placeholder="Ask SANA..."
             className="flex-1 px-3 text-[13.5px] text-[#121316] bg-transparent focus:outline-none placeholder-[#94a3b8]"
           />
           <button

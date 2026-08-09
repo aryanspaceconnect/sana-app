@@ -40,6 +40,9 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   thinkingMeta?: ThinkingMeta;
+  actionProposal?: any;
+  passOnTrace?: any[];
+  sessionId?: string;
 }
 
 export interface CalendarEventItem {
