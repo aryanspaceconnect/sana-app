@@ -90,7 +90,8 @@ ${constraintsList}
    - You MUST set \`status: "need_info"\`.
    - You MUST include \`vault_search\` in \`nextTools\` with \`scope: "all"\` and \`query: "all"\`, OR set \`memoryNeeds: { vault: true, profile: true }\`.
    - In \`finalResponse\`, you MAY set a brief interim note (e.g., "I am retrieving all stored information from your personal vault. Please allow a moment for me to compile this.").
-3. In the subsequent iteration after tools return the vault data, you MUST compile and synthesize ALL returned records into a clean, well-organized response with headers (e.g. ### 👤 Identity & Profile, ### 📝 Skin Memories & Incidents, ### 📅 Scheduled Events & Goals, ### 📄 Uploaded Vault Documents) and set \`status: "ready"\`. Never stop on the interim message without compiling the actual retrieved content!
+3. In the subsequent iteration after tools return the vault data, you MUST compile and synthesize ALL returned records into a clean, well-organized response with headers (e.g. ### Identity & Profile, ### Skin Memories & Incidents, ### Scheduled Events & Goals, ### Uploaded Vault Documents) and set \`status: "ready"\`. Never stop on the interim message without compiling the actual retrieved content!
+4. STRICT NO-EMOJI RULE: Do NOT include any emojis or visual icons in your text responses or markdown headers under any circumstances.
 
 ### AVAILABLE TOOLS:
 ${toolsDescription}
@@ -340,12 +341,15 @@ MANDATORY INSTRUCTION: Evaluate tool execution output above and synthesize a com
       const profileInfo = vault.composition ? `- **Skin Type**: ${vault.composition.skinTypeTendency || 'Sensitive'}\n- **Known Triggers**: ${vault.composition.knownTriggers?.join(', ') || 'None'}` : '';
 
       finalOutputText = `Here is everything currently recorded in your personal Sana Agent Vault:\n\n` +
-        (notesList ? `### 📝 Logged Skin Memories & Notes\n${notesList}\n\n` : '') +
-        (incList ? `### 🩺 Tracked Reaction & Flare Incidents\n${incList}\n\n` : '') +
-        (docsList ? `### 📄 Uploaded Vault Documents\n${docsList}\n\n` : '') +
-        (profileInfo ? `### 👤 Skin Profile & Composition\n${profileInfo}\n\n` : '') +
+        (notesList ? `### Logged Skin Memories & Notes\n${notesList}\n\n` : '') +
+        (incList ? `### Tracked Reaction & Flare Incidents\n${incList}\n\n` : '') +
+        (docsList ? `### Uploaded Vault Documents\n${docsList}\n\n` : '') +
+        (profileInfo ? `### Skin Profile & Composition\n${profileInfo}\n\n` : '') +
         (!notesList && !incList && !docsList && !profileInfo ? `*Your personal vault is active and ready. No previous incident records were found.*` : `\nIs there a specific skin memory or record you would like to edit or explore further?`);
     }
+
+    // Strip any remaining emojis to strictly uphold the no-emoji mandate
+    finalOutputText = finalOutputText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]/gu, '');
 
     for (const guardrail of this.config.outputGuardrails) {
       const check = guardrail(finalOutputText);
