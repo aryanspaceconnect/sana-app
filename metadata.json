@@ -1,0 +1,6 @@
+{
+  "name": "SANA",
+  "description": "Native-styled mobile AI wellness companion with facial skin scanning, intelligent agent, and background persistence.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

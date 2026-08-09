@@ -1,0 +1,67 @@
+{
+  "collections": {
+    "users": {
+      "schema": {
+        "displayName": "string",
+        "email": "string",
+        "photoURL": "string",
+        "settings": "object",
+        "createdAt": "timestamp"
+      },
+      "indexes": []
+    },
+    "facial_scans": {
+      "schema": {
+        "userId": "string",
+        "imageUrl": "string",
+        "hydrationScore": "number",
+        "barrierScore": "number",
+        "clarityScore": "number",
+        "summary": "string",
+        "recommendations": "array",
+        "timestamp": "timestamp"
+      },
+      "indexes": [
+        {
+          "fields": [
+            {"field": "userId", "order": "ASCENDING"},
+            {"field": "timestamp", "order": "DESCENDING"}
+          ]
+        }
+      ]
+    },
+    "chats": {
+      "schema": {
+        "userId": "string",
+        "title": "string",
+        "messages": "array",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        {
+          "fields": [
+            {"field": "userId", "order": "ASCENDING"},
+            {"field": "updatedAt", "order": "DESCENDING"}
+          ]
+        }
+      ]
+    },
+    "calendar_events": {
+      "schema": {
+        "userId": "string",
+        "title": "string",
+        "date": "string",
+        "category": "string",
+        "completed": "boolean"
+      },
+      "indexes": [
+        {
+          "fields": [
+            {"field": "userId", "order": "ASCENDING"},
+            {"field": "date", "order": "ASCENDING"}
+          ]
+        }
+      ]
+    }
+  }
+}
