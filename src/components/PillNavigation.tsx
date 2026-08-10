@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { NavigationTab } from '../types';
+import { SanaLogoIcon } from './SanaLogoIcon';
 
 interface PillNavigationProps {
   activeTab: NavigationTab;
@@ -99,11 +100,8 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
               }`}
             >
               {/* Custom SVG Agent Emblem */}
-              <div className="relative w-5 h-5 flex items-center justify-center">
-                <Icon 
-                  icon={activeTab === 'agent' ? "solar:atom-bold-duotone" : "solar:atom-linear"} 
-                  className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'agent' ? 'text-white' : 'text-[#616874]'}`} 
-                />
+              <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
+                <SanaLogoIcon size={18} color={activeTab === 'agent' ? '#ffffff' : '#616874'} />
               </div>
               {activeTab === 'agent' && (
                 <motion.span

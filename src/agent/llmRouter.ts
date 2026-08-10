@@ -23,13 +23,15 @@ export interface LLMRouterResult {
 }
 
 /**
- * Descending cascade of Gemini models by availability, intelligence, and tier:
- * 1. gemini-2.5-flash (Primary)
- * 2. gemini-2.0-flash (Fast, reliable high-throughput fallback)
- * 3. gemini-2.0-flash-lite (Ultra-fast, high quota availability fallback)
- * 4. gemini-2.5-pro (Pro tier fallback)
+ * Descending cascade of Gemini models by intelligence, capability, and throughput:
+ * 1. gemini-3.6-flash (Default primary: state-of-the-art Flash intelligence)
+ * 2. gemini-2.5-flash (High intelligence fallback)
+ * 3. gemini-2.0-flash (Fast, reliable high-throughput fallback)
+ * 4. gemini-2.0-flash-lite (Ultra-fast, high quota availability fallback)
+ * 5. gemini-2.5-pro (Pro tier fallback)
  */
 export const GEMINI_MODEL_CASCADE = [
+  'gemini-3.6-flash',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
@@ -84,7 +86,7 @@ export async function generateContentWithRouter(
   for (const model of GEMINI_MODEL_CASCADE) {
     attemptsCount++;
     let modelRetries = 0;
-    const maxModelRetries = 1; // Retry once on transient 503/500 errors per model
+    const maxModelRetries = 2; // Retry up to 2 times on transient 503/429/500 errors per model
 
     while (modelRetries <= maxModelRetries) {
       try {
@@ -162,10 +164,12 @@ export async function generateContentWithRouter(
         console.warn(`[LLMRouter] Model '${model}' failed (attempt #${attemptsCount}, retry #${modelRetries}):`, errMsg);
         lastError = err;
 
-        const isTransient = errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('500');
+        const isTransient = /503|UNAVAILABLE|500|429|RESOURCE_EXHAUSTED|RATE_LIMIT|high demand/i.test(errMsg);
         if (isTransient && modelRetries < maxModelRetries) {
           modelRetries++;
-          await new Promise((r) => setTimeout(r, 600));
+          const delayMs = 600 * Math.pow(2, modelRetries) + Math.floor(Math.random() * 200);
+          console.log(`[LLMRouter] Backing off for ${delayMs}ms before retrying '${model}' (retry #${modelRetries})`);
+          await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
         break; // Move to next model in cascade
