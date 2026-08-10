@@ -23,19 +23,17 @@ export interface LLMRouterResult {
 }
 
 /**
- * Descending cascade of Gemini models by intelligence, capability, and availability:
- * 1. gemini-3.6-flash (Primary: top Flash intelligence & reasoning)
- * 2. gemini-3.1-pro-preview (Pro tier fallback)
- * 3. gemini-3.1-flash-lite (Lite tier fallback: ultra-fast, high quota availability)
- * 4. gemini-flash-latest (General alias fallback)
- * 5. gemini-2.5-flash (Legacy compatibility fallback)
+ * Descending cascade of Gemini models by availability, intelligence, and tier:
+ * 1. gemini-2.5-flash (Primary)
+ * 2. gemini-2.0-flash (Fast, reliable high-throughput fallback)
+ * 3. gemini-2.0-flash-lite (Ultra-fast, high quota availability fallback)
+ * 4. gemini-2.5-pro (Pro tier fallback)
  */
 export const GEMINI_MODEL_CASCADE = [
-  'gemini-3.6-flash',
-  'gemini-3.1-pro-preview',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-2.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-pro'
 ];
 
 let globalAIClient: GoogleGenAI | null = null;
@@ -85,81 +83,93 @@ export async function generateContentWithRouter(
 
   for (const model of GEMINI_MODEL_CASCADE) {
     attemptsCount++;
-    try {
-      const result = await Promise.race([
-        (async () => {
-          const config: any = {};
-          if (options.systemInstruction) {
-            config.systemInstruction = options.systemInstruction;
-          }
-          if (options.responseMimeType) {
-            config.responseMimeType = options.responseMimeType;
-          }
-          if (options.temperature !== undefined) {
-            config.temperature = options.temperature;
-          }
-          if (options.tools && options.tools.length > 0) {
-            config.tools = options.tools;
-          }
+    let modelRetries = 0;
+    const maxModelRetries = 1; // Retry once on transient 503/500 errors per model
 
-          const response = await ai.models.generateContent({
-            model,
-            contents: options.contents,
-            config: Object.keys(config).length > 0 ? config : undefined
-          });
-
-          const functionCalls: LLMFunctionCall[] = [];
-          
-          if (response.functionCalls && response.functionCalls.length > 0) {
-            for (const fc of response.functionCalls) {
-              functionCalls.push({
-                name: fc.name,
-                args: (fc.args as Record<string, any>) || {}
-              });
+    while (modelRetries <= maxModelRetries) {
+      try {
+        const result = await Promise.race([
+          (async () => {
+            const config: any = {};
+            if (options.systemInstruction) {
+              config.systemInstruction = options.systemInstruction;
             }
-          } else if (response.candidates?.[0]?.content?.parts) {
-            for (const part of response.candidates[0].content.parts) {
-              if (part.functionCall) {
+            if (options.responseMimeType) {
+              config.responseMimeType = options.responseMimeType;
+            }
+            if (options.temperature !== undefined) {
+              config.temperature = options.temperature;
+            }
+            if (options.tools && options.tools.length > 0) {
+              config.tools = options.tools;
+            }
+
+            const response = await ai.models.generateContent({
+              model,
+              contents: options.contents,
+              config: Object.keys(config).length > 0 ? config : undefined
+            });
+
+            const functionCalls: LLMFunctionCall[] = [];
+            
+            if (response.functionCalls && response.functionCalls.length > 0) {
+              for (const fc of response.functionCalls) {
                 functionCalls.push({
-                  name: part.functionCall.name,
-                  args: (part.functionCall.args as Record<string, any>) || {}
+                  name: fc.name,
+                  args: (fc.args as Record<string, any>) || {}
                 });
               }
+            } else if (response.candidates?.[0]?.content?.parts) {
+              for (const part of response.candidates[0].content.parts) {
+                if (part.functionCall) {
+                  functionCalls.push({
+                    name: part.functionCall.name,
+                    args: (part.functionCall.args as Record<string, any>) || {}
+                  });
+                }
+              }
             }
-          }
 
-          const text = response.text || '';
+            const text = response.text || '';
 
-          return {
-            text,
-            functionCalls,
-            rawResponse: response
-          };
-        })(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Timeout after ${timeoutMs}ms on model '${model}'`)),
-            timeoutMs
+            return {
+              text,
+              functionCalls,
+              rawResponse: response
+            };
+          })(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timeout after ${timeoutMs}ms on model '${model}'`)),
+              timeoutMs
+            )
           )
-        )
-      ]);
+        ]);
 
-      if (result.text || (result.functionCalls && result.functionCalls.length > 0)) {
-        console.log(`[LLMRouter] Successfully generated content using model '${model}' (attempt #${attemptsCount}, functionCalls: ${result.functionCalls.length})`);
-        return {
-          text: result.text,
-          functionCalls: result.functionCalls,
-          modelUsed: model,
-          attemptsCount,
-          rawResponse: result.rawResponse
-        };
+        if (result.text || (result.functionCalls && result.functionCalls.length > 0)) {
+          console.log(`[LLMRouter] Successfully generated content using model '${model}' (attempt #${attemptsCount}, functionCalls: ${result.functionCalls.length})`);
+          return {
+            text: result.text,
+            functionCalls: result.functionCalls,
+            modelUsed: model,
+            attemptsCount,
+            rawResponse: result.rawResponse
+          };
+        }
+        break; // If executed without throwing but gave no content, break out to next model
+      } catch (err: any) {
+        const errMsg = err?.message || String(err);
+        console.warn(`[LLMRouter] Model '${model}' failed (attempt #${attemptsCount}, retry #${modelRetries}):`, errMsg);
+        lastError = err;
+
+        const isTransient = errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('500');
+        if (isTransient && modelRetries < maxModelRetries) {
+          modelRetries++;
+          await new Promise((r) => setTimeout(r, 600));
+          continue;
+        }
+        break; // Move to next model in cascade
       }
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
-      console.warn(`[LLMRouter] Model '${model}' failed (attempt #${attemptsCount}):`, errMsg);
-      lastError = err;
-      // Brief backoff before attempting next model in cascade
-      await new Promise((r) => setTimeout(r, 150));
     }
   }
 

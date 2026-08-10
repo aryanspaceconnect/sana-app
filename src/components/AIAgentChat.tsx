@@ -11,10 +11,12 @@ import { AgentMemoryService } from '../services/AgentMemoryService';
 import { Orb } from './Orb';
 import { ApprovalCard } from './ApprovalCard';
 import { ThinkingReasoning } from './ThinkingReasoning';
+import { WebSearch } from './WebSearch';
 
 interface AIAgentChatProps {
   userProfile: UserProfile | null;
   onMinimizeNavToggle: (minimize: boolean) => void;
+  onTriggerPopup?: (popup: any) => void;
 }
 
 interface ChatMessageBubbleProps {
@@ -26,68 +28,154 @@ interface ChatMessageBubbleProps {
 
 const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
   ({ msg, userProfile, chatId, setMessages }) => {
+    const isUser = msg.role === 'user';
+
+    // Extract search query if present in msg.searchQuery or embedded text
+    let searchQuery = msg.searchQuery;
+    let searchSites = msg.searchSites;
+
+    if (!searchQuery && !isUser && msg.text) {
+      const match = msg.text.match(/\[SEARCH:\s*["']?([^"']+)["']?\]/i) || msg.text.match(/Searching\s+["']([^"']+)["']/i);
+      if (match) {
+        searchQuery = match[1];
+      }
+    }
+
+    // Clean text by removing raw [SEARCH: "..."] tags if any
+    const displayText = (msg.text || '').replace(/\[SEARCH:\s*["']?([^"']+)["']?\]/gi, '').trim();
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+        className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} my-1 w-full`}
       >
-        <div
-          className={`max-w-[88%] p-4 rounded-[22px] text-[13.5px] leading-relaxed shadow-xs ${
-            msg.role === 'user'
-              ? 'bg-[#1a1c1e] text-white rounded-br-xs'
-              : 'bg-white border border-[#eaedf1] text-[#1e2229] rounded-bl-xs'
-          }`}
-        >
-          {msg.role === 'user' ? (
+        {isUser ? (
+          <div className="max-w-[85%] px-4 py-3 rounded-[20px] rounded-br-xs bg-[#1a1c1e] text-white text-[13.5px] leading-relaxed shadow-xs">
             <p className="whitespace-pre-wrap">{msg.text}</p>
-          ) : (
-            <div className="text-[13.5px] leading-relaxed">
-              <TextLoader text={msg.text || ''} variant="cascade" />
-            </div>
-          )}
+            <span className="text-[10px] mt-1 block text-right font-medium text-white/60">
+              {msg.timestamp}
+            </span>
+          </div>
+        ) : (
+          <div className="w-full max-w-[96%] py-1 px-1 text-[#1e2229]">
+            {/* Thinking / Reasoning Stream Dropdown */}
+            {msg.thinkingMeta && (
+              <div className="mb-2">
+                <ThinkingReasoning customSentences={msg.thinkingMeta.reasoningSteps} />
+              </div>
+            )}
 
-          {/* Render Approval Card if message carries an Action Proposal */}
-          {msg.actionProposal && (
-            <div className="mt-3">
-              <ApprovalCard
-                proposal={msg.actionProposal}
-                userId={userProfile?.uid || 'guest_user'}
-                onExecuted={(res) => {
-                  setMessages((prevMsgs) => {
-                    const nextMsgs = prevMsgs.map((m) => {
-                      if (m.id === msg.id && m.actionProposal) {
-                        return {
-                          ...m,
-                          actionProposal: {
-                            ...m.actionProposal,
-                            status: res.success ? 'approved' : 'denied',
-                            executed: res.success,
-                            executedMessage: res.message
-                          }
-                        };
-                      }
-                      return m;
-                    });
-                    if (userProfile?.uid) {
-                      saveChatMessage(userProfile.uid, chatId, nextMsgs);
-                      AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
-                    }
-                    return nextMsgs;
-                  });
+            {/* Web Search Reasoning Stream UI */}
+            {searchQuery && (
+              <div className="my-2">
+                <WebSearch query={searchQuery} sites={searchSites} />
+              </div>
+            )}
+
+            {/* Proper Markdown Rendering Engine for LLM Assistant Response */}
+            <div className="text-[14px] leading-relaxed text-[#1e2229] space-y-2">
+              <Markdown
+                components={{
+                  h1: ({ children }) => (
+                    <h1 className="text-[16px] font-bold text-[#121316] mt-3 mb-1.5 tracking-tight border-b border-slate-200/60 pb-1">
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-[15px] font-bold text-[#121316] mt-2.5 mb-1 tracking-tight">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-[14px] font-bold text-[#121316] mt-2 mb-1 tracking-tight">
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4 className="text-[13.5px] font-bold text-[#121316] mt-1.5 mb-1">
+                      {children}
+                    </h4>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mb-2.5 last:mb-0 leading-relaxed text-[#1e2229] text-[14px]">
+                      {children}
+                    </p>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="list-disc list-outside ml-4 space-y-1.5 my-2 text-[14px] text-[#1e2229]">
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal list-outside ml-4 space-y-1.5 my-2 text-[14px] text-[#1e2229]">
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children }) => (
+                    <li className="leading-relaxed pl-1">{children}</li>
+                  ),
+                  strong: ({ children }) => (
+                    <strong className="font-bold text-[#121316]">{children}</strong>
+                  ),
+                  em: ({ children }) => (
+                    <em className="italic text-[#2c3038]">{children}</em>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="border-l-2 border-emerald-500/80 pl-3 my-2 italic text-slate-600 bg-slate-50/50 py-1 rounded-r-md">
+                      {children}
+                    </blockquote>
+                  ),
+                  code: ({ children }) => (
+                    <code className="bg-slate-100 text-[#121316] text-[12.5px] px-1.5 py-0.5 rounded-md font-mono border border-slate-200/80">
+                      {children}
+                    </code>
+                  ),
+                  hr: () => <hr className="border-t border-slate-200/80 my-3" />
                 }}
-              />
+              >
+                {displayText}
+              </Markdown>
             </div>
-          )}
 
-          <span
-            className={`text-[10px] mt-1.5 block text-right font-medium ${
-              msg.role === 'user' ? 'text-white/60' : 'text-[#8e95a2]'
-            }`}
-          >
-            {msg.timestamp}
-          </span>
-        </div>
+            {/* Render Approval Card if message carries an Action Proposal */}
+            {msg.actionProposal && (
+              <div className="mt-3">
+                <ApprovalCard
+                  proposal={msg.actionProposal}
+                  userId={userProfile?.uid || 'guest_user'}
+                  onExecuted={(res) => {
+                    setMessages((prevMsgs) => {
+                      const nextMsgs = prevMsgs.map((m) => {
+                        if (m.id === msg.id && m.actionProposal) {
+                          return {
+                            ...m,
+                            actionProposal: {
+                              ...m.actionProposal,
+                              status: res.success ? 'approved' : 'denied',
+                              executed: res.success,
+                              executedMessage: res.message
+                            }
+                          };
+                        }
+                        return m;
+                      });
+                      if (userProfile?.uid) {
+                        saveChatMessage(userProfile.uid, chatId, nextMsgs);
+                        AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
+                      }
+                      return nextMsgs;
+                    });
+                  }}
+                />
+              </div>
+            )}
+
+            <span className="text-[10px] mt-1.5 block text-left font-medium text-[#8e95a2]">
+              {msg.timestamp}
+            </span>
+          </div>
+        )}
       </motion.div>
     );
   },
@@ -101,7 +189,8 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
 
 export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   userProfile,
-  onMinimizeNavToggle
+  onMinimizeNavToggle,
+  onTriggerPopup
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -236,6 +325,39 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         setSessionId(data.sessionId);
       }
 
+      // Check if any tool triggered a popup card or web_search
+      let detectedSearchQuery: string | undefined = undefined;
+      let detectedSearchSites: any[] | undefined = undefined;
+
+      if (data.passOnTrace && Array.isArray(data.passOnTrace)) {
+        for (const passOn of data.passOnTrace) {
+          if (passOn.nextTools) {
+            for (const toolCall of passOn.nextTools) {
+              if (toolCall.name === 'trigger_popup_card' && onTriggerPopup) {
+                const args = toolCall.arguments || {};
+                onTriggerPopup({
+                  id: `popup_${Date.now()}`,
+                  type: 'custom_action',
+                  title: args.title || 'SANA Action Alert',
+                  subtitle: args.subtitle || 'Routine action requested',
+                  timeAgo: 'Just now',
+                  actionText: args.actionText || 'Start Routine',
+                  iconType: args.iconType || 'sparkle',
+                  badgeText: args.badgeText || 'SANA AGENT POP-UP',
+                  actionTarget: args.actionTarget || 'scan'
+                });
+              }
+              if (toolCall.name === 'web_search') {
+                const args = toolCall.arguments || {};
+                if (args.query) {
+                  detectedSearchQuery = args.query;
+                }
+              }
+            }
+          }
+        }
+      }
+
       const lastPassOn = data.passOnTrace && data.passOnTrace.length > 0
         ? data.passOnTrace[data.passOnTrace.length - 1]
         : null;
@@ -248,6 +370,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         actionProposal: data.actionProposal,
         passOnTrace: data.passOnTrace,
         sessionId: data.sessionId,
+        searchQuery: detectedSearchQuery,
+        searchSites: detectedSearchSites,
         thinkingMeta: {
           intent: lastPassOn?.intent || 'AGENT_LOOP',
           thinkingMode: (data.iterations && data.iterations > 1) ? 'hard' : 'easy',
@@ -266,6 +390,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         saveChatMessage(userProfile.uid, chatId, finalMessages);
         AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
       }
+      refreshVault();
     } catch (err) {
       console.error('SanaAgent Chat error:', err);
 

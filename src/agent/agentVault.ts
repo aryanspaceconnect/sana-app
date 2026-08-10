@@ -153,6 +153,7 @@ export interface SessionRecord {
 
 export interface IdentityData {
   id: 'identity';
+  fullName?: string;
   preferredName?: string;
   ageRange?: string;
   birthYear?: number;
@@ -595,7 +596,11 @@ export async function saveVaultUserData(
   diffSummary: string = 'Updated user data'
 ): Promise<any> {
   const timeInfo = toAbsoluteTime();
+  const cache = getOrCreateVaultCache(userId);
+  const existing = cache[subType] || {};
+
   const recordData = {
+    ...existing,
     ...payload,
     id: subType,
     updatedAt: timeInfo.occurredAt,
@@ -604,7 +609,6 @@ export async function saveVaultUserData(
   };
 
   const saved = await saveVaultRecordWithVersion(userId, 'user_data', subType, recordData, changedBy, diffSummary);
-  const cache = getOrCreateVaultCache(userId);
   if (subType === 'identity') cache.identity = saved;
   if (subType === 'personality') cache.personality = saved;
   if (subType === 'preferences') cache.preferences = saved;
@@ -619,22 +623,25 @@ export async function saveVaultSkinComposition(
   diffSummary: string = 'Updated skin composition profile'
 ): Promise<SkinCompositionData> {
   const timeInfo = toAbsoluteTime();
+  const cache = getOrCreateVaultCache(userId);
+  const existing: Partial<SkinCompositionData> = cache.composition || {};
+
   const compData: SkinCompositionData = {
     id: 'composition',
-    skinTypeTendency: payload.skinTypeTendency || 'Combination / Sensitive',
-    barrierStatusPatterns: payload.barrierStatusPatterns || 'Slightly Compromised',
-    pigmentationTendency: payload.pigmentationTendency || 'Post-inflammatory erythema (PIE)',
-    texturePoreElasticity: payload.texturePoreElasticity || 'Mild congestion around T-zone',
-    knownTriggers: payload.knownTriggers || ['Fragrance', 'High Ethanol', 'Hot Water'],
-    confidenceScore: payload.confidenceScore || 0.85,
+    skinTypeTendency: payload.skinTypeTendency !== undefined ? payload.skinTypeTendency : (existing.skinTypeTendency || ''),
+    barrierStatusPatterns: payload.barrierStatusPatterns !== undefined ? payload.barrierStatusPatterns : (existing.barrierStatusPatterns || ''),
+    pigmentationTendency: payload.pigmentationTendency !== undefined ? payload.pigmentationTendency : (existing.pigmentationTendency || ''),
+    texturePoreElasticity: payload.texturePoreElasticity !== undefined ? payload.texturePoreElasticity : (existing.texturePoreElasticity || ''),
+    knownTriggers: payload.knownTriggers || existing.knownTriggers || [],
+    confidenceScore: payload.confidenceScore || existing.confidenceScore || 0.85,
     lastUpdated: timeInfo.occurredAt,
     lastUpdatedDate: timeInfo.occurredAtDate,
     localTime: timeInfo.localTime,
-    version: payload.version || 1
+    version: (existing.version || 0) + 1
   };
 
   const saved = await saveVaultRecordWithVersion(userId, 'skin_profile', 'composition', compData, changedBy, diffSummary);
-  getOrCreateVaultCache(userId).composition = saved;
+  cache.composition = saved;
   return saved;
 }
 

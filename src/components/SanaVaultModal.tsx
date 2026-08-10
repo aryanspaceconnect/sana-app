@@ -205,21 +205,25 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-300">
                         <div>
                           <span className="text-slate-400">Skin Type Tendency:</span>{' '}
-                          <span className="font-medium text-white">{vaultData.composition?.skinTypeTendency || 'Combination / Sensitive'}</span>
+                          <span className="font-medium text-white">{vaultData.composition?.skinTypeTendency || 'Not specified yet'}</span>
                         </div>
                         <div>
                           <span className="text-slate-400">Barrier Patterns:</span>{' '}
-                          <span className="font-medium text-white">{vaultData.composition?.barrierStatusPatterns || 'Slightly Compromised'}</span>
+                          <span className="font-medium text-white">{vaultData.composition?.barrierStatusPatterns || 'Not specified yet'}</span>
                         </div>
                         <div className="col-span-1 sm:col-span-2">
                           <span className="text-slate-400">Known Triggers:</span>{' '}
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {(vaultData.composition?.knownTriggers || ['Fragrance', 'High Ethanol']).map((trig, idx) => (
-                              <span key={idx} className="px-2 py-0.5 rounded-md bg-white/10 text-white text-[11px]">
-                                {trig}
-                              </span>
-                            ))}
-                          </div>
+                          {vaultData.composition?.knownTriggers && vaultData.composition.knownTriggers.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              {vaultData.composition.knownTriggers.map((trig, idx) => (
+                                <span key={idx} className="px-2 py-0.5 rounded-md bg-white/10 text-white text-[11px]">
+                                  {trig}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Not specified yet</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -330,15 +334,20 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
                         </button>
                       </div>
                       <div className="space-y-1.5 text-xs text-slate-700">
-                        <p><span className="font-semibold text-slate-900">Preferred Name:</span> {vaultData.identity?.preferredName || 'User'}</p>
-                        <p><span className="font-semibold text-slate-900">Climate / Location:</span> {vaultData.identity?.locationOrClimate || 'Mediterranean / Subtropical'}</p>
-                        <p><span className="font-semibold text-slate-900">Hormonal Context:</span> {vaultData.identity?.sexOrHormonalContext || 'Not explicitly set'}</p>
+                        <p><span className="font-semibold text-slate-900">Full Name:</span> {vaultData.identity?.fullName || 'Not specified yet'}</p>
+                        <p><span className="font-semibold text-slate-900">Preferred Name:</span> {vaultData.identity?.preferredName || 'Not specified yet'}</p>
+                        <p><span className="font-semibold text-slate-900">Climate / Location:</span> {vaultData.identity?.locationOrClimate || 'Not specified yet'}</p>
+                        <p><span className="font-semibold text-slate-900">Hormonal Context:</span> {vaultData.identity?.sexOrHormonalContext || 'Not specified yet'}</p>
                         <p><span className="font-semibold text-slate-900">Permanent Facts:</span></p>
-                        <ul className="list-disc list-inside pl-2 space-y-1 text-slate-600">
-                          {(vaultData.identity?.permanentFacts || ['Sensitive to high ethanol concentrations', 'Prefers fragrance-free formulas']).map((fact, idx) => (
-                            <li key={idx}>{fact}</li>
-                          ))}
-                        </ul>
+                        {vaultData.identity?.permanentFacts && vaultData.identity.permanentFacts.length > 0 ? (
+                          <ul className="list-disc list-inside pl-2 space-y-1 text-slate-600">
+                            {vaultData.identity.permanentFacts.map((fact, idx) => (
+                              <li key={idx}>{fact}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-slate-400 italic pl-2">Not specified yet</p>
+                        )}
                       </div>
                     </div>
 
@@ -356,8 +365,8 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
                         </button>
                       </div>
                       <div className="space-y-1.5 text-xs text-slate-700">
-                        <p><span className="font-semibold text-slate-900">Communication Style:</span> {vaultData.personality?.communicationStyle || 'Direct, clinical, supportive'}</p>
-                        <p><span className="font-semibold text-slate-900">Risk Tolerance:</span> {vaultData.personality?.riskTolerance || 'low'}</p>
+                        <p><span className="font-semibold text-slate-900">Communication Style:</span> {vaultData.personality?.communicationStyle || 'Not specified yet'}</p>
+                        <p><span className="font-semibold text-slate-900">Risk Tolerance:</span> {vaultData.personality?.riskTolerance || 'Not specified yet'}</p>
                       </div>
                     </div>
                   </div>

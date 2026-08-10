@@ -33,7 +33,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           isAnonymous: false,
           settings: {
             temperatureUnit: 'C',
-            scanNotificationTime: '06:00',
+            scanNotificationTime: '00:00',
+            scanReminderEnabled: true,
             theme: 'light'
           }
         });
@@ -78,7 +79,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             isAnonymous: false,
             settings: {
               temperatureUnit: 'C',
-              scanNotificationTime: '06:00',
+              scanNotificationTime: '00:00',
+              scanReminderEnabled: true,
               theme: 'light'
             }
           });
@@ -94,7 +96,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             isAnonymous: false,
             settings: {
               temperatureUnit: 'C',
-              scanNotificationTime: '06:00',
+              scanNotificationTime: '00:00',
+              scanReminderEnabled: true,
               theme: 'light'
             }
           });

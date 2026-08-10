@@ -2,7 +2,9 @@ export type NavigationTab = 'home' | 'agent' | 'calendar';
 
 export interface UserSettings {
   temperatureUnit: 'C' | 'F';
-  scanNotificationTime: string;
+  scanNotificationTime: string; // e.g. '00:00', '06:00', '09:00', '12:00'
+  scanReminderEnabled?: boolean;
+  lastCompletedScanDate?: string; // YYYY-MM-DD
   theme: 'light' | 'dark';
 }
 
@@ -43,6 +45,8 @@ export interface ChatMessage {
   actionProposal?: any;
   passOnTrace?: any[];
   sessionId?: string;
+  searchQuery?: string;
+  searchSites?: Array<{ title: string; url: string; discover: number; finish: number }>;
 }
 
 export interface CalendarEventItem {
@@ -67,10 +71,13 @@ export interface DailyBriefing {
 
 export interface PopUpNotification {
   id: string;
-  type: 'facial_scan' | 'uv_alert' | 'agent_reminder';
-  title: string;
+  type: 'facial_scan' | 'uv_alert' | 'agent_reminder' | 'custom_action';
+  title: string; // 10-30 characters
   subtitle: string;
   timeAgo: string;
   actionText?: string;
-  iconType: 'scan' | 'sun' | 'sparkle';
+  iconType?: 'scan' | 'sun' | 'sparkle' | 'shield' | 'droplet' | 'clock' | 'alert';
+  badgeText?: string;
+  actionTarget?: 'scan' | 'calendar' | 'reports' | 'vault' | 'agent';
+  autoTriggered?: boolean;
 }

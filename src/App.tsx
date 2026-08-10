@@ -64,7 +64,8 @@ export default function App() {
           isAnonymous: user.isAnonymous,
           settings: {
             temperatureUnit: 'C',
-            scanNotificationTime: '06:00',
+            scanNotificationTime: '00:00',
+            scanReminderEnabled: true,
             theme: 'light'
           }
         };
@@ -114,13 +115,59 @@ export default function App() {
     return () => unsub();
   }, [userProfile?.uid]);
 
+  // Check Daily Facial Scan Pop-Up Trigger Logic
+  useEffect(() => {
+    if (!userProfile) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const settings: UserSettings = userProfile.settings || {
+      temperatureUnit: 'C',
+      scanNotificationTime: '00:00',
+      scanReminderEnabled: true,
+      theme: 'light'
+    };
+    const reminderEnabled = settings.scanReminderEnabled !== false;
+    const lastCompleted = settings.lastCompletedScanDate;
+
+    if (lastCompleted === todayStr) {
+      return;
+    }
+
+    const sessionDismissed = sessionStorage.getItem(`sana_popup_dismissed_${todayStr}`);
+    if (sessionDismissed === 'true') {
+      return;
+    }
+
+    if (reminderEnabled) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const targetTimeStr = settings.scanNotificationTime || '00:00';
+      const [targetH, targetM] = targetTimeStr.split(':').map(Number);
+      const targetMinutes = (targetH || 0) * 60 + (targetM || 0);
+
+      if (currentMinutes >= targetMinutes) {
+        setNotification({
+          id: `daily_scan_${todayStr}`,
+          type: 'facial_scan',
+          title: 'Daily Facial Scan Due',
+          subtitle: 'Perform your daily AI facial analysis to sync skin barrier & hydration metrics.',
+          timeAgo: targetTimeStr === '00:00' ? '12:00 AM' : `${targetTimeStr} Check`,
+          actionText: 'Start Daily Scan',
+          iconType: 'scan',
+          badgeText: 'DAILY FACIAL SCAN',
+          actionTarget: 'scan',
+          autoTriggered: true
+        });
+      }
+    }
+  }, [userProfile?.settings?.scanReminderEnabled, userProfile?.settings?.scanNotificationTime, userProfile?.settings?.lastCompletedScanDate, userProfile?.uid]);
+
   const handleUpdateSettings = (newSettings: UserSettings) => {
     if (userProfile) {
       setUserProfile({
         ...userProfile,
         settings: newSettings
       });
-      // Recalculate temperature text
       if (newSettings.temperatureUnit === 'F') {
         setDailyBrief(prev => ({ ...prev, temperature: '73°F' }));
       } else {
@@ -175,6 +222,7 @@ export default function App() {
           <AIAgentChat
             userProfile={userProfile}
             onMinimizeNavToggle={setIsNavMinimized}
+            onTriggerPopup={(popup) => setNotification(popup)}
           />
         )}
 
@@ -213,10 +261,24 @@ export default function App() {
       {/* PopUp Notification Card (Daily Check-in) */}
       <PopUpNotificationCard
         notification={notification}
-        onDismiss={() => setNotification(null)}
-        onAction={() => {
+        onDismiss={() => {
+          const todayStr = new Date().toISOString().split('T')[0];
+          sessionStorage.setItem(`sana_popup_dismissed_${todayStr}`, 'true');
           setNotification(null);
-          setIsScanOpen(true);
+        }}
+        onAction={(notif) => {
+          setNotification(null);
+          if (notif.actionTarget === 'calendar') {
+            setActiveTab('calendar');
+          } else if (notif.actionTarget === 'reports') {
+            setIsReportsOpen(true);
+          } else if (notif.actionTarget === 'vault') {
+            setIsVaultOpen(true);
+          } else if (notif.actionTarget === 'agent') {
+            setActiveTab('agent');
+          } else {
+            setIsScanOpen(true);
+          }
         }}
       />
 
@@ -225,7 +287,21 @@ export default function App() {
         isOpen={isScanOpen}
         onClose={() => setIsScanOpen(false)}
         userProfile={userProfile}
-        onScanComplete={(result) => setLatestScan(result)}
+        onScanComplete={(result) => {
+          setLatestScan(result);
+          setNotification(null);
+          const todayStr = new Date().toISOString().split('T')[0];
+          const updatedSettings = {
+            ...(userProfile?.settings || {
+              temperatureUnit: 'C',
+              scanNotificationTime: '00:00',
+              scanReminderEnabled: true,
+              theme: 'light'
+            }),
+            lastCompletedScanDate: todayStr
+          };
+          handleUpdateSettings(updatedSettings);
+        }}
       />
 
       {/* Settings Modal */}
@@ -234,6 +310,7 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         userProfile={userProfile}
         onUpdateSettings={handleUpdateSettings}
+        onTestTriggerPopup={(popup) => setNotification(popup)}
       />
 
       {/* Reports Modal */}
