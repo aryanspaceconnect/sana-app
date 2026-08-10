@@ -7,6 +7,7 @@ import { runSanaAgent } from "./src/agent/SanaAgent.js";
 import { executeActionProposal } from "./src/agent/workspace.js";
 import { generateContentWithRouter } from "./src/agent/llmRouter.js";
 import { executeWebSearch } from "./src/agent/searchService.js";
+import { performExaSearch, performExaContents, performExaAnswer } from "./src/agent/exaSearchService.js";
 
 dotenv.config();
 
@@ -210,17 +211,84 @@ app.post("/api/sana", async (req, res) => {
 // Secure Web Search Proxy Endpoint
 app.post("/api/search", async (req, res) => {
   try {
-    const { query } = req.body;
+    const { query, options } = req.body;
     if (!query || typeof query !== "string") {
       return res.status(400).json({ error: "Missing required string field 'query'" });
     }
 
-    const searchResult = await executeWebSearch(query);
+    const searchResult = await executeWebSearch(query, options);
     return res.json(searchResult);
   } catch (error: any) {
     console.error("Error in /api/search:", error);
     return res.status(500).json({
       error: "Failed to execute web search",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// Full Exa Search API Proxy
+app.post("/api/exa/search", async (req, res) => {
+  try {
+    const { query, type, numResults, systemPrompt, outputSchema, contents, includeDomains, excludeDomains, maxAgeHours } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "Missing required string field 'query'" });
+    }
+
+    const result = await performExaSearch({
+      query,
+      type,
+      numResults,
+      systemPrompt,
+      outputSchema,
+      contents,
+      includeDomains,
+      excludeDomains,
+      maxAgeHours
+    });
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Error in /api/exa/search:", error);
+    return res.status(500).json({
+      error: "Exa Search execution failed",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// Exa Contents API Proxy
+app.post("/api/exa/contents", async (req, res) => {
+  try {
+    const { urls, highlights, text, summary, maxAgeHours } = req.body;
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ error: "Missing required array field 'urls'" });
+    }
+
+    const result = await performExaContents({ urls, highlights, text, summary, maxAgeHours });
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Error in /api/exa/contents:", error);
+    return res.status(500).json({
+      error: "Exa Contents extraction failed",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// Exa Answer API Proxy
+app.post("/api/exa/answer", async (req, res) => {
+  try {
+    const { query, text } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "Missing required string field 'query'" });
+    }
+
+    const result = await performExaAnswer({ query, text });
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Error in /api/exa/answer:", error);
+    return res.status(500).json({
+      error: "Exa Answer failed",
       details: error?.message || String(error)
     });
   }

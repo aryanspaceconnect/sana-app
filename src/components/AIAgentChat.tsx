@@ -332,7 +332,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
       if (data.toolResults && Array.isArray(data.toolResults)) {
         for (const tr of data.toolResults) {
-          if ((tr.toolName === 'web_search' || tr.toolName === 'web_fetch') && tr.data) {
+          if (['web_search', 'web_fetch', 'exa_search', 'exa_answer'].includes(tr.toolName) && tr.data) {
             detectedSearchQuery = tr.data.query || tr.data.searchQuery;
             detectedSearchSites = tr.data.sites || tr.data.searchSites;
           }
@@ -357,7 +357,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                   actionTarget: args.actionTarget || 'scan'
                 });
               }
-              if ((toolCall.name === 'web_search' || toolCall.name === 'web_fetch') && !detectedSearchQuery) {
+              if (['web_search', 'web_fetch', 'exa_search', 'exa_answer'].includes(toolCall.name) && !detectedSearchQuery) {
                 const args = toolCall.arguments || {};
                 if (args.query) {
                   detectedSearchQuery = args.query;

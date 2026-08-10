@@ -1,10 +1,12 @@
 import { getGenAIClient } from './llmRouter.js';
+import { performExaSearch, ExaSearchOptions } from './exaSearchService.js';
 
 export interface WebSearchSiteItem {
   title: string;
   url: string;
   discover: number;
   finish: number;
+  highlights?: string[];
 }
 
 export interface WebSearchResult {
@@ -12,7 +14,8 @@ export interface WebSearchResult {
   query: string;
   sites: WebSearchSiteItem[];
   summary: string;
-  source?: 'google_search_grounding' | 'web_search_proxy';
+  source?: 'exa_search' | 'google_search_grounding' | 'web_search_proxy';
+  groundingOutput?: any;
 }
 
 function cleanUrlDisplay(rawUri: string): string {
@@ -25,9 +28,9 @@ function cleanUrlDisplay(rawUri: string): string {
 }
 
 /**
- * Perform a real web search via Google Search API / Gemini Search Grounding or server fetch proxy.
+ * Perform a real web search via Exa API, Google Search API / Gemini Search Grounding, or server fetch proxy.
  */
-export async function executeWebSearch(query: string): Promise<WebSearchResult> {
+export async function executeWebSearch(query: string, options?: Partial<ExaSearchOptions>): Promise<WebSearchResult> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {
     return {
@@ -36,6 +39,52 @@ export async function executeWebSearch(query: string): Promise<WebSearchResult> 
       sites: [],
       summary: 'Empty search query provided.'
     };
+  }
+
+  // 1. Try Exa Neural Search if EXA_API_KEY is available
+  if (process.env.EXA_API_KEY || process.env.VITE_EXA_API_KEY) {
+    try {
+      console.log(`[SearchService] Executing Exa Search for: "${trimmedQuery}"`);
+      const exaRes = await performExaSearch({
+        query: trimmedQuery,
+        type: options?.type || 'auto',
+        numResults: options?.numResults || 6,
+        systemPrompt: options?.systemPrompt || 'Prefer clinical dermatology, medical guidelines, skin barrier science, and active formulation sources.',
+        contents: options?.contents || { highlights: true },
+        outputSchema: options?.outputSchema,
+        includeDomains: options?.includeDomains,
+        excludeDomains: options?.excludeDomains,
+        maxAgeHours: options?.maxAgeHours
+      });
+
+      const sites: WebSearchSiteItem[] = (exaRes.results || []).map((item, idx) => ({
+        title: item.title || `Exa Clinical Source #${idx + 1}`,
+        url: cleanUrlDisplay(item.url),
+        discover: 300 + idx * 500,
+        finish: 1200 + idx * 900,
+        highlights: item.highlights || (item.text ? [item.text.slice(0, 300)] : [])
+      }));
+
+      let summary = '';
+      if (exaRes.output?.content) {
+        summary = typeof exaRes.output.content === 'string' ? exaRes.output.content : JSON.stringify(exaRes.output.content);
+      } else if (sites.length > 0) {
+        summary = `Retrieved ${sites.length} grounded search results via Exa Neural Search for "${trimmedQuery}". Top evidence includes: ${sites.map(s => s.title).join('; ')}.`;
+      } else {
+        summary = `Exa search completed for "${trimmedQuery}".`;
+      }
+
+      return {
+        success: true,
+        query: trimmedQuery,
+        sites,
+        summary,
+        source: 'exa_search',
+        groundingOutput: exaRes.output
+      };
+    } catch (exaErr: any) {
+      console.warn('[SearchService] Exa Search failed or fallback required:', exaErr?.message || exaErr);
+    }
   }
 
   const ai = getGenAIClient();

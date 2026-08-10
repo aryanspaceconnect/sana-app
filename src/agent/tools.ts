@@ -4,6 +4,7 @@ import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
 import { getSessionNotepad, updateSessionNotepad } from './sessionNotepad.js';
 import { executeWebSearch } from './searchService.js';
+import { performExaSearch, performExaContents, performExaAnswer } from './exaSearchService.js';
 import {
   saveAgentVaultDocument,
   searchAgentVault,
@@ -600,16 +601,123 @@ export const webSearchTool: ToolDefinition = {
 
 export const webFetchTool: ToolDefinition = {
   name: 'web_fetch',
-  description: 'Fetch and search real live web search results from Google Search API for a given query, URL, or skin health topic.',
+  description: 'Fetch and search real live web search results from Exa / Google Search API for a given query, URL, or skin health topic.',
   parameters: webSearchSchema,
   execute: async (args: z.infer<typeof webSearchSchema>, _context: AgentContext) => {
     return await executeWebSearch(args.query);
   }
 };
 
+export const exaSearchSchema = z.object({
+  query: z.string().min(2).describe('Search query to execute via Exa AI Neural Search.'),
+  type: z.enum(['auto', 'fast', 'instant', 'deep-lite', 'deep', 'deep-reasoning']).optional().describe('Search depth and speed pattern.'),
+  numResults: z.number().min(1).max(25).optional().describe('Number of results to return (default 8).'),
+  systemPrompt: z.string().optional().describe('Instruction prompt for source preference or synthesis.'),
+  includeDomains: z.array(z.string()).optional().describe('Target specific authoritative domains (e.g. ncbi.nlm.nih.gov).'),
+  excludeDomains: z.array(z.string()).optional().describe('Exclude low-quality or irrelevant domains.'),
+  maxAgeHours: z.number().optional().describe('Maximum acceptable age in hours for cached content. Set 0 for forced livecrawl.')
+});
+
+export const exaSearchTool: ToolDefinition = {
+  name: 'exa_search',
+  description: 'Execute advanced Exa AI Neural Web Search with deep reasoning, instant/fast speed modes, domain filtering, and grounded synthesis.',
+  parameters: exaSearchSchema,
+  execute: async (args: z.infer<typeof exaSearchSchema>, _context: AgentContext) => {
+    try {
+      const result = await performExaSearch({
+        query: args.query,
+        type: args.type,
+        numResults: args.numResults,
+        systemPrompt: args.systemPrompt,
+        includeDomains: args.includeDomains,
+        excludeDomains: args.excludeDomains,
+        maxAgeHours: args.maxAgeHours
+      });
+      const sites = (result.results || []).map((item, idx) => ({
+        title: item.title || `Source #${idx + 1}`,
+        url: item.url,
+        discover: 300 + idx * 500,
+        finish: 1200 + idx * 900,
+        highlights: item.highlights
+      }));
+      return {
+        success: true,
+        query: args.query,
+        sites,
+        results: result.results,
+        output: result.output,
+        summary: result.output?.content
+          ? (typeof result.output.content === 'string' ? result.output.content : JSON.stringify(result.output.content))
+          : `Found ${result.results?.length || 0} Exa Neural Search results for "${args.query}".`
+      };
+    } catch (err: any) {
+      console.warn('[exaSearchTool] Exa Search failed, falling back to executeWebSearch:', err?.message || err);
+      return await executeWebSearch(args.query);
+    }
+  }
+};
+
+export const exaContentsSchema = z.object({
+  urls: z.array(z.string().url()).min(1).describe('List of exact URLs to extract text, highlights, or summaries from.'),
+  maxAgeHours: z.number().optional().describe('Maximum age in hours for cached content. Set 0 for forced livecrawl.')
+});
+
+export const exaContentsTool: ToolDefinition = {
+  name: 'exa_contents',
+  description: 'Extract clean, parsed text, highlights, and summaries from known URLs using Exa Contents API.',
+  parameters: exaContentsSchema,
+  execute: async (args: z.infer<typeof exaContentsSchema>, _context: AgentContext) => {
+    try {
+      const res = await performExaContents({
+        urls: args.urls,
+        highlights: true,
+        maxAgeHours: args.maxAgeHours
+      });
+      return {
+        success: true,
+        urls: args.urls,
+        results: res.results
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        urls: args.urls,
+        error: err?.message || String(err)
+      };
+    }
+  }
+};
+
+export const exaAnswerSchema = z.object({
+  query: z.string().min(2).describe('Question to answer directly with grounded sources and citations via Exa Answer API.')
+});
+
+export const exaAnswerTool: ToolDefinition = {
+  name: 'exa_answer',
+  description: 'Get an instant grounded answer with citations for a specific question using Exa Answer API.',
+  parameters: exaAnswerSchema,
+  execute: async (args: z.infer<typeof exaAnswerSchema>, _context: AgentContext) => {
+    try {
+      const res = await performExaAnswer({ query: args.query, text: true });
+      return {
+        success: true,
+        query: args.query,
+        answer: res.answer,
+        citations: res.citations
+      };
+    } catch (err: any) {
+      console.warn('[exaAnswerTool] Fallback to web search:', err?.message || err);
+      return await executeWebSearch(args.query);
+    }
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
+  exaSearchTool,
+  exaContentsTool,
+  exaAnswerTool,
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,
