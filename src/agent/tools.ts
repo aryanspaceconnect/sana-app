@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ToolDefinition, UniversalQuery, AgentContext, ActionProposal } from './types.js';
 import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
+import { getSessionNotepad, updateSessionNotepad } from './sessionNotepad.js';
 import {
   saveAgentVaultDocument,
   searchAgentVault,
@@ -19,11 +20,11 @@ import {
 // Universal Search Tool
 export const universalSearchToolSchema = z.object({
   queries: z.array(z.object({
-    type: z.enum(['scans', 'incidents', 'events', 'settings_history', 'profile', 'insights', 'app_help']),
+    type: z.string().optional().default('profile'),
     query: z.string().optional(),
-    daysLimit: z.number().optional(),
+    daysLimit: z.union([z.number(), z.string()]).optional(),
     settingKey: z.string().optional(),
-  }))
+  })).optional().default([{ type: 'profile' }])
 });
 
 export const universalSearchTool: ToolDefinition = {
@@ -516,7 +517,43 @@ export const getVaultHistoryTool: ToolDefinition = {
   }
 };
 
+export const updateSessionNotepadSchema = z.object({
+  content: z.string().describe('The content or working notes to store in the session scratchpad.'),
+  mode: z.enum(['append', 'replace']).optional().default('replace')
+});
+
+export const updateSessionNotepadTool: ToolDefinition = {
+  name: 'update_session_notepad',
+  description: "Saves or updates working notes in SANA's private session scratchpad. Use this to record user constraints, skin observations, calculated metrics, working hypotheses, or sub-task progress for the current session.",
+  parameters: updateSessionNotepadSchema,
+  execute: async (args: z.infer<typeof updateSessionNotepadSchema>, context: AgentContext) => {
+    const updated = updateSessionNotepad(context.sessionId, args.content, args.mode);
+    return {
+      success: true,
+      message: 'Session notepad updated successfully.',
+      notepadContent: updated
+    };
+  }
+};
+
+export const readSessionNotepadSchema = z.object({});
+
+export const readSessionNotepadTool: ToolDefinition = {
+  name: 'read_session_notepad',
+  description: "Reads SANA's private working notes from the current session scratchpad.",
+  parameters: readSessionNotepadSchema,
+  execute: async (_args: any, context: AgentContext) => {
+    const content = getSessionNotepad(context.sessionId);
+    return {
+      success: true,
+      notepadContent: content || '(Empty session notepad)'
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
+  updateSessionNotepadTool,
+  readSessionNotepadTool,
   universalSearchTool,
   vaultSearchTool,
   saveMemoryNoteTool,

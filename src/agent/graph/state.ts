@@ -34,6 +34,10 @@ export const AgentStateAnnotation = Annotation.Root({
     value: (x, y) => (y !== undefined ? y : x),
     default: () => 'thinking'
   }),
+  sessionNotepad: Annotation<string>({
+    value: (x, y) => (y !== undefined ? y : x),
+    default: () => ''
+  }),
   context: Annotation<AgentContext>({
     value: (x, y) => ({ ...x, ...y }),
     default: () => ({ userId: '', sessionId: '' })

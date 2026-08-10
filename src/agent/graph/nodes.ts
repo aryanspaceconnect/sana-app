@@ -6,8 +6,13 @@ import { loadContextForAgent } from '../workspace.js';
 import { PassOnSchema, PassOn, ToolResult } from '../types.js';
 import { generateContentWithRouter, LLMFunctionCall, AllModelsExhaustedError } from '../llmRouter.js';
 import { getGeminiToolDeclarations, findToolByName } from '../geminiTools.js';
+import { getSessionNotepad } from '../sessionNotepad.js';
 
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(sessionNotepadContent?: string): string {
+  const notepadStr = sessionNotepadContent && sessionNotepadContent.trim().length > 0
+    ? sessionNotepadContent
+    : '(Empty - use `update_session_notepad` tool to save working notes, user constraints, or key findings for this session)';
+
   return `${SANA_SOUL}
 
 ### HARD CONSTRAINTS:
@@ -16,9 +21,13 @@ ${SANA_HARD_CONSTRAINTS.map(c => `- ${c}`).join('\n')}
 ### APP ROUTE MAP:
 ${JSON.stringify(SANA_APP_MAP, null, 2)}
 
+### SANA SESSION NOTEPAD (PRIVATE WORKING MEMORY FOR THIS SESSION):
+${notepadStr}
+
 ### AUTONOMOUS AGENT REASONING PROTOCOL:
 You are SANA operating in an autonomous multi-turn LangGraph loop with native Function Calling.
-- You have direct access to tools for querying the Agent Vault, searching memories, recording incidents, creating calendar events, and proposing settings updates.
+- You have direct access to tools for querying the Agent Vault, searching memories, recording incidents, creating calendar events, and updating your private session notepad.
+- USE YOUR SESSION NOTEPAD (\`update_session_notepad\`): When discussing complex topics or multi-step goals, record working notes, findings, user preferences, and pending sub-tasks in your Session Notepad. This ensures you never lose context during a long consultation.
 - If a user's request requires information from their vault or profile, CALL THE RELEVANT TOOL IMMEDIATELY (e.g. \`vault_search\`, \`universal_search\`, \`search_agent_vault\`).
 - When the user asks to save, log, or remember something (e.g. skin flare, symptom, note), call \`save_memory_note\` or \`save_vault_incident\`.
 - When tool results return from function calls, inspect the output in your next turn and synthesize a complete, elegant, user-facing answer.
@@ -35,14 +44,18 @@ export async function initializeNode(state: AgentState) {
     vault: true
   });
 
+  // Get session scratchpad
+  const sessionNotepad = getSessionNotepad(state.sessionId);
+
   // Construct initial Gemini conversation messages if not already present
   let llmMessages = state.llmMessages || [];
   if (llmMessages.length === 0) {
     llmMessages = [];
     
-    // Include conversation history
+    // Include full conversation history (up to last 30 turns)
     if (state.history && state.history.length > 0) {
-      for (const item of state.history.slice(-6)) {
+      const historyWindow = state.history.length > 30 ? state.history.slice(-30) : state.history;
+      for (const item of historyWindow) {
         llmMessages.push({
           role: item.role === 'model' ? 'model' : 'user',
           parts: [{ text: item.text }]
@@ -63,6 +76,7 @@ export async function initializeNode(state: AgentState) {
       ...state.context,
       ...loadedContext
     },
+    sessionNotepad,
     llmMessages,
     status: 'thinking'
   };
@@ -70,7 +84,8 @@ export async function initializeNode(state: AgentState) {
 
 export async function reasoningNode(state: AgentState) {
   const currentIterations = state.iterations + 1;
-  const systemPrompt = buildSystemPrompt();
+  const currentNotepad = getSessionNotepad(state.sessionId) || state.sessionNotepad || '';
+  const systemPrompt = buildSystemPrompt(currentNotepad);
   const toolsDeclarations = getGeminiToolDeclarations();
 
   let llmMessages = [...(state.llmMessages || [])];
@@ -88,21 +103,26 @@ export async function reasoningNode(state: AgentState) {
       console.log(`[ReasoningNode] LLM selected ${routerResult.functionCalls.length} tool call(s):`, routerResult.functionCalls.map(f => f.name));
 
       // Append model message with function calls to conversation history
-      const modelPartList = routerResult.functionCalls.map(fc => ({
-        functionCall: {
-          name: fc.name,
-          args: fc.args
+      const candidateContent = routerResult.rawResponse?.candidates?.[0]?.content;
+      if (candidateContent) {
+        llmMessages.push(candidateContent);
+      } else {
+        const modelPartList = routerResult.functionCalls.map(fc => ({
+          functionCall: {
+            name: fc.name,
+            args: fc.args
+          }
+        }));
+
+        if (routerResult.text) {
+          modelPartList.unshift({ text: routerResult.text } as any);
         }
-      }));
 
-      if (routerResult.text) {
-        modelPartList.unshift({ text: routerResult.text } as any);
+        llmMessages.push({
+          role: 'model',
+          parts: modelPartList
+        });
       }
-
-      llmMessages.push({
-        role: 'model',
-        parts: modelPartList
-      });
 
       return {
         pendingFunctionCalls: routerResult.functionCalls,
@@ -233,10 +253,10 @@ export async function toolsNode(state: AgentState) {
     }
   }
 
-  // Append functionResponse message to Gemini conversation history
+  // Append functionResponse message to Gemini conversation history using valid 'user' role
   const llmMessages = [...(state.llmMessages || [])];
   llmMessages.push({
-    role: 'tool',
+    role: 'user',
     parts: toolResponseParts
   });
 
@@ -297,10 +317,7 @@ export async function scanRespondNode(state: AgentState) {
 }
 
 export async function finalizeNode(state: AgentState) {
-  let finalOutputText = state.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
-
-  // Strip emojis to strictly uphold the no-emoji mandate
-  finalOutputText = finalOutputText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]/gu, '');
+  const finalOutputText = state.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
 
   return {
     finalText: finalOutputText,

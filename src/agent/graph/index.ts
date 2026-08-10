@@ -17,6 +17,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     pendingFunctionCalls: [],
     llmMessages: [],
     status: 'thinking',
+    sessionNotepad: '',
     context: { userId: params.userId, sessionId },
     finalText: null,
     actionProposal: null,
