@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { NavigationTab } from '../types';
-import { SanaLogoIcon } from './SanaLogoIcon';
+import { SanaAgentLogoIcon } from './SanaAgentLogoIcon';
 
 interface PillNavigationProps {
   activeTab: NavigationTab;
@@ -101,7 +101,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
             >
               {/* Custom SVG Agent Emblem */}
               <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
-                <SanaLogoIcon size={18} color={activeTab === 'agent' ? '#ffffff' : '#616874'} />
+                <SanaAgentLogoIcon size={18} color={activeTab === 'agent' ? '#ffffff' : '#616874'} />
               </div>
               {activeTab === 'agent' && (
                 <motion.span
