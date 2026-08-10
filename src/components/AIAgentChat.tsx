@@ -183,6 +183,7 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
     prev.msg.id === next.msg.id &&
     prev.msg.text === next.msg.text &&
     prev.msg.actionProposal === next.msg.actionProposal &&
+    prev.msg.searchQuery === next.msg.searchQuery &&
     prev.userProfile?.uid === next.userProfile?.uid &&
     prev.chatId === next.chatId
 );
@@ -329,6 +330,15 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       let detectedSearchQuery: string | undefined = undefined;
       let detectedSearchSites: any[] | undefined = undefined;
 
+      if (data.toolResults && Array.isArray(data.toolResults)) {
+        for (const tr of data.toolResults) {
+          if ((tr.toolName === 'web_search' || tr.toolName === 'web_fetch') && tr.data) {
+            detectedSearchQuery = tr.data.query || tr.data.searchQuery;
+            detectedSearchSites = tr.data.sites || tr.data.searchSites;
+          }
+        }
+      }
+
       if (data.passOnTrace && Array.isArray(data.passOnTrace)) {
         for (const passOn of data.passOnTrace) {
           if (passOn.nextTools) {
@@ -347,7 +357,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                   actionTarget: args.actionTarget || 'scan'
                 });
               }
-              if (toolCall.name === 'web_search') {
+              if ((toolCall.name === 'web_search' || toolCall.name === 'web_fetch') && !detectedSearchQuery) {
                 const args = toolCall.arguments || {};
                 if (args.query) {
                   detectedSearchQuery = args.query;

@@ -3,6 +3,7 @@ import { ToolDefinition, UniversalQuery, AgentContext, ActionProposal } from './
 import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
 import { getSessionNotepad, updateSessionNotepad } from './sessionNotepad.js';
+import { executeWebSearch } from './searchService.js';
 import {
   saveAgentVaultDocument,
   searchAgentVault,
@@ -590,27 +591,25 @@ export const webSearchSchema = z.object({
 
 export const webSearchTool: ToolDefinition = {
   name: 'web_search',
-  description: 'Search clinical databases (PubMed, DermNet, formulation databases) and live web resources for skin barrier research, ingredient safety, climate effects, and medical guidelines.',
+  description: 'Search clinical databases (PubMed, DermNet, formulation databases) and live web resources for skin barrier research, ingredient safety, climate effects, and medical guidelines. Use this tool whenever up-to-date research or evidence is required.',
   parameters: webSearchSchema,
   execute: async (args: z.infer<typeof webSearchSchema>, _context: AgentContext) => {
-    const q = args.query.toLowerCase();
-    const mockSites = [
-      { title: `Clinical Research: ${args.query}`, url: "ncbi.nlm.nih.gov/pmc/articles/dermatology", discover: 400, finish: 1800 },
-      { title: `DermNet Guidelines: ${args.query}`, url: "dermnetnz.org/topics/dermatology-guide", discover: 1200, finish: 3200 },
-      { title: "SANA Clinical Formulation Index", url: "sana.ai/research/formulation-safety", discover: 2200, finish: 4400 }
-    ];
+    return await executeWebSearch(args.query);
+  }
+};
 
-    return {
-      success: true,
-      query: args.query,
-      sites: mockSites,
-      summary: `Retrieved latest clinical evidence and active ingredient safety guidelines for: "${args.query}". Key insights indicate optimal pH balance (5.0-5.5) and barrier support protocols.`
-    };
+export const webFetchTool: ToolDefinition = {
+  name: 'web_fetch',
+  description: 'Fetch and search real live web search results from Google Search API for a given query, URL, or skin health topic.',
+  parameters: webSearchSchema,
+  execute: async (args: z.infer<typeof webSearchSchema>, _context: AgentContext) => {
+    return await executeWebSearch(args.query);
   }
 };
 
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
+  webFetchTool,
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,

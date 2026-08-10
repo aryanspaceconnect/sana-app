@@ -76,6 +76,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     actionProposal: finalState.actionProposal || undefined,
     sessionId,
     passOnTrace: [],
-    iterations: finalState.iterations || 1
+    iterations: finalState.iterations || 1,
+    toolResults: finalState.toolResults || []
   };
 }

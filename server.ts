@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { runSanaAgent } from "./src/agent/SanaAgent.js";
 import { executeActionProposal } from "./src/agent/workspace.js";
 import { generateContentWithRouter } from "./src/agent/llmRouter.js";
+import { executeWebSearch } from "./src/agent/searchService.js";
 
 dotenv.config();
 
@@ -194,12 +195,32 @@ app.post("/api/sana", async (req, res) => {
       actionProposal: agentResult.actionProposal,
       sessionId: agentResult.sessionId,
       passOnTrace: agentResult.passOnTrace,
-      iterations: agentResult.iterations
+      iterations: agentResult.iterations,
+      toolResults: agentResult.toolResults
     });
   } catch (error: any) {
     console.error("Error in /api/sana:", error);
     return res.status(500).json({
       error: "SanaAgent execution failed",
+      details: error?.message || String(error)
+    });
+  }
+});
+
+// Secure Web Search Proxy Endpoint
+app.post("/api/search", async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "Missing required string field 'query'" });
+    }
+
+    const searchResult = await executeWebSearch(query);
+    return res.json(searchResult);
+  } catch (error: any) {
+    console.error("Error in /api/search:", error);
+    return res.status(500).json({
+      error: "Failed to execute web search",
       details: error?.message || String(error)
     });
   }

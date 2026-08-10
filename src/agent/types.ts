@@ -131,4 +131,5 @@ export interface AgentRunResult {
   sessionId: string;
   passOnTrace: PassOn[];
   iterations: number;
+  toolResults?: ToolResult[];
 }
