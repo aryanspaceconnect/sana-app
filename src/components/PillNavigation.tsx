@@ -19,26 +19,44 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
   isMinimized = false,
   onRestorePill
 }) => {
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
     setTouchStartY(e.touches[0].clientY);
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartY === null) return;
+    if (touchStartX === null || touchStartY === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
     const touchEndY = e.changedTouches[0].clientY;
-    const diffY = touchStartY - touchEndY;
 
-    // Swipe up detected (50px displacement)
-    if (diffY > 45) {
+    const diffX = touchStartX - touchEndX; // positive = swiped left
+    const diffY = touchStartY - touchEndY; // positive = swiped up
+
+    // Determine if horizontal or vertical swipe dominates
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 35) {
+      if (diffX > 35) {
+        // Swiped Left -> Advance tab
+        if (activeTab === 'home') onTabChange('agent');
+        else if (activeTab === 'agent') onTabChange('calendar');
+      } else if (diffX < -35) {
+        // Swiped Right -> Previous tab
+        if (activeTab === 'calendar') onTabChange('agent');
+        else if (activeTab === 'agent') onTabChange('home');
+      }
+    } else if (diffY > 40) {
+      // Swiped Up -> Expand Menu
       onSwipeUpExpand();
     }
+
+    setTouchStartX(null);
     setTouchStartY(null);
   };
 
   return (
-    <div className="fixed bottom-6 left-0 right-0 z-40 flex justify-center items-center pointer-events-none">
+    <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center items-end pb-5 pt-3 pointer-events-none">
       <AnimatePresence mode="wait">
         {isMinimized ? (
           /* Minimized subtle indicator bar */
@@ -50,21 +68,24 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
             whileHover={{ opacity: 1, scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onRestorePill}
-            className="pointer-events-auto h-2 w-28 rounded-full bg-[#1a1c1e]/40 backdrop-blur-md shadow-xs transition-all hover:bg-[#1a1c1e]/70 flex items-center justify-center cursor-pointer"
+            className="pointer-events-auto h-2.5 w-28 rounded-full bg-[#1a1c1e]/40 backdrop-blur-md shadow-xs transition-all hover:bg-[#1a1c1e]/70 flex items-center justify-center cursor-pointer mb-2"
             title="Expand Navigation"
           />
         ) : (
-          /* Main Squarical Floating Pill Navigation */
-          <motion.div
-            key="expanded-pill"
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+          /* Gesture Region & Squarical Floating Pill Navigation */
+          <div
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            className="pointer-events-auto squircle-pill px-3 py-2 flex items-center space-x-1.5 shadow-xl border border-white/80 bg-white/90 backdrop-blur-2xl"
+            className="pointer-events-auto px-4 pt-2 pb-1 flex justify-center items-center rounded-3xl touch-pan-x touch-pan-y"
           >
+            <motion.div
+              key="expanded-pill"
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+              className="squircle-pill px-3 py-2 flex items-center space-x-1.5 shadow-xl border border-white/80 bg-white/90 backdrop-blur-2xl"
+            >
             {/* Option 1: Home */}
             <button
               onClick={() => onTabChange('home')}
@@ -140,6 +161,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
               )}
             </button>
           </motion.div>
+        </div>
         )}
       </AnimatePresence>
     </div>
