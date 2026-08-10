@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, ArrowRight, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail, signInGuest } from '../lib/firebase';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { SanaLogoIcon } from './SanaLogoIcon';
 
@@ -17,7 +17,6 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [guestLoading, setGuestLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
@@ -116,32 +115,6 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       setError(msg);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleGuestDemo = async () => {
-    setError(null);
-    setGuestLoading(true);
-    try {
-      const user = await signInGuest();
-      const guestUid = user ? user.uid : (localStorage.getItem('sana_guest_uid') || `guest_${Math.random().toString(36).substring(2, 9)}`);
-      localStorage.setItem('sana_guest_uid', guestUid);
-      
-      onAuthSuccess({
-        uid: guestUid,
-        displayName: 'SANA Guest',
-        email: 'guest@sana.app',
-        isAnonymous: true,
-        settings: {
-          temperatureUnit: 'C',
-          scanNotificationTime: '06:00',
-          theme: 'light'
-        }
-      });
-    } catch (err) {
-      console.warn("Guest mode error:", err);
-    } finally {
-      setGuestLoading(false);
     }
   };
 
@@ -343,18 +316,9 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         </div>
       </div>
 
-      {/* Guest Demo Fallback Option at Bottom */}
+      {/* Encryption Footer at Bottom */}
       <div className="w-full pt-4 pb-2 flex flex-col items-center text-center">
-        <button
-          type="button"
-          onClick={handleGuestDemo}
-          disabled={guestLoading}
-          className="text-xs text-slate-400 hover:text-slate-700 font-medium transition-colors underline underline-offset-4 decoration-slate-300"
-        >
-          {guestLoading ? 'Starting guest session...' : 'Continue as Guest Demo →'}
-        </button>
-
-        <div className="flex items-center justify-center space-x-2 text-[10px] text-slate-400 mt-4">
+        <div className="flex items-center justify-center space-x-2 text-[10px] text-slate-400">
           <ShieldCheck className="w-3 h-3 text-emerald-600" />
           <span>Encrypted Firestore & Firebase Authentication</span>
         </div>

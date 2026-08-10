@@ -10,11 +10,94 @@ import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
 import { AgentMemoryService } from '../services/AgentMemoryService';
 import { Orb } from './Orb';
 import { ApprovalCard } from './ApprovalCard';
+import { ThinkingReasoning } from './ThinkingReasoning';
 
 interface AIAgentChatProps {
   userProfile: UserProfile | null;
   onMinimizeNavToggle: (minimize: boolean) => void;
 }
+
+interface ChatMessageBubbleProps {
+  msg: ChatMessage;
+  userProfile: UserProfile | null;
+  chatId: string;
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+}
+
+const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
+  ({ msg, userProfile, chatId, setMessages }) => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+      >
+        <div
+          className={`max-w-[88%] p-4 rounded-[22px] text-[13.5px] leading-relaxed shadow-xs ${
+            msg.role === 'user'
+              ? 'bg-[#1a1c1e] text-white rounded-br-xs'
+              : 'bg-white border border-[#eaedf1] text-[#1e2229] rounded-bl-xs'
+          }`}
+        >
+          {msg.role === 'user' ? (
+            <p className="whitespace-pre-wrap">{msg.text}</p>
+          ) : (
+            <div className="text-[13.5px] leading-relaxed">
+              <TextLoader text={msg.text || ''} variant="cascade" />
+            </div>
+          )}
+
+          {/* Render Approval Card if message carries an Action Proposal */}
+          {msg.actionProposal && (
+            <div className="mt-3">
+              <ApprovalCard
+                proposal={msg.actionProposal}
+                userId={userProfile?.uid || 'guest_user'}
+                onExecuted={(res) => {
+                  setMessages((prevMsgs) => {
+                    const nextMsgs = prevMsgs.map((m) => {
+                      if (m.id === msg.id && m.actionProposal) {
+                        return {
+                          ...m,
+                          actionProposal: {
+                            ...m.actionProposal,
+                            status: res.success ? 'approved' : 'denied',
+                            executed: res.success,
+                            executedMessage: res.message
+                          }
+                        };
+                      }
+                      return m;
+                    });
+                    if (userProfile?.uid) {
+                      saveChatMessage(userProfile.uid, chatId, nextMsgs);
+                      AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
+                    }
+                    return nextMsgs;
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          <span
+            className={`text-[10px] mt-1.5 block text-right font-medium ${
+              msg.role === 'user' ? 'text-white/60' : 'text-[#8e95a2]'
+            }`}
+          >
+            {msg.timestamp}
+          </span>
+        </div>
+      </motion.div>
+    );
+  },
+  (prev, next) =>
+    prev.msg.id === next.msg.id &&
+    prev.msg.text === next.msg.text &&
+    prev.msg.actionProposal === next.msg.actionProposal &&
+    prev.userProfile?.uid === next.userProfile?.uid &&
+    prev.chatId === next.chatId
+);
 
 export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   userProfile,
@@ -101,7 +184,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading, thinkingPhase]);
+  }, [messages.length, loading]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
@@ -219,87 +302,20 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
-        {messages.map((msg) => {
-          return (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-            >
-              <div
-                className={`max-w-[88%] p-4 rounded-[22px] text-[13.5px] leading-relaxed shadow-xs ${
-                  msg.role === 'user'
-                    ? 'bg-[#1a1c1e] text-white rounded-br-xs'
-                    : 'bg-white border border-[#eaedf1] text-[#1e2229] rounded-bl-xs'
-                }`}
-              >
-                {msg.role === 'user' ? (
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-                ) : (
-                  <div className="text-[13.5px] leading-relaxed">
-                    <TextLoader text={msg.text} variant="cascade" />
-                  </div>
-                )}
+        {messages.map((msg) => (
+          <ChatMessageBubble
+            key={msg.id}
+            msg={msg}
+            userProfile={userProfile}
+            chatId={chatId}
+            setMessages={setMessages}
+          />
+        ))}
 
-                {/* Render Approval Card if message carries an Action Proposal */}
-                {msg.actionProposal && (
-                  <div className="mt-3">
-                    <ApprovalCard
-                      proposal={msg.actionProposal}
-                      userId={userProfile?.uid || 'guest_user'}
-                      onExecuted={(res) => {
-                        setMessages((prevMsgs) => {
-                          const nextMsgs = prevMsgs.map((m) => {
-                            if (m.id === msg.id && m.actionProposal) {
-                              return {
-                                ...m,
-                                actionProposal: {
-                                  ...m.actionProposal,
-                                  status: res.success ? 'approved' : 'denied',
-                                  executed: res.success,
-                                  executedMessage: res.message
-                                }
-                              };
-                            }
-                            return m;
-                          });
-                          if (userProfile?.uid) {
-                            saveChatMessage(userProfile.uid, chatId, nextMsgs);
-                            AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
-                          }
-                          return nextMsgs;
-                        });
-                      }}
-                    />
-                  </div>
-                )}
-
-                <span
-                  className={`text-[10px] mt-1.5 block text-right font-medium ${
-                    msg.role === 'user' ? 'text-white/60' : 'text-[#8e95a2]'
-                  }`}
-                >
-                  {msg.timestamp}
-                </span>
-              </div>
-            </motion.div>
-          );
-        })}
-
-        {/* Live Orb Thinking Animation Indicator */}
+        {/* ThinkingReasoning Indicator */}
         {loading && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
-            <div className="p-3.5 rounded-[22px] bg-white border border-[#eaedf1] rounded-bl-xs flex items-center space-x-3 shadow-xs">
-              <Orb variant="B4" size={22} />
-              <div className="flex flex-col">
-                <span className="text-[12px] font-semibold text-[#121316] flex items-center space-x-1">
-                  <span>SANA AI Thinking</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping inline-block" />
-                </span>
-                <span className="text-[11px] text-[#6b7280] font-medium">{thinkingPhase}</span>
-              </div>
-            </div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start my-1 w-full">
+            <ThinkingReasoning />
           </motion.div>
         )}
         <div ref={chatEndRef} />

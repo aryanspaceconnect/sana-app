@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, signInGuest, syncUserProfile, subscribeFacialScans } from './lib/firebase';
+import { auth, syncUserProfile, subscribeFacialScans } from './lib/firebase';
 import { NavigationTab, UserProfile, UserSettings, FacialScanResult, DailyBriefing, PopUpNotification } from './types';
 
 // Components

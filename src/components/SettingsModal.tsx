@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { UserProfile, UserSettings } from '../types';
-import { signInWithGoogle, signInGuest, logoutUser, syncUserProfile } from '../lib/firebase';
+import { signInWithGoogle, logoutUser, syncUserProfile } from '../lib/firebase';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -49,17 +49,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await signInWithGoogle();
     } catch (err) {
       console.error("Google Auth error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGuestAuth = async () => {
-    setLoading(true);
-    try {
-      await signInGuest();
-    } catch (err) {
-      console.error("Guest Auth error:", err);
     } finally {
       setLoading(false);
     }

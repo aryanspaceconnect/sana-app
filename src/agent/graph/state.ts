@@ -1,5 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import { PassOn, ToolResult, AgentContext, ActionProposal } from '../types.js';
+import { LLMFunctionCall } from '../llmRouter.js';
 
 export const AgentStateAnnotation = Annotation.Root({
   userId: Annotation<string>(),
@@ -18,8 +19,20 @@ export const AgentStateAnnotation = Annotation.Root({
     default: () => []
   }),
   toolResults: Annotation<ToolResult[]>({
+    value: (x, y) => (x || []).concat(y || []),
+    default: () => []
+  }),
+  pendingFunctionCalls: Annotation<LLMFunctionCall[]>({
     value: (x, y) => (y !== undefined ? y : x),
     default: () => []
+  }),
+  llmMessages: Annotation<any[]>({
+    value: (x, y) => (y !== undefined ? y : x),
+    default: () => []
+  }),
+  status: Annotation<string>({
+    value: (x, y) => (y !== undefined ? y : x),
+    default: () => 'thinking'
   }),
   context: Annotation<AgentContext>({
     value: (x, y) => ({ ...x, ...y }),
@@ -44,3 +57,4 @@ export const AgentStateAnnotation = Annotation.Root({
 });
 
 export type AgentState = typeof AgentStateAnnotation.State;
+

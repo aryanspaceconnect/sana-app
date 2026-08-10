@@ -14,6 +14,9 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     passOn: null,
     passOnTrace: [],
     toolResults: [],
+    pendingFunctionCalls: [],
+    llmMessages: [],
+    status: 'thinking',
     context: { userId: params.userId, sessionId },
     finalText: null,
     actionProposal: null,
@@ -24,7 +27,6 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
   const config = { configurable: { thread_id: sessionId } };
 
   let finalState: AgentState = initialState;
-  const passOnTraceAccumulator: PassOn[] = [];
 
   try {
     // Stream state updates through the LangGraph StateGraph
@@ -34,12 +36,8 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
       const stateChunk = chunk as unknown as AgentState;
       finalState = stateChunk;
 
-      if (stateChunk.passOn) {
-        passOnTraceAccumulator.push(stateChunk.passOn);
-      }
-
-      if (params.onProgress && stateChunk.passOn?.finalResponse) {
-        params.onProgress(stateChunk.passOn.finalResponse);
+      if (params.onProgress && stateChunk.finalText) {
+        params.onProgress(stateChunk.finalText);
       }
     }
   } catch (err: any) {
@@ -47,10 +45,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     finalState = (await sanaGraph.invoke(initialState, config)) as AgentState;
   }
 
-  const finalOutputText = finalState.finalText || finalState.passOn?.finalResponse || "I am SANA, your skin health agent. How can I assist with your routine today?";
-  const passOnTrace = finalState.passOnTrace && finalState.passOnTrace.length > 0
-    ? finalState.passOnTrace
-    : passOnTraceAccumulator;
+  const finalOutputText = finalState.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
 
   // Save session trace to Vault memory
   try {
@@ -68,8 +63,8 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
       status: 'active',
       summary: finalOutputText.slice(0, 200),
       messages: messagesList,
-      intentHistory: passOnTrace.map((p: PassOn) => p.intent),
-      passOnTrace
+      intentHistory: ['autonomous_react_loop'],
+      passOnTrace: []
     });
   } catch (err) {
     console.warn('[LangGraph] Error saving session to Vault:', err);
@@ -77,9 +72,9 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
 
   return {
     text: finalOutputText,
-    actionProposal: finalState.actionProposal || finalState.passOn?.actionProposal || undefined,
+    actionProposal: finalState.actionProposal || undefined,
     sessionId,
-    passOnTrace,
+    passOnTrace: [],
     iterations: finalState.iterations || 1
   };
 }

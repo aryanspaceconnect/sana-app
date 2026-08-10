@@ -6,6 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { runSanaAgent } from "./src/agent/SanaAgent.js";
 import { executeActionProposal } from "./src/agent/workspace.js";
+import { generateContentWithRouter } from "./src/agent/llmRouter.js";
 
 dotenv.config();
 
@@ -153,20 +154,17 @@ Never use emojis. Maintain an elegant, warm, empathetic tone.`;
 
     let responseText = "";
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      const routerResult = await generateContentWithRouter({
         contents,
-        config: {
-          systemInstruction,
-          temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7,
-        }
+        systemInstruction,
+        temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7
       });
-      responseText = response.text || "";
+      responseText = routerResult.text;
     } catch (genErr: any) {
-      console.warn("Gemini generation fallback:", genErr?.message || genErr);
+      console.warn("Gemini generation fallback across all models:", genErr?.message || genErr);
       responseText = thinkingAnalysis.thinkingMode === 'hard'
-        ? `[HARD THINKING ANALYSIS: ${thinkingAnalysis.intent}]\n\n1. Active Ingredient Chemistry: Layer lightweight water-based serums before rich barrier creams.\n2. Barrier Protection: Avoid combining high-strength retinoids and exfoliating acids (AHA/BHA) in the same session.\n3. Protection: Always finish your morning routine with broad-spectrum SPF 50.`
-        : `I have processed your query ("${thinkingAnalysis.intent}") in Easy Going Mode. Keep your routine simple, hydrated, and protected with daily sunscreen.`;
+        ? `I apologize, but our AI services are currently out of credits/capacity across all models.\n\n[FALLBACK CLINICAL ANALYSIS: ${thinkingAnalysis.intent}]\n1. Active Ingredient Chemistry: Layer lightweight water-based serums before rich barrier creams.\n2. Barrier Protection: Avoid combining high-strength retinoids and exfoliating acids (AHA/BHA) in the same session.\n3. Protection: Always finish your morning routine with broad-spectrum SPF 50.`
+        : `I apologize, but our AI services are currently out of credits/capacity across all models. I processed your request ("${thinkingAnalysis.intent}") in offline fallback mode. Keep your routine simple, hydrated, and protected with daily sunscreen.`;
     }
 
     return res.json({
@@ -269,25 +267,41 @@ Return ONLY a valid JSON object matching this schema exactly (no markdown surrou
   "uvRecommendation": string (UV and daily outdoor protection tip)
 }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: cleanBase64
+    let rawText = "";
+    try {
+      const routerResult = await generateContentWithRouter({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: cleanBase64
+                }
               }
-            }
-          ]
-        }
-      ]
-    });
-
-    const rawText = response.text || "";
+            ]
+          }
+        ],
+        temperature: 0.2
+      });
+      rawText = routerResult.text;
+    } catch (genErr: any) {
+      console.warn("Facial scan generation fallback across all models:", genErr?.message || genErr);
+      return res.json({
+        hydrationScore: 82,
+        barrierScore: 86,
+        clarityScore: 89,
+        summary: "I apologize, but our AI services are currently out of credits/capacity across all models. Baseline visual skin balance analysis rendered.",
+        recommendations: [
+          "Incorporate hyaluronic acid serum on damp skin",
+          "Apply mineral or hybrid SPF 50 sunscreen",
+          "Ensure gentle double cleansing in the evening"
+        ],
+        uvRecommendation: "Moderate UV index today. Sunscreen application recommended."
+      });
+    }
     // Clean potential markdown backticks
     const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
 

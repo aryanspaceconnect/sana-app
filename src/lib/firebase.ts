@@ -3,7 +3,6 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
-  signInAnonymously, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -114,18 +113,6 @@ export const signUpWithEmail = async (email: string, pass: string, name?: string
   } catch (error) {
     console.error("Email sign up error:", error);
     throw error;
-  }
-};
-
-export const signInGuest = async () => {
-  try {
-    const result = await signInAnonymously(auth);
-    const user = result.user;
-    await syncUserProfile(user);
-    return user;
-  } catch (error: any) {
-    console.warn("Guest sign in unavailable (Anonymous auth disabled in Firebase config):", error?.message || error);
-    return null;
   }
 };
 
