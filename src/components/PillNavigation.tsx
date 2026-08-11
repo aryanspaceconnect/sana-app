@@ -10,14 +10,14 @@ const DynamicCalendarIcon: React.FC<{ isActive?: boolean }> = ({ isActive = fals
 
   return (
     <svg
-      width="20"
-      height="20"
+      width="21"
+      height="21"
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className="transition-transform duration-300 shrink-0"
     >
-      {/* Calendar Outer Frame */}
+      {/* Calendar Card Outer Border */}
       <rect
         x="3"
         y="4"
@@ -27,21 +27,21 @@ const DynamicCalendarIcon: React.FC<{ isActive?: boolean }> = ({ isActive = fals
         stroke={color}
         strokeWidth="1.8"
       />
-      {/* Top Header Line */}
+      {/* Top Divider Header Line */}
       <line
         x1="3"
-        y1="9"
+        y1="8.5"
         x2="21"
-        y2="9"
+        y2="8.5"
         stroke={color}
-        strokeWidth="1.3"
+        strokeWidth="1.5"
       />
-      {/* Binder Pegs */}
+      {/* Binder Loops */}
       <line
         x1="7.5"
         y1="2"
         x2="7.5"
-        y2="5"
+        y2="4.5"
         stroke={color}
         strokeWidth="1.8"
         strokeLinecap="round"
@@ -50,20 +50,22 @@ const DynamicCalendarIcon: React.FC<{ isActive?: boolean }> = ({ isActive = fals
         x1="16.5"
         y1="2"
         x2="16.5"
-        y2="5"
+        y2="4.5"
         stroke={color}
         strokeWidth="1.8"
         strokeLinecap="round"
       />
-      {/* Current Local Date Number */}
+      {/* Dynamic Date Text - Bold, centered & legible */}
       <text
         x="12"
-        y="17"
+        y="15.8"
         textAnchor="middle"
-        fontSize={dateNumber > 9 ? "8.5" : "9.5"}
+        dominantBaseline="central"
+        fontSize={dateNumber > 9 ? "9.5" : "10.5"}
         fontWeight="800"
         fill={color}
-        fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        fontFamily="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif"
+        letterSpacing="-0.02em"
       >
         {dateNumber}
       </text>
