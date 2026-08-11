@@ -372,6 +372,13 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         ? data.passOnTrace[data.passOnTrace.length - 1]
         : null;
 
+      const agentThoughts: string[] = [];
+      if (data.passOnTrace && Array.isArray(data.passOnTrace)) {
+        data.passOnTrace.forEach((p: any, idx: number) => {
+          if (p.thought) agentThoughts.push(`Iteration ${idx + 1} [${p.intent || 'Thinking'}]: ${p.thought}`);
+        });
+      }
+
       const modelMsg: ChatMessage = {
         id: `mod_${Date.now()}`,
         role: 'model',
@@ -387,9 +394,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           thinkingMode: (data.iterations && data.iterations > 1) ? 'hard' : 'easy',
           complexityScore: data.iterations ? Math.min(10, data.iterations * 3) : 3,
           appliedRules: ['SanaAgent PassOn Protocol', 'Grok Build Runtime Harness'],
-          reasoningSteps: data.passOnTrace
-            ? data.passOnTrace.map((p: any, idx: number) => `Iteration ${idx + 1} [${p.intent}]: ${p.thought}`)
-            : ['Executed SanaAgent PassOn loop']
+          reasoningSteps: agentThoughts.length > 0
+            ? agentThoughts
+            : ['Executed SanaAgent multi-step reasoning protocol.']
         }
       };
 
@@ -450,7 +457,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         {/* ThinkingReasoning Indicator */}
         {loading && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start my-1 w-full">
-            <ThinkingReasoning />
+            <ThinkingReasoning isStreaming={true} />
           </motion.div>
         )}
         <div ref={chatEndRef} />

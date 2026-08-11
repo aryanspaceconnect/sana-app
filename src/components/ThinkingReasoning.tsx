@@ -24,37 +24,74 @@ const FADE = 16; // top/bottom fade once the viewport is capped
 
 export interface ThinkingReasoningProps {
   customSentences?: string[];
+  isStreaming?: boolean;
 }
 
-export function ThinkingReasoning({ customSentences }: ThinkingReasoningProps) {
+export function ThinkingReasoning({ customSentences, isStreaming = false }: ThinkingReasoningProps) {
   const SENTENCES = customSentences && customSentences.length > 0 ? customSentences : DEFAULT_SENTENCES;
   
   // "thinking" | "done"
   const [phase, setPhase] = useState("thinking");
   const [revealed, setRevealed] = useState(0);
-  // While thinking the reasoning is always open; once done it folds into
-  // the summary and the user can toggle it back open.
   const [open, setOpen] = useState(false);
-  // Which soft fades to show while scrolling the unfolded reasoning.
   const [fade, setFade] = useState({ top: false, bottom: true });
   const viewportRef = useRef<HTMLDivElement>(null);
+  const startTimeRef = useRef<number>(Date.now());
+  const [elapsed, setElapsed] = useState(1);
 
+  // Track elapsed thinking duration
+  useEffect(() => {
+    if (phase === "done") return;
+    const interval = setInterval(() => {
+      setElapsed(Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000)));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  // Sequentially reveal sentences as they are provided
   useEffect(() => {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       setRevealed(SENTENCES.length);
-      setPhase("done");
+      if (!isStreaming) setPhase("done");
       return;
     }
+
+    let isMounted = true;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const at = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
-    let t = 0;
-    DELAYS.forEach((d, i) => {
-      t += d;
-      at(t, () => setRevealed(i + 1));
-    });
-    at(THINK_MS + COLLAPSE_BEAT, () => setPhase("done"));
-    return () => timers.forEach(clearTimeout);
-  }, [SENTENCES.length]);
+
+    // Step through each unrevealed sentence with smooth staggered delays
+    const stepDelay = 650; 
+    
+    let currentCount = revealed;
+    if (currentCount >= SENTENCES.length && !isStreaming) {
+      const timer = setTimeout(() => {
+        if (isMounted) setPhase("done");
+      }, COLLAPSE_BEAT);
+      timers.push(timer);
+    } else {
+      let cumulative = 0;
+      for (let i = currentCount; i < SENTENCES.length; i++) {
+        cumulative += DELAYS[i % DELAYS.length] || stepDelay;
+        const targetIdx = i + 1;
+        const t = setTimeout(() => {
+          if (isMounted) {
+            setRevealed(targetIdx);
+            if (targetIdx === SENTENCES.length && !isStreaming) {
+              setTimeout(() => {
+                if (isMounted) setPhase("done");
+              }, COLLAPSE_BEAT);
+            }
+          }
+        }, cumulative);
+        timers.push(t);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      timers.forEach(clearTimeout);
+    };
+  }, [SENTENCES, isStreaming]);
 
   const done = phase === "done";
   const expanded = done ? open : true;
@@ -100,7 +137,7 @@ export function ThinkingReasoning({ customSentences }: ThinkingReasoningProps) {
       >
         {done ? (
           <span className={styles.trLabel}>
-            <span className={styles.trVerb}>Thought</span> for {ELAPSED_S}s
+            <span className={styles.trVerb}>Thought</span> for {elapsed}s
           </span>
         ) : (
           <span className={styles.trLabel + " " + styles.trShimmer}>Thinking…</span>

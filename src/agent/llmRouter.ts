@@ -7,6 +7,7 @@ export interface LLMRouterOptions {
   responseMimeType?: string;
   temperature?: number;
   timeoutMs?: number;
+  includeThoughts?: boolean;
 }
 
 export interface LLMFunctionCall {
@@ -19,6 +20,7 @@ export interface LLMRouterResult {
   functionCalls: LLMFunctionCall[];
   modelUsed: string;
   attemptsCount: number;
+  thoughts?: string[];
   rawResponse?: any;
 }
 
@@ -102,6 +104,11 @@ export async function generateContentWithRouter(
             if (options.temperature !== undefined) {
               config.temperature = options.temperature;
             }
+            if (options.includeThoughts) {
+              config.thinkingConfig = {
+                includeThoughts: true
+              };
+            }
             if (options.tools && options.tools.length > 0) {
               config.tools = options.tools;
             }
@@ -113,7 +120,16 @@ export async function generateContentWithRouter(
             });
 
             const functionCalls: LLMFunctionCall[] = [];
-            
+            const thoughts: string[] = [];
+
+            if (response.candidates?.[0]?.content?.parts) {
+              for (const part of response.candidates[0].content.parts) {
+                if ((part as any).thought) {
+                  thoughts.push((part as any).thought);
+                }
+              }
+            }
+
             if (response.functionCalls && response.functionCalls.length > 0) {
               for (const fc of response.functionCalls) {
                 functionCalls.push({
@@ -137,6 +153,7 @@ export async function generateContentWithRouter(
             return {
               text,
               functionCalls,
+              thoughts: thoughts.length > 0 ? thoughts : undefined,
               rawResponse: response
             };
           })(),
@@ -179,6 +196,52 @@ export async function generateContentWithRouter(
 
   throw new AllModelsExhaustedError(
     `All LLM fallback models failed in router. Last error: ${lastError?.message || String(lastError)}`,
+    lastError
+  );
+}
+
+export async function* generateContentStreamWithRouter(options: LLMRouterOptions) {
+  const ai = getGenAIClient();
+  if (!ai) {
+    throw new AllModelsExhaustedError('GEMINI_API_KEY environment variable is missing.');
+  }
+
+  let lastError: any = null;
+
+  for (const model of GEMINI_MODEL_CASCADE) {
+    try {
+      const config: any = {};
+      if (options.systemInstruction) {
+        config.systemInstruction = options.systemInstruction;
+      }
+      if (options.temperature !== undefined) {
+        config.temperature = options.temperature;
+      }
+      if (options.includeThoughts) {
+        config.thinkingConfig = {
+          includeThoughts: true
+        };
+      }
+
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents: options.contents,
+        config: Object.keys(config).length > 0 ? config : undefined
+      });
+
+      for await (const chunk of responseStream) {
+        yield { chunk, modelUsed: model };
+      }
+      return;
+    } catch (err: any) {
+      console.warn(`[LLMRouter Stream] Model '${model}' stream failed:`, err?.message || err);
+      lastError = err;
+      // Fallback to next model in cascade
+    }
+  }
+
+  throw new AllModelsExhaustedError(
+    `All LLM fallback models failed in stream router. Last error: ${lastError?.message || String(lastError)}`,
     lastError
   );
 }

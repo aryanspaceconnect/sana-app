@@ -5,7 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { runSanaAgent } from "./src/agent/SanaAgent.js";
 import { executeActionProposal } from "./src/agent/workspace.js";
-import { generateContentWithRouter } from "./src/agent/llmRouter.js";
+import { generateContentWithRouter, generateContentStreamWithRouter } from "./src/agent/llmRouter.js";
 import { executeWebSearch } from "./src/agent/searchService.js";
 import { performExaSearch, performExaContents, performExaAnswer } from "./src/agent/exaSearchService.js";
 
@@ -151,13 +151,18 @@ Never use emojis. Maintain an elegant, warm, empathetic tone.`;
     }));
 
     let responseText = "";
+    let extractedThoughts: string[] = [];
     try {
       const routerResult = await generateContentWithRouter({
         contents,
         systemInstruction,
-        temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7
+        temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7,
+        includeThoughts: true
       });
       responseText = routerResult.text;
+      if (routerResult.thoughts && routerResult.thoughts.length > 0) {
+        extractedThoughts = routerResult.thoughts;
+      }
     } catch (genErr: any) {
       console.warn("Gemini generation fallback across all models:", genErr?.message || genErr);
       responseText = thinkingAnalysis.thinkingMode === 'hard'
@@ -165,14 +170,97 @@ Never use emojis. Maintain an elegant, warm, empathetic tone.`;
         : `I apologize, but our AI services are currently out of credits/capacity across all models. I processed your request ("${thinkingAnalysis.intent}") in offline fallback mode. Keep your routine simple, hydrated, and protected with daily sunscreen.`;
     }
 
+    const finalReasoningSteps = extractedThoughts.length > 0
+      ? [...thinkingAnalysis.reasoningSteps, "--- Gemini Model Thought Trace ---", ...extractedThoughts]
+      : thinkingAnalysis.reasoningSteps;
+
     return res.json({
       role: "model",
       text: responseText || "I'm here to support your skin wellness routine. How can I assist you today?",
-      thinkingMeta: thinkingAnalysis
+      thinkingMeta: {
+        ...thinkingAnalysis,
+        reasoningSteps: finalReasoningSteps,
+        modelThoughts: extractedThoughts
+      }
     });
   } catch (error: any) {
     console.error("Error in /api/chat:", error);
     res.status(500).json({ error: "Failed to generate AI response", details: error?.message });
+  }
+});
+
+// SSE Streaming Route for Real-time AI Agent Thinking & Response
+app.post("/api/chat/stream", async (req, res) => {
+  try {
+    const { messages = [], userProfile = {} } = req.body;
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: "Invalid payload: 'messages' must be an array" });
+    }
+
+    const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop()?.text || "";
+    const thinkingAnalysis = analyzeIntentAndThinkingMode(lastUserMsg);
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // Send initial metadata event
+    res.write(`data: ${JSON.stringify({ type: 'meta', thinkingMeta: thinkingAnalysis })}\n\n`);
+
+    const contents = messages.map((m: { role: string; text: string }) => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.text }]
+    }));
+
+    const systemInstruction = `You are SANA, a sophisticated AI skin health & wellness thinking agent.
+User Name: ${userProfile?.displayName || 'User'}.
+Selected Agent Thinking Strategy: ${thinkingAnalysis.thinkingMode.toUpperCase()} THINKING MODE (Calculated Complexity: ${thinkingAnalysis.complexityScore}/10).
+Detected Intent: ${thinkingAnalysis.intent}.
+Applied Agent Swift Rules: ${thinkingAnalysis.appliedRules.join("; ")}.
+
+Instructions:
+${thinkingAnalysis.thinkingMode === 'hard'
+  ? "Deliver a deep, thorough, clinical-grade skin health analysis. Break down active ingredients, skin barrier protection rules, and step-by-step guidance clearly with expert depth."
+  : "Deliver a concise, clear, and direct friendly answer. Keep it approachable and easy to digest."
+}
+Never use emojis. Maintain an elegant, warm, empathetic tone.`;
+
+    try {
+      const streamGenerator = generateContentStreamWithRouter({
+        contents,
+        systemInstruction,
+        temperature: thinkingAnalysis.thinkingMode === 'hard' ? 0.4 : 0.7,
+        includeThoughts: true
+      });
+
+      for await (const { chunk } of streamGenerator) {
+        if (chunk.candidates?.[0]?.content?.parts) {
+          for (const part of chunk.candidates[0].content.parts) {
+            if ((part as any).thought) {
+              res.write(`data: ${JSON.stringify({ type: 'thought', text: (part as any).thought })}\n\n`);
+            }
+            if (part.text) {
+              res.write(`data: ${JSON.stringify({ type: 'text', text: part.text })}\n\n`);
+            }
+          }
+        }
+      }
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
+    } catch (streamErr: any) {
+      console.warn("Stream error in /api/chat/stream:", streamErr?.message || streamErr);
+      res.write(`data: ${JSON.stringify({
+        type: 'text',
+        text: thinkingAnalysis.thinkingMode === 'hard'
+          ? `[CLINICAL ANALYSIS: ${thinkingAnalysis.intent}]\n1. Active Ingredient Chemistry: Layer lightweight water-based serums before rich barrier creams.\n2. Barrier Protection: Avoid combining high-strength retinoids and exfoliating acids in the same session.\n3. Protection: Always finish morning routine with SPF 50.`
+          : `I processed your request in offline fallback mode. Keep your routine simple, hydrated, and protected with daily sunscreen.`
+      })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
+    }
+  } catch (error: any) {
+    console.error("Error in /api/chat/stream:", error);
+    res.status(500).json({ error: "Failed to stream AI response" });
   }
 });
 

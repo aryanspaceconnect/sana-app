@@ -104,7 +104,8 @@ export async function reasoningNode(state: AgentState) {
       contents: llmMessages,
       tools: toolsDeclarations,
       systemInstruction: systemPrompt,
-      temperature: 0.3
+      temperature: 0.3,
+      includeThoughts: true
     });
 
     // Check if the LLM issued function calls
