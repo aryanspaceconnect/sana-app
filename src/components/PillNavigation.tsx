@@ -160,31 +160,6 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                 </motion.span>
               )}
             </button>
-
-            {/* Option 4: MCP Protocol Hub */}
-            <button
-              onClick={() => onTabChange('mcp')}
-              className={`relative px-4 py-2.5 rounded-[16px] flex items-center space-x-2 transition-all duration-300 cursor-pointer ${
-                activeTab === 'mcp'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-[#616874] hover:text-[#1a1c1e] hover:bg-[#f2f4f7]'
-              }`}
-            >
-              <Icon 
-                icon={activeTab === 'mcp' ? "solar:cpu-bolt-bold" : "solar:cpu-bolt-linear"} 
-                className="w-5 h-5 transition-transform duration-300" 
-              />
-              {activeTab === 'mcp' && (
-                <motion.span
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="text-[13px] font-medium tracking-tight whitespace-nowrap overflow-hidden"
-                >
-                  MCP Hub
-                </motion.span>
-              )}
-            </button>
           </motion.div>
         </div>
         )}

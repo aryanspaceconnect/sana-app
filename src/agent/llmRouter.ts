@@ -69,16 +69,175 @@ export class AllModelsExhaustedError extends Error {
 }
 
 /**
+ * Helper to convert arbitrary contents & systemInstruction into OpenAI chat messages format
+ * for ChatNVIDIA / NVIDIA AI Foundation Endpoints.
+ */
+export function formatContentsForNvidia(contents: any, systemInstruction?: string) {
+  const messages: { role: string; content: string }[] = [];
+  if (systemInstruction) {
+    messages.push({ role: 'system', content: systemInstruction });
+  }
+
+  if (Array.isArray(contents)) {
+    for (const msg of contents) {
+      if (typeof msg === 'string') {
+        messages.push({ role: 'user', content: msg });
+      } else if (msg.role && Array.isArray(msg.parts)) {
+        const textParts = msg.parts
+          .map((p: any) => (typeof p === 'string' ? p : p.text || ''))
+          .filter(Boolean)
+          .join('\n');
+        const role = msg.role === 'model' ? 'assistant' : msg.role;
+        messages.push({ role, content: textParts });
+      } else if (msg.content) {
+        messages.push({ role: msg.role || 'user', content: String(msg.content) });
+      }
+    }
+  } else if (typeof contents === 'string') {
+    messages.push({ role: 'user', content: contents });
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: 'user', content: 'Hello' });
+  }
+
+  return messages;
+}
+
+/**
+ * NVIDIA AI Endpoint fallback client using ChatNVIDIA parameters (z-ai/glm-5.2)
+ * Triggers seamlessly when Gemini tokens/quota are completely exhausted.
+ */
+export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLMRouterResult> {
+  const apiKey = process.env.NVIDIA_API_KEY || "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";
+  const messages = formatContentsForNvidia(options.contents, options.systemInstruction);
+
+  console.log("[LLMRouter] Gemini quota/tokens exhausted or client unavailable. Triggering ChatNVIDIA fallback (model: z-ai/glm-5.2)...");
+
+  try {
+    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "z-ai/glm-5.2",
+        messages,
+        temperature: options.temperature !== undefined ? options.temperature : 1,
+        top_p: 1,
+        max_tokens: 16384,
+        seed: 42
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`NVIDIA API call failed [HTTP ${response.status}]: ${errText}`);
+    }
+
+    const data = await response.json();
+    const choice = data.choices?.[0];
+    const responseText = choice?.message?.content || "";
+
+    return {
+      text: responseText,
+      functionCalls: [],
+      modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)",
+      attemptsCount: 1,
+      thoughts: ["[NVIDIA ChatNVIDIA Active] Served via z-ai/glm-5.2 model when Gemini tokens were exhausted."],
+      rawResponse: data
+    };
+  } catch (err: any) {
+    console.error("[LLMRouter] NVIDIA Fallback error:", err?.message || err);
+    throw err;
+  }
+}
+
+/**
+ * NVIDIA AI Endpoint streaming fallback client using ChatNVIDIA parameters (z-ai/glm-5.2)
+ */
+export async function* streamNvidiaFallback(options: LLMRouterOptions) {
+  const apiKey = process.env.NVIDIA_API_KEY || "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";
+  const messages = formatContentsForNvidia(options.contents, options.systemInstruction);
+
+  console.log("[LLMRouter Stream] Gemini quota/tokens exhausted. Triggering ChatNVIDIA streaming fallback (model: z-ai/glm-5.2)...");
+
+  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "z-ai/glm-5.2",
+      messages,
+      temperature: options.temperature !== undefined ? options.temperature : 1,
+      top_p: 1,
+      max_tokens: 16384,
+      seed: 42,
+      stream: true
+    })
+  });
+
+  if (!response.ok || !response.body) {
+    const errText = await response.text();
+    throw new Error(`NVIDIA Stream API call failed [HTTP ${response.status}]: ${errText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(':')) continue;
+      if (trimmed === 'data: [DONE]') return;
+      if (trimmed.startsWith('data: ')) {
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const deltaText = json.choices?.[0]?.delta?.content;
+          if (deltaText) {
+            yield {
+              chunk: {
+                candidates: [
+                  {
+                    content: {
+                      parts: [{ text: deltaText }]
+                    }
+                  }
+                ]
+              },
+              modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)"
+            };
+          }
+        } catch {
+          // ignore chunk parse error
+        }
+      }
+    }
+  }
+}
+
+/**
  * Executes a Gemini content generation request through a paranoid fallback router.
  * Automatically tries descending models if quota, rate-limit (429), timeouts, or model errors occur.
- * Supports native Function Calling and tool outputs.
+ * If all Gemini models run out of tokens/quota, seamlessly falls back to ChatNVIDIA (z-ai/glm-5.2).
  */
 export async function generateContentWithRouter(
   options: LLMRouterOptions
 ): Promise<LLMRouterResult> {
   const ai = getGenAIClient();
   if (!ai) {
-    throw new AllModelsExhaustedError('GEMINI_API_KEY environment variable is missing.');
+    console.warn("[LLMRouter] GEMINI_API_KEY is missing. Directly falling back to ChatNVIDIA (z-ai/glm-5.2).");
+    return callNvidiaFallback(options);
   }
 
   const timeoutMs = options.timeoutMs || 15000;
@@ -201,16 +360,23 @@ export async function generateContentWithRouter(
     }
   }
 
-  throw new AllModelsExhaustedError(
-    `All LLM fallback models failed in router. Last error: ${lastError?.message || String(lastError)}`,
-    lastError
-  );
+  console.warn(`[LLMRouter] All Gemini models in cascade failed. Activating ChatNVIDIA (z-ai/glm-5.2) fallback...`);
+  try {
+    return await callNvidiaFallback(options);
+  } catch (nvidiaErr: any) {
+    throw new AllModelsExhaustedError(
+      `All Gemini models and NVIDIA fallback failed in router. Gemini last error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
+      lastError
+    );
+  }
 }
 
 export async function* generateContentStreamWithRouter(options: LLMRouterOptions) {
   const ai = getGenAIClient();
   if (!ai) {
-    throw new AllModelsExhaustedError('GEMINI_API_KEY environment variable is missing.');
+    console.warn("[LLMRouter Stream] GEMINI_API_KEY is missing. Streaming via ChatNVIDIA (z-ai/glm-5.2) fallback.");
+    yield* streamNvidiaFallback(options);
+    return;
   }
 
   let lastError: any = null;
@@ -247,9 +413,14 @@ export async function* generateContentStreamWithRouter(options: LLMRouterOptions
     }
   }
 
-  throw new AllModelsExhaustedError(
-    `All LLM fallback models failed in stream router. Last error: ${lastError?.message || String(lastError)}`,
-    lastError
-  );
+  console.warn(`[LLMRouter Stream] All Gemini models in stream cascade failed. Streaming via ChatNVIDIA (z-ai/glm-5.2)...`);
+  try {
+    yield* streamNvidiaFallback(options);
+  } catch (nvidiaErr: any) {
+    throw new AllModelsExhaustedError(
+      `All Gemini models and NVIDIA stream fallback failed. Gemini error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
+      lastError
+    );
+  }
 }
 
