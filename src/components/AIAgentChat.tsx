@@ -2,15 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
-import { TextLoader } from "generative-loaders";
-import "generative-loaders/styles.css";
 import { UserProfile, ChatMessage } from '../types';
 import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
 import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
 import { AgentMemoryService } from '../services/AgentMemoryService';
-import { Orb } from './Orb';
 import { ApprovalCard } from './ApprovalCard';
-import { ThinkingReasoning } from './ThinkingReasoning';
+import { ThinkingReasoning, TraceRow } from './ThinkingReasoning';
+import { LoadingState } from './LoadingState';
 import { WebSearch } from './WebSearch';
 
 interface AIAgentChatProps {
@@ -25,6 +23,44 @@ interface ChatMessageBubbleProps {
   chatId: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
+
+const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: number } => {
+  const rows: TraceRow[] = [];
+
+  if (msg.passOnTrace && Array.isArray(msg.passOnTrace)) {
+    msg.passOnTrace.forEach((p: any) => {
+      if (p.thought) {
+        rows.push({
+          primary: p.thought,
+          type: 'Reasoning'
+        });
+      }
+      if (p.nextTools && Array.isArray(p.nextTools)) {
+        p.nextTools.forEach((tc: any) => {
+          rows.push({
+            primary: `Tool: ${tc.name}`,
+            secondary: tc.arguments ? JSON.stringify(tc.arguments).slice(0, 45) : undefined,
+            mono: true,
+            type: 'Tool'
+          });
+        });
+      }
+    });
+  }
+
+  if (msg.thinkingMeta?.modelThoughts && Array.isArray(msg.thinkingMeta.modelThoughts)) {
+    msg.thinkingMeta.modelThoughts.forEach((th: string) => {
+      if (th && !rows.some(r => r.primary === th)) {
+        rows.push({ primary: th, type: 'Reasoning' });
+      }
+    });
+  }
+
+  return {
+    rows,
+    elapsed: msg.thinkingMeta?.elapsedSeconds
+  };
+};
 
 const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
   ({ msg, userProfile, chatId, setMessages }) => {
@@ -43,6 +79,7 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
 
     // Clean text by removing raw [SEARCH: "..."] tags if any
     const displayText = (msg.text || '').replace(/\[SEARCH:\s*["']?([^"']+)["']?\]/gi, '').trim();
+    const { rows: traceRows, elapsed: traceElapsed } = extractTraceRows(msg);
 
     return (
       <motion.div
@@ -59,10 +96,10 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
           </div>
         ) : (
           <div className="w-full max-w-[96%] py-1 px-1 text-[#1e2229]">
-            {/* Thinking / Reasoning Stream Dropdown */}
-            {msg.thinkingMeta && (
+            {/* Real Thinking Trace Dropdown - Rendered ONLY if real thoughts/tools exist */}
+            {traceRows.length > 0 && (
               <div className="mb-2">
-                <ThinkingReasoning customSentences={msg.thinkingMeta.reasoningSteps} />
+                <ThinkingReasoning isWorking={false} rows={traceRows} elapsedSeconds={traceElapsed} />
               </div>
             )}
 
@@ -195,9 +232,10 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [thinkingPhase, setThinkingPhase] = useState<string>('SANA is analyzing...');
+  const [processingStatus, setProcessingStatus] = useState<'idle' | 'loading' | 'working'>('idle');
+  const [liveTraceRows, setLiveTraceRows] = useState<TraceRow[]>([]);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const requestStartTimeRef = useRef<number>(0);
 
   // Agent Vault state
   const [showVaultModal, setShowVaultModal] = useState(false);
@@ -221,14 +259,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           id: 'welcome',
           role: 'model',
           text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your multi-step skin health & wellness agent equipped with an **Isolated Agent Memory Vault**. Ask me to analyze ingredients, schedule routines, store skin memories, or index uploaded documents.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          thinkingMeta: {
-            intent: 'WELCOME_INIT',
-            thinkingMode: 'easy',
-            complexityScore: 1,
-            appliedRules: ['SanaAgent Multi-step PassOn initialization', 'Isolated Agent Vault Active'],
-            reasoningSteps: ['Session initialized with SanaAgent runtime harness and user-isolated vault.']
-          }
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages([initialMsg]);
       }
@@ -274,11 +305,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, loading]);
+  }, [messages.length, processingStatus]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
-    if (!text.trim() || loading) return;
+    if (!text.trim() || processingStatus !== 'idle') return;
 
     const userMsg: ChatMessage = {
       id: `usr_${Date.now()}`,
@@ -290,16 +321,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInputText('');
-    setLoading(true);
-
-    // Animated thinking phases for multi-step loop
-    setThinkingPhase('Planner Step: Generating PassOn Protocol...');
-    const timer1 = setTimeout(() => {
-      setThinkingPhase('Context Step: Loading requested workspace memory layers...');
-    }, 800);
-    const timer2 = setTimeout(() => {
-      setThinkingPhase('Execution Step: Running tool calls & evaluating guardrails...');
-    }, 1600);
+    
+    // Start initial loading state ("Funneling request")
+    setProcessingStatus('loading');
+    setLiveTraceRows([]);
+    requestStartTimeRef.current = Date.now();
 
     if (userProfile?.uid) {
       saveChatMessage(userProfile.uid, chatId, updatedMessages);
@@ -326,9 +352,13 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         setSessionId(data.sessionId);
       }
 
-      // Check if any tool triggered a popup card or web_search
+      // Transition to working state as soon as LLM response payload arrives
+      setProcessingStatus('working');
+
+      // Extract real tool results & detected queries
       let detectedSearchQuery: string | undefined = undefined;
       let detectedSearchSites: any[] | undefined = undefined;
+      const realTraceRows: TraceRow[] = [];
 
       if (data.toolResults && Array.isArray(data.toolResults)) {
         for (const tr of data.toolResults) {
@@ -336,11 +366,22 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             detectedSearchQuery = tr.data.query || tr.data.searchQuery;
             detectedSearchSites = tr.data.sites || tr.data.searchSites;
           }
+          realTraceRows.push({
+            primary: `Executed: ${tr.toolName}`,
+            secondary: tr.error ? 'failed' : 'ok',
+            type: 'Tool'
+          });
         }
       }
 
       if (data.passOnTrace && Array.isArray(data.passOnTrace)) {
         for (const passOn of data.passOnTrace) {
+          if (passOn.thought) {
+            realTraceRows.push({
+              primary: passOn.thought,
+              type: 'Reasoning'
+            });
+          }
           if (passOn.nextTools) {
             for (const toolCall of passOn.nextTools) {
               if (toolCall.name === 'trigger_popup_card' && onTriggerPopup) {
@@ -363,21 +404,19 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                   detectedSearchQuery = args.query;
                 }
               }
+              realTraceRows.push({
+                primary: `Tool Call: ${toolCall.name}`,
+                secondary: toolCall.arguments ? JSON.stringify(toolCall.arguments).slice(0, 40) : undefined,
+                mono: true,
+                type: 'Tool'
+              });
             }
           }
         }
       }
 
-      const lastPassOn = data.passOnTrace && data.passOnTrace.length > 0
-        ? data.passOnTrace[data.passOnTrace.length - 1]
-        : null;
-
-      const agentThoughts: string[] = [];
-      if (data.passOnTrace && Array.isArray(data.passOnTrace)) {
-        data.passOnTrace.forEach((p: any, idx: number) => {
-          if (p.thought) agentThoughts.push(`Iteration ${idx + 1} [${p.intent || 'Thinking'}]: ${p.thought}`);
-        });
-      }
+      setLiveTraceRows(realTraceRows);
+      const elapsedSeconds = (Date.now() - requestStartTimeRef.current) / 1000;
 
       const modelMsg: ChatMessage = {
         id: `mod_${Date.now()}`,
@@ -390,13 +429,12 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         searchQuery: detectedSearchQuery,
         searchSites: detectedSearchSites,
         thinkingMeta: {
-          intent: lastPassOn?.intent || 'AGENT_LOOP',
+          intent: data.passOnTrace?.[0]?.intent || 'AGENT_LOOP',
           thinkingMode: (data.iterations && data.iterations > 1) ? 'hard' : 'easy',
           complexityScore: data.iterations ? Math.min(10, data.iterations * 3) : 3,
-          appliedRules: ['SanaAgent PassOn Protocol', 'Grok Build Runtime Harness'],
-          reasoningSteps: agentThoughts.length > 0
-            ? agentThoughts
-            : ['Executed SanaAgent multi-step reasoning protocol.']
+          appliedRules: ['SanaAgent PassOn Protocol'],
+          reasoningSteps: [],
+          elapsedSeconds
         }
       };
 
@@ -427,9 +465,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
       }
     } finally {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      setLoading(false);
+      setProcessingStatus('idle');
     }
   };
 
@@ -454,12 +490,20 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           />
         ))}
 
-        {/* ThinkingReasoning Indicator */}
-        {loading && (
+        {/* Initial Loading Indicator (Before LLM output begins) */}
+        {processingStatus === 'loading' && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start my-1 w-full">
-            <ThinkingReasoning isStreaming={true} />
+            <LoadingState label="Funneling request" variant="Drive" />
           </motion.div>
         )}
+
+        {/* Working State Indicator (While LLM is processing/generating) */}
+        {processingStatus === 'working' && (
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start my-1 w-full">
+            <ThinkingReasoning isWorking={true} rows={liveTraceRows} />
+          </motion.div>
+        )}
+
         <div ref={chatEndRef} />
       </div>
 
@@ -513,7 +557,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           />
           <button
             type="submit"
-            disabled={!inputText.trim() || loading}
+            disabled={!inputText.trim() || processingStatus !== 'idle'}
             className="w-10 h-10 rounded-2xl bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-40 transition-opacity cursor-pointer shadow-xs"
           >
             <Icon icon="solar:plain-2-bold" className="w-4 h-4" />
@@ -610,3 +654,4 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   );
 };
 
+export default AIAgentChat;

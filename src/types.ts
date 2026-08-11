@@ -34,6 +34,8 @@ export interface ThinkingMeta {
   complexityScore: number;
   appliedRules: string[];
   reasoningSteps: string[];
+  modelThoughts?: string[];
+  elapsedSeconds?: number;
 }
 
 export interface ChatMessage {

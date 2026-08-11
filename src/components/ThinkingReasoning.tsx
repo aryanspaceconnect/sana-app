@@ -1,180 +1,192 @@
-import styles from "./ThinkingReasoning.module.css";
-import { useEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 
-const DEFAULT_SENTENCES = [
-  "Reading the request and analyzing skin profile & query context.",
-  "Cross-referencing active ingredients with clinical safety & sensitivity guidelines.",
-  "Checking user Memory Vault for recorded skin incidents, goals, or routine preferences.",
-  "Formulating personalized clinical skincare advice and step-by-step guidance.",
-  "Verifying safety compatibility and potential ingredient contraindications.",
-  "Synthesizing final response with tailored skincare recommendations.",
-];
-
-// Per-sentence reveal cadence (ms). Sums to ~5s of "thinking".
-const DELAYS = [700, 900, 800, 850, 800, 900];
-const THINK_MS = DELAYS.reduce((a, b) => a + b, 0);
-const ELAPSED_S = Math.max(1, Math.round(THINK_MS / 1000));
-const COLLAPSE_BEAT = 360;
-
-// Geometry — keep in sync with the CSS below.
-const SENT_H = 40; // 2 lines × 20px
-const GAP = 4;
-const MAX_H = 180; // viewport grows with content up to this, then scrolls
-const FADE = 16; // top/bottom fade once the viewport is capped
+export type TraceRow = {
+  primary: string;
+  secondary?: string;
+  mono?: boolean;
+  add?: number;
+  del?: number;
+  href?: string;
+  type?: 'Step' | 'Reasoning' | 'Search' | 'Coding' | 'Tool';
+};
 
 export interface ThinkingReasoningProps {
-  customSentences?: string[];
-  isStreaming?: boolean;
+  isWorking?: boolean;
+  rows?: TraceRow[];
+  query?: string;
+  variant?: "Steps" | "Reasoning" | "Search" | "Coding";
+  elapsedSeconds?: number;
+  customSentences?: string[]; // Legacy prop compatibility
+  isStreaming?: boolean; // Legacy prop compatibility
 }
 
-export function ThinkingReasoning({ customSentences, isStreaming = false }: ThinkingReasoningProps) {
-  const SENTENCES = customSentences && customSentences.length > 0 ? customSentences : DEFAULT_SENTENCES;
+export function ThinkingReasoning({
+  isWorking = false,
+  rows = [],
+  query,
+  variant = "Steps",
+  elapsedSeconds,
+  customSentences,
+  isStreaming
+}: ThinkingReasoningProps) {
+  // Process customSentences or legacy props into real rows if provided
+  const actualRows: TraceRow[] = rows.length > 0 
+    ? rows 
+    : (customSentences && customSentences.length > 0 
+        ? customSentences.map(s => ({ primary: s, type: 'Reasoning' })) 
+        : []);
+
+  const working = isWorking || Boolean(isStreaming);
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
+  const [selectedTool, setSelectedTool] = useState<string | null>(null);
   
-  // "thinking" | "done"
-  const [phase, setPhase] = useState("thinking");
-  const [revealed, setRevealed] = useState(0);
-  const [open, setOpen] = useState(false);
-  const [fade, setFade] = useState({ top: false, bottom: true });
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const startTimeRef = useRef<number>(Date.now());
-  const [elapsed, setElapsed] = useState(1);
+  const expanded = manualExpanded ?? working;
+  const traceRef = useRef<HTMLDivElement>(null);
+  const [lineHeight, setLineHeight] = useState(0);
 
-  // Track elapsed thinking duration
-  useEffect(() => {
-    if (phase === "done") return;
-    const interval = setInterval(() => {
-      setElapsed(Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000)));
-    }, 500);
-    return () => clearInterval(interval);
-  }, [phase]);
-
-  // Sequentially reveal sentences as they are provided
-  useEffect(() => {
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      setRevealed(SENTENCES.length);
-      if (!isStreaming) setPhase("done");
-      return;
+  useLayoutEffect(() => {
+    if (traceRef.current) {
+      setLineHeight(traceRef.current.offsetHeight);
     }
+  }, [actualRows.length, expanded, variant]);
 
-    let isMounted = true;
-    const timers: ReturnType<typeof setTimeout>[] = [];
+  const activeText = "Working...";
+  const toolsCount = actualRows.filter(r => r.type === 'Tool' || r.type === 'Coding').length;
+  
+  let doneText = "Thought complete";
+  if (toolsCount > 0) {
+    doneText = `Ran ${toolsCount} tool${toolsCount > 1 ? 's' : ''}`;
+  } else if (elapsedSeconds && elapsedSeconds > 0) {
+    doneText = `Thought for ${elapsedSeconds.toFixed(1)}s`;
+  } else if (actualRows.length > 0) {
+    doneText = `Thought (${actualRows.length} step${actualRows.length > 1 ? 's' : ''})`;
+  }
 
-    // Step through each unrevealed sentence with smooth staggered delays
-    const stepDelay = 650; 
-    
-    let currentCount = revealed;
-    if (currentCount >= SENTENCES.length && !isStreaming) {
-      const timer = setTimeout(() => {
-        if (isMounted) setPhase("done");
-      }, COLLAPSE_BEAT);
-      timers.push(timer);
-    } else {
-      let cumulative = 0;
-      for (let i = currentCount; i < SENTENCES.length; i++) {
-        cumulative += DELAYS[i % DELAYS.length] || stepDelay;
-        const targetIdx = i + 1;
-        const t = setTimeout(() => {
-          if (isMounted) {
-            setRevealed(targetIdx);
-            if (targetIdx === SENTENCES.length && !isStreaming) {
-              setTimeout(() => {
-                if (isMounted) setPhase("done");
-              }, COLLAPSE_BEAT);
-            }
-          }
-        }, cumulative);
-        timers.push(t);
-      }
-    }
-
-    return () => {
-      isMounted = false;
-      timers.forEach(clearTimeout);
-    };
-  }, [SENTENCES, isStreaming]);
-
-  const done = phase === "done";
-  const expanded = done ? open : true;
-  const count = done ? SENTENCES.length : revealed;
-  const contentH = count > 0 ? count * SENT_H + (count - 1) * GAP : 0;
-  const capped = contentH > MAX_H;
-  const viewH = capped ? MAX_H : contentH;
-  const scrollable = done && open;
-  const translate = scrollable ? 0 : capped ? MAX_H - FADE - contentH : 0;
-
-  const showTop = scrollable ? fade.top : capped;
-  const showBottom = scrollable ? fade.bottom : capped;
-  const mask = capped
-    ? `linear-gradient(to bottom, transparent 0, #000 ${showTop ? FADE : 0}px, #000 calc(100% - ${showBottom ? FADE : 0}px), transparent 100%)`
-    : "none";
-
-  const onScroll = () => {
-    const el = viewportRef.current;
-    if (!el) return;
-    setFade({
-      top: el.scrollTop > 1,
-      bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 1,
-    });
-  };
-
-  const toggle = () => {
-    const next = !open;
-    if (next) {
-      setFade({ top: false, bottom: true });
-      if (viewportRef.current) viewportRef.current.scrollTop = 0;
-    }
-    setOpen(next);
-  };
+  // If not working and there are no actual thoughts/tools, do NOT render empty fake trace!
+  if (!working && actualRows.length === 0) {
+    return null;
+  }
 
   return (
-    <div className={styles.tr}>
+    <div className="flex w-full max-w-md flex-col my-1 font-sans">
+      {/* Header Button */}
       <button
         type="button"
-        className={styles.trHeader + (done ? " " + styles.isClickable : "")}
         aria-expanded={expanded}
-        aria-label="Toggle thought"
-        onClick={done ? toggle : undefined}
+        onClick={() => setManualExpanded((current) => !(current ?? working))}
+        className="-mx-1 flex w-fit items-center gap-2 rounded-lg px-2 py-1 transition-colors duration-150 hover:bg-slate-100 cursor-pointer"
       >
-        {done ? (
-          <span className={styles.trLabel}>
-            <span className={styles.trVerb}>Thought</span> for {elapsed}s
+        <svg width="15" height="15" viewBox="0 0 24 24" fill={working ? "#334155" : "#94a3b8"}>
+          <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
+        </svg>
+
+        {working ? (
+          <span
+            className="bg-clip-text text-[13px] font-medium whitespace-nowrap text-transparent"
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, #64748b 35%, #0f172a 50%, #64748b 65%)",
+              backgroundSize: "200% 100%",
+              animation: "shimmer-text 1.4s linear infinite",
+            }}
+          >
+            {activeText}
           </span>
         ) : (
-          <span className={styles.trLabel + " " + styles.trShimmer}>Thinking…</span>
+          <span className="text-[12.5px] font-medium whitespace-nowrap text-slate-600">
+            {doneText}
+          </span>
         )}
-        {done && (
-          <svg
-            className={styles.trChevron}
-            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-            viewBox="0 0 24 24"
-            width="12"
-            height="12"
-            aria-hidden="true"
-          >
-            <path
-              d="m4.5 15.75 7.5-7.5 7.5 7.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
+
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#94a3b8"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="transition-transform duration-300"
+          style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
       </button>
 
-      <div className={styles.trCollapsible + (expanded ? "" : " " + styles.isCollapsed)}>
-        <div className={styles.trInner}>
-          <div
-            ref={viewportRef}
-            className={styles.trViewport + (scrollable ? " " + styles.isScroll : "")}
-            style={{ height: `${viewH}px`, WebkitMaskImage: mask, maskImage: mask }}
-            onScroll={scrollable ? onScroll : undefined}
-          >
-            <div className={styles.trStream} style={{ transform: `translateY(${translate}px)` }}>
-              {SENTENCES.slice(0, count).map((line, i) => (
-                <p key={i} className={styles.trSentence}>{line}</p>
-              ))}
+      {/* Expandable Trace View */}
+      <div
+        className="grid transition-[grid-template-rows,opacity] duration-300"
+        style={{
+          gridTemplateRows: expanded ? "1fr" : "0fr",
+          opacity: expanded ? 1 : 0,
+          transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
+        }}
+      >
+        <div className="overflow-hidden">
+          <div className="relative mt-1 ml-[5px] pl-3.5">
+            {actualRows.length > 0 && (
+              <span
+                aria-hidden
+                className="absolute left-[3px] w-px bg-slate-200/80"
+                style={{
+                  top: 0,
+                  height: lineHeight ? Math.max(0, lineHeight - 4) : 0,
+                  transition: "height 300ms cubic-bezier(0.23,1,0.32,1)"
+                }}
+              />
+            )}
+            <div ref={traceRef} className="flex flex-col gap-1 py-1">
+              {query && (
+                <div className="flex h-6 items-center gap-2 px-1.5">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" className="shrink-0">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M21 21l-4.3-4.3" />
+                  </svg>
+                  <span className="text-[12px] text-slate-700 font-medium">{query}</span>
+                </div>
+              )}
+
+              {actualRows.map((row, i) => {
+                const isSelected = selectedTool === row.primary;
+                return (
+                  <div
+                    key={i}
+                    onClick={() => row.secondary ? setSelectedTool(isSelected ? null : row.primary) : undefined}
+                    className={`flex min-h-6 w-full items-start gap-2 rounded-md px-1.5 py-0.5 text-left transition-colors ${
+                      row.secondary ? "cursor-pointer hover:bg-slate-100/70" : ""
+                    }`}
+                  >
+                    {/* Status Dot / Icon */}
+                    {row.type === 'Search' ? (
+                      <span className="flex size-3.5 shrink-0 items-center justify-center rounded-full text-white bg-emerald-500 mt-0.5">
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <circle cx="12" cy="12" r="9" />
+                        </svg>
+                      </span>
+                    ) : i < actualRows.length - 1 || !working ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-1">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    ) : (
+                      <span className="size-3 shrink-0 rounded-full border-[1.5px] border-slate-300 border-t-slate-800 animate-spin mt-0.5" />
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[12px] ${row.type === 'Reasoning' ? 'text-slate-600 font-normal leading-relaxed' : 'font-medium text-slate-800'}`}>
+                          {row.primary}
+                        </span>
+                        {row.secondary && (
+                          <span className={`shrink-0 text-[11px] text-slate-400 ${row.mono ? "font-mono bg-slate-100 px-1 py-0.2 rounded" : ""}`}>
+                            {row.secondary}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -182,3 +194,6 @@ export function ThinkingReasoning({ customSentences, isStreaming = false }: Thin
     </div>
   );
 }
+
+export const ThinkingState = ThinkingReasoning;
+export default ThinkingReasoning;

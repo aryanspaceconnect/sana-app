@@ -60,46 +60,36 @@ function analyzeIntentAndThinkingMode(userPrompt: string): ThinkingAnalysis {
     intent = "CASUAL_GREETING";
     thinkingMode = 'easy';
     complexityScore = 1;
-    appliedRules.push("Swift Rule 1: Casual greeting -> Fast-path direct conversational mode.");
-    reasoningSteps.push("Phase 1: Intent recognized as standard user greeting.");
-    reasoningSteps.push("Phase 2: Bypassed deep clinical reasoning; selected Easy Thinking Mode.");
+    appliedRules.push("Casual greeting -> Direct conversational mode.");
   } else {
-    reasoningSteps.push("Phase 1: Intent Analysis started — scanning entities & keywords.");
-
     if (mentionsActives) {
       intent = "INGREDIENT_CHEMISTRY";
       complexityScore += 3;
-      appliedRules.push("Swift Rule 2: Active ingredient chemistry / compatibility detected.");
-      reasoningSteps.push("Identified active biochemical compounds requiring interaction checking.");
+      appliedRules.push("Active ingredient chemistry / compatibility detected.");
     }
 
     if (mentionsBarrierDamage) {
       intent = "BARRIER_TRIAGE";
       complexityScore += 4;
-      appliedRules.push("Swift Rule 3: Skin barrier vulnerability / acute damage alert detected.");
-      reasoningSteps.push("Assessing lipid barrier integrity and inflammatory vulnerability.");
+      appliedRules.push("Skin barrier vulnerability / acute damage alert detected.");
     }
 
     if (mentionsRoutineBuild) {
       intent = "REGIMEN_SYNTHESIS";
       complexityScore += 3;
-      appliedRules.push("Swift Rule 4: Multi-step AM/PM regimen layering protocol requested.");
-      reasoningSteps.push("Formulating diurnal application sequence & formulation stability.");
+      appliedRules.push("Multi-step AM/PM regimen layering protocol requested.");
     }
 
     if (mentionsDeepQuestion) {
       intent = "DERMATOLOGICAL_EXPLANATION";
       complexityScore += 2;
-      appliedRules.push("Swift Rule 5: Scientific mechanism inquiry detected.");
-      reasoningSteps.push("Constructing evidence-based dermatological mechanism response.");
+      appliedRules.push("Scientific mechanism inquiry detected.");
     }
 
     if (complexityScore >= 5) {
       thinkingMode = 'hard';
-      reasoningSteps.push(`Phase 2: Complexity score = ${complexityScore}/10 (Threshold >= 5). Escalated to Hard Thinking Mode (Deep Reasoning).`);
     } else {
       thinkingMode = 'easy';
-      reasoningSteps.push(`Phase 2: Complexity score = ${complexityScore}/10 (Below threshold). Assigned Easy Going Mode for swift direct answer.`);
     }
   }
 
@@ -108,7 +98,7 @@ function analyzeIntentAndThinkingMode(userPrompt: string): ThinkingAnalysis {
     thinkingMode,
     complexityScore: Math.min(10, complexityScore),
     appliedRules,
-    reasoningSteps
+    reasoningSteps: []
   };
 }
 
