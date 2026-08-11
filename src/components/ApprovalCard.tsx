@@ -1,156 +1,290 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, XCircle, AlertTriangle, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { ActionProposal } from '../agent/types';
 
+export type RecommendationOption = {
+  key: string;
+  body: React.ReactNode;
+  short: string;
+  signal: number; // 0..3
+  tone: string;   // hex or var e.g. '#10b981', '#f59e0b', '#94a3b8'
+  label: string;  // e.g. "High confidence", "Needs review", "Cancel action"
+  cta: string;
+  ctaStyle?: string;
+  action?: 'execute' | 'deny' | 'configure';
+};
+
 interface ApprovalCardProps {
-  proposal: ActionProposal;
+  proposal?: ActionProposal;
+  options?: RecommendationOption[];
+  title?: string;
   userId?: string;
   onExecuted?: (result: { success: boolean; message: string }) => void;
 }
 
-export const ApprovalCard: React.FC<ApprovalCardProps> = ({ proposal, userId = 'guest_user', onExecuted }) => {
+export function Meter({ signal, tone }: { signal: number; tone: string }) {
+  return (
+    <span className="flex items-end gap-0.5 shrink-0">
+      {[0, 1, 2].map((bar) => (
+        <span
+          key={bar}
+          className="w-1 rounded-full transition-colors duration-300"
+          style={{
+            height: 10,
+            background: bar < signal ? tone : '#e2e8f0'
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+export const ApprovalCard: React.FC<ApprovalCardProps> = ({
+  proposal,
+  options: customOptions,
+  title,
+  userId = 'guest_user',
+  onExecuted
+}) => {
+  const [selected, setSelected] = useState(0);
+  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<'pending' | 'executing' | 'approved' | 'denied'>(
-    proposal.status || (proposal.executed ? 'approved' : 'pending')
+    proposal?.status || (proposal?.executed ? 'approved' : 'pending')
   );
   const [resultMessage, setResultMessage] = useState<string | null>(
-    proposal.executedMessage || (proposal.executed ? 'Action executed successfully and recorded in audit log.' : null)
+    proposal?.executedMessage || (proposal?.executed ? 'Action executed successfully.' : null)
   );
 
-  const handleApprove = async () => {
-    setStatus('executing');
-    try {
-      const res = await fetch('/api/sana/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, proposal })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setStatus('approved');
-        setResultMessage(data.message || 'Action executed successfully and recorded in audit log.');
-        if (onExecuted) onExecuted({ success: true, message: data.message });
-      } else {
-        setStatus('pending');
-        alert(data.error || 'Execution failed. Please try again.');
-      }
-    } catch (err) {
-      console.error('Approval execute error:', err);
-      setStatus('pending');
-      alert('Network error executing proposal.');
+  // Generate options if not explicitly provided
+  const options: RecommendationOption[] = customOptions || (proposal ? [
+    {
+      key: proposal.actionId || 'primary',
+      short: proposal.title,
+      body: (
+        <>
+          <span className="font-semibold text-slate-900 block mb-1">{proposal.title}</span>
+          <p className="text-slate-600 text-[12.5px] leading-relaxed">{proposal.description}</p>
+          {proposal.payload && (
+            <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200/80 font-mono text-[11px] text-slate-700 overflow-x-auto max-h-28 no-scrollbar">
+              <pre>{JSON.stringify(proposal.payload, null, 2)}</pre>
+            </div>
+          )}
+        </>
+      ),
+      signal: proposal.riskLevel === 'low' ? 3 : 2,
+      tone: proposal.riskLevel === 'low' ? '#10b981' : '#f59e0b',
+      label: proposal.riskLevel === 'low' ? 'High confidence' : 'Needs review',
+      cta: 'Allow & Execute',
+      ctaStyle: 'bg-[#1a1c1e] text-white hover:bg-black',
+      action: 'execute'
+    },
+    {
+      key: 'deny',
+      short: 'Decline & cancel action',
+      body: 'Decline this action proposal. The agent will cancel the scheduled operation and record your response.',
+      signal: 0,
+      tone: '#94a3b8',
+      label: 'Decline action',
+      cta: 'Deny Proposal',
+      ctaStyle: 'bg-rose-600 text-white hover:bg-rose-700',
+      action: 'deny'
+    },
+    {
+      key: 'configure',
+      short: 'Review payload parameters',
+      body: 'Request parameter adjustments or manual review before proceeding with this routine.',
+      signal: 1,
+      tone: '#f59e0b',
+      label: 'Manual review',
+      cta: 'Configure',
+      ctaStyle: 'bg-slate-800 text-white hover:bg-slate-900',
+      action: 'configure'
     }
-  };
+  ] : [
+    {
+      key: 'default',
+      short: 'Standard Recommendation',
+      body: 'Execute recommended skin health action.',
+      signal: 3,
+      tone: '#10b981',
+      label: 'High confidence',
+      cta: 'Accept',
+      ctaStyle: 'bg-[#1a1c1e] text-white',
+      action: 'execute'
+    }
+  ]);
 
-  const handleDeny = () => {
-    setStatus('denied');
-    setResultMessage('Action proposal was declined by user.');
-    if (onExecuted) onExecuted({ success: false, message: 'User denied proposal.' });
+  const active = options[selected] || options[0];
+  const others = options.map((o, i) => ({ o, i })).filter(({ i }) => i !== selected);
+
+  const handleAction = async (opt: RecommendationOption) => {
+    if (opt.action === 'deny' || opt.key === 'deny') {
+      setStatus('denied');
+      setResultMessage('Action proposal was declined by user.');
+      if (onExecuted) onExecuted({ success: false, message: 'User denied proposal.' });
+      return;
+    }
+
+    if (opt.action === 'configure') {
+      setStatus('denied');
+      setResultMessage('User requested payload parameter configuration.');
+      if (onExecuted) onExecuted({ success: false, message: 'User requested configuration.' });
+      return;
+    }
+
+    // Execute via API if proposal exists
+    if (proposal) {
+      setStatus('executing');
+      try {
+        const res = await fetch('/api/sana/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, proposal })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setStatus('approved');
+          setResultMessage(data.message || 'Action executed successfully and recorded in audit log.');
+          if (onExecuted) onExecuted({ success: true, message: data.message });
+        } else {
+          setStatus('pending');
+          alert(data.error || 'Execution failed. Please try again.');
+        }
+      } catch (err) {
+        console.error('Approval execute error:', err);
+        setStatus('pending');
+        alert('Network error executing proposal.');
+      }
+    } else {
+      setStatus('approved');
+      setResultMessage('Recommendation accepted.');
+      if (onExecuted) onExecuted({ success: true, message: 'Recommendation accepted.' });
+    }
   };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className="my-3 p-4 rounded-2xl bg-white border border-[#e5e7eb] shadow-sm hover:shadow-md transition-all duration-200"
+      className="w-full max-w-[400px] my-3 overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all text-[#1a1c1e]"
     >
-      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#f3f4f6]">
-        <div className="flex items-center space-x-2">
-          <ShieldCheck className="w-4 h-4 text-[#2563eb]" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#4b5563]">
-            Action Proposal Required
-          </span>
-        </div>
-        <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-            proposal.riskLevel === 'medium'
-              ? 'bg-[#fef3c7] text-[#92400e]'
-              : 'bg-[#dbeafe] text-[#1e40af]'
-          }`}
-        >
-          {proposal.riskLevel} Risk
+      {/* Top Header & Main Body */}
+      <div className="p-4 pb-3">
+        <span className="text-[13px] font-semibold text-slate-900 block">
+          {title || (proposal ? 'Want me to execute this action?' : 'Agent Recommendation')}
         </span>
+        <div
+          key={active.key}
+          className="mt-2 min-h-12 text-[12.5px] leading-relaxed text-slate-600"
+          style={{ animation: 'fade-in 180ms ease-out both' }}
+        >
+          {active.body}
+        </div>
       </div>
 
-      <div className="space-y-1 mb-3">
-        <h4 className="text-sm font-bold text-[#111827]">{proposal.title}</h4>
-        <p className="text-xs text-[#4b5563] leading-relaxed">{proposal.description}</p>
-      </div>
-
-      {proposal.payload && (
-        <div className="p-2.5 rounded-xl bg-[#f9fafb] border border-[#f3f4f6] text-[11px] font-mono text-[#374151] mb-3 overflow-x-auto">
-          <pre>{JSON.stringify(proposal.payload, null, 2)}</pre>
+      {/* Alternatives Drawer — Expandable Section */}
+      {others.length > 0 && (
+        <div
+          className="grid transition-[grid-template-rows,opacity] duration-300"
+          style={{
+            gridTemplateRows: open ? '1fr' : '0fr',
+            opacity: open ? 1 : 0,
+            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+        >
+          <div className="overflow-hidden">
+            <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-2 space-y-1">
+              <p className="px-1 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Other options
+              </p>
+              {others.map(({ o, i }) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => {
+                    setSelected(i);
+                    setStatus('pending');
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors duration-150 hover:bg-slate-200/60 active:scale-[0.98] cursor-pointer"
+                >
+                  <Meter signal={o.signal} tone={o.tone} />
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-800">
+                    {o.short}
+                  </span>
+                  <span className="shrink-0 text-[11px] font-medium text-slate-400">
+                    {o.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      <AnimatePresence mode="wait">
-        {status === 'pending' && (
-          <motion.div
-            key="pending"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex items-center space-x-2 pt-1"
-          >
-            <button
-              onClick={handleApprove}
-              className="flex-1 py-2 px-3 rounded-xl bg-[#111827] hover:bg-[#1f2937] text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors shadow-sm active:scale-[0.98]"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981]" />
-              <span>Allow & Execute</span>
-            </button>
+      {/* Footer Bar */}
+      <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-3.5 py-2.5">
+        <span className="flex items-center gap-2">
+          <Meter signal={active.signal} tone={active.tone} />
+          <span className="text-[12px] font-medium text-slate-700">{active.label}</span>
+        </span>
 
-            <button
-              onClick={handleDeny}
-              className="py-2 px-3 rounded-xl bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#374151] text-xs font-medium flex items-center justify-center space-x-1 transition-colors active:scale-[0.98]"
-            >
-              <XCircle className="w-3.5 h-3.5 text-[#ef4444]" />
-              <span>Deny</span>
-            </button>
-          </motion.div>
-        )}
-
-        {status === 'executing' && (
-          <motion.div
-            key="executing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center justify-center space-x-2 py-2 text-xs font-medium text-[#2563eb]"
-          >
-            <Loader2 className="w-4 h-4 animate-spin text-[#2563eb]" />
-            <span>Executing Action & Writing Audit Log...</span>
-          </motion.div>
-        )}
-
-        {status === 'approved' && (
-          <motion.div
-            key="approved"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-2.5 rounded-xl bg-[#ecfdf5] border border-[#a7f3d0] flex items-start space-x-2 text-xs text-[#065f46]"
-          >
-            <CheckCircle2 className="w-4 h-4 text-[#10b981] shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold">Action Approved & Recorded</p>
-              <p className="text-[11px] text-[#047857] mt-0.5">{resultMessage}</p>
+        <AnimatePresence mode="wait">
+          {status === 'executing' ? (
+            <div className="flex items-center space-x-1.5 text-xs font-medium text-blue-600 py-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Executing...</span>
             </div>
-          </motion.div>
-        )}
-
-        {status === 'denied' && (
-          <motion.div
-            key="denied"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-2.5 rounded-xl bg-[#fef2f2] border border-[#fecaca] flex items-start space-x-2 text-xs text-[#991b1b]"
-          >
-            <XCircle className="w-4 h-4 text-[#ef4444] shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold">Action Proposal Declined</p>
-              <p className="text-[11px] text-[#b91c1c] mt-0.5">{resultMessage}</p>
+          ) : status === 'approved' ? (
+            <div className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Accepted</span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          ) : status === 'denied' ? (
+            <div className="flex items-center space-x-1.5 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl">
+              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+              <span>Declined</span>
+            </div>
+          ) : (
+            <span className="flex items-center gap-2">
+              {others.length > 0 && (
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setOpen((current) => !current)}
+                  className={`h-7 rounded-xl px-2.5 text-[12px] font-medium shadow-xs transition-all duration-150 active:scale-[0.96] cursor-pointer ${
+                    open
+                      ? 'bg-slate-200 text-slate-900'
+                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
+                  }`}
+                >
+                  Alternatives
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleAction(active)}
+                className={`h-7 rounded-xl px-3 text-[12px] font-medium shadow-xs transition-all duration-150 active:scale-[0.96] cursor-pointer ${
+                  active.ctaStyle || 'bg-[#1a1c1e] text-white hover:bg-black'
+                }`}
+              >
+                {active.cta}
+              </button>
+            </span>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {resultMessage && status !== 'pending' && (
+        <div className="px-3.5 pb-2.5 pt-0 text-[11px] text-slate-500 font-medium">
+          {resultMessage}
+        </div>
+      )}
     </motion.div>
   );
 };
+
+export const RecommendationCard = ApprovalCard;
+export default ApprovalCard;
+
