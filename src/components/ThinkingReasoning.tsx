@@ -2,12 +2,12 @@ import styles from "./ThinkingReasoning.module.css";
 import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_SENTENCES = [
-  "Reading the request and the current selection, then locating the jwt.verify call inside the auth middleware.",
-  "The verify call sets no algorithms allowlist, so a token signed with 'none' or a weak cipher could be accepted.",
-  "Tracing where the signing secret is loaded from and confirming it is never logged or sent back to the client.",
-  "Planning to pin the algorithm to HS256 and to validate the issuer and audience claims on every incoming request.",
-  "Scanning the existing tests around the middleware so the fix stays covered and nothing downstream regresses.",
-  "Drafting the patch with a focused regression test that rejects tampered, expired, and unsigned tokens.",
+  "Reading the request and analyzing skin profile & query context.",
+  "Cross-referencing active ingredients with clinical safety & sensitivity guidelines.",
+  "Checking user Memory Vault for recorded skin incidents, goals, or routine preferences.",
+  "Formulating personalized clinical skincare advice and step-by-step guidance.",
+  "Verifying safety compatibility and potential ingredient contraindications.",
+  "Synthesizing final response with tailored skincare recommendations.",
 ];
 
 // Per-sentence reveal cadence (ms). Sums to ~5s of "thinking".
