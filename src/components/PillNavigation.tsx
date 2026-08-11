@@ -59,18 +59,23 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
     <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center items-end pb-5 pt-3 pointer-events-none">
       <AnimatePresence mode="wait">
         {isMinimized ? (
-          /* Minimized subtle indicator bar */
+          /* Minimized subtle indicator bar — iOS style drag pill with psychological micro-interaction */
           <motion.button
             key="minimized-bar"
-            initial={{ opacity: 0, y: 15, scale: 0.8 }}
-            animate={{ opacity: 0.85, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 15, scale: 0.8 }}
-            whileHover={{ opacity: 1, scale: 1.05 }}
+            initial={{ opacity: 0, y: 12, scale: 0.85 }}
+            animate={{ opacity: 0.75, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.85 }}
+            whileHover={{ opacity: 1, scale: 1.1, width: '4rem' }}
             whileTap={{ scale: 0.95 }}
             onClick={onRestorePill}
-            className="pointer-events-auto h-2.5 w-28 rounded-full bg-[#1a1c1e]/40 backdrop-blur-md shadow-xs transition-all hover:bg-[#1a1c1e]/70 flex items-center justify-center cursor-pointer mb-2"
-            title="Expand Navigation"
-          />
+            className="pointer-events-auto h-1.5 w-12 rounded-full bg-[#1a1c1e]/35 backdrop-blur-md shadow-xs transition-all duration-300 hover:bg-[#1a1c1e]/75 flex items-center justify-center cursor-pointer mb-2.5 group relative"
+            title="Tap to restore menu"
+          >
+            {/* Subtle psychological indicator dot on hover */}
+            <span className="absolute -top-6 text-[10px] font-medium text-slate-500 bg-white/90 px-2 py-0.5 rounded-full shadow-2xs border border-slate-200/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+              Menu
+            </span>
+          </motion.button>
         ) : (
           /* Gesture Region & Squarical Floating Pill Navigation */
           <div

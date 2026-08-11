@@ -531,36 +531,36 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         className="hidden"
       />
 
-      {/* Chat Input Bar with File Upload */}
-      <div className="pt-2 px-1 shrink-0">
+      {/* Chat Input Bar with File Upload — Ergonomically reduced length with psychological UX affordance */}
+      <div className="pt-2 px-1 shrink-0 flex justify-center w-full">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center space-x-2 p-2 rounded-[24px] bg-white border border-[#eaedf1] shadow-md"
+          className="w-full max-w-[82%] sm:max-w-[360px] flex items-center space-x-1.5 p-1.5 pl-2.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-xl"
         >
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             title="Upload Document to Agent Memory Vault"
-            className="p-2.5 rounded-2xl text-[#64748b] hover:text-[#1a1c1e] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100/80 transition-all duration-200 cursor-pointer shrink-0 flex items-center justify-center active:scale-95"
           >
-            <Icon icon="solar:add-circle-linear" className="w-5.5 h-5.5" />
+            <Icon icon="solar:add-circle-linear" className="w-5 h-5" />
           </button>
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Ask SANA or log a skin memory..."
-            className="flex-1 px-2 text-[13.5px] text-[#121316] bg-transparent focus:outline-none placeholder-[#94a3b8]"
+            className="flex-1 px-1.5 text-[13px] text-[#121316] font-medium bg-transparent focus:outline-none placeholder-[#94a3b8] min-w-0"
           />
           <button
             type="submit"
             disabled={!inputText.trim() || processingStatus !== 'idle'}
-            className="w-10 h-10 rounded-2xl bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-40 transition-opacity cursor-pointer shadow-xs"
+            className="w-8.5 h-8.5 rounded-full bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
           >
-            <Icon icon="solar:plain-2-bold" className="w-4 h-4" />
+            <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
           </button>
         </form>
       </div>
