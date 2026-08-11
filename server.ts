@@ -8,6 +8,7 @@ import { executeActionProposal } from "./src/agent/workspace.js";
 import { generateContentWithRouter, generateContentStreamWithRouter } from "./src/agent/llmRouter.js";
 import { executeWebSearch } from "./src/agent/searchService.js";
 import { performExaSearch, performExaContents, performExaAnswer } from "./src/agent/exaSearchService.js";
+import { mcpManager } from "./src/agent/mcp/McpManager.js";
 
 dotenv.config();
 
@@ -391,7 +392,143 @@ app.post("/api/exa/answer", async (req, res) => {
   }
 });
 
-// SANA Action Execution Path (Authenticated Single Mutation)
+// ==========================================
+// MODEL CONTEXT PROTOCOL (MCP) REST ENDPOINTS
+// ==========================================
+
+// 1. Get List of Configured MCP Servers
+app.get("/api/mcp/servers", (_req, res) => {
+  try {
+    const servers = mcpManager.getServers();
+    return res.json({ success: true, count: servers.length, servers });
+  } catch (error: any) {
+    console.error("Error in GET /api/mcp/servers:", error);
+    return res.status(500).json({ error: "Failed to list MCP servers", details: error?.message || String(error) });
+  }
+});
+
+// 2. Connect a new External MCP Server (SSE Transport)
+app.post("/api/mcp/servers", async (req, res) => {
+  try {
+    const { id, name, url, description } = req.body;
+    if (!id || !name || !url) {
+      return res.status(400).json({ error: "Missing required fields: id, name, url" });
+    }
+
+    const serverConfig = await mcpManager.connectSseServer(id, name, url, description);
+    return res.json({ success: true, server: serverConfig });
+  } catch (error: any) {
+    console.error("Error in POST /api/mcp/servers:", error);
+    return res.status(500).json({ error: "Failed to connect MCP server", details: error?.message || String(error) });
+  }
+});
+
+// 3. Disconnect an MCP Server
+app.delete("/api/mcp/servers/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const removed = await mcpManager.disconnectServer(id);
+    return res.json({ success: removed, id });
+  } catch (error: any) {
+    console.error(`Error in DELETE /api/mcp/servers/${req.params.id}:`, error);
+    return res.status(500).json({ error: "Failed to disconnect MCP server", details: error?.message || String(error) });
+  }
+});
+
+// 4. Get List of All Active MCP Tools across connected servers
+app.get("/api/mcp/tools", async (_req, res) => {
+  try {
+    const tools = await mcpManager.getAllMcpTools();
+    return res.json({ success: true, count: tools.length, tools });
+  } catch (error: any) {
+    console.error("Error in GET /api/mcp/tools:", error);
+    return res.status(500).json({ error: "Failed to list MCP tools", details: error?.message || String(error) });
+  }
+});
+
+// 5. Invoke/Test an MCP Tool directly
+app.post("/api/mcp/tools/call", async (req, res) => {
+  try {
+    const { fullName, serverId, toolName, args = {} } = req.body;
+    const targetName = fullName || (serverId && toolName ? `mcp__${serverId}__${toolName}` : null);
+
+    if (!targetName) {
+      return res.status(400).json({ error: "Must specify 'fullName' or 'serverId' + 'toolName'" });
+    }
+
+    const result = await mcpManager.callTool(targetName, undefined, args);
+    return res.json({ success: true, result });
+  } catch (error: any) {
+    console.error("Error in POST /api/mcp/tools/call:", error);
+    return res.status(500).json({ error: "Failed to execute MCP tool", details: error?.message || String(error) });
+  }
+});
+
+// 6. Get List of Exposed MCP Resources
+app.get("/api/mcp/resources", async (_req, res) => {
+  try {
+    const resources = await mcpManager.getResources();
+    return res.json({ success: true, count: resources.length, resources });
+  } catch (error: any) {
+    console.error("Error in GET /api/mcp/resources:", error);
+    return res.status(500).json({ error: "Failed to list MCP resources", details: error?.message || String(error) });
+  }
+});
+
+// 7. Read an MCP Resource by URI
+app.post("/api/mcp/resources/read", async (req, res) => {
+  try {
+    const { serverId, uri } = req.body;
+    if (!serverId || !uri) {
+      return res.status(400).json({ error: "Missing required fields 'serverId' and 'uri'" });
+    }
+
+    const content = await mcpManager.readResource(serverId, uri);
+    return res.json({ success: true, content });
+  } catch (error: any) {
+    console.error("Error in POST /api/mcp/resources/read:", error);
+    return res.status(500).json({ error: "Failed to read MCP resource", details: error?.message || String(error) });
+  }
+});
+
+// 8. Get List of MCP Prompts
+app.get("/api/mcp/prompts", async (_req, res) => {
+  try {
+    const prompts = await mcpManager.getPrompts();
+    return res.json({ success: true, count: prompts.length, prompts });
+  } catch (error: any) {
+    console.error("Error in GET /api/mcp/prompts:", error);
+    return res.status(500).json({ error: "Failed to list MCP prompts", details: error?.message || String(error) });
+  }
+});
+
+// 9. Get Expanded MCP Prompt Template
+app.post("/api/mcp/prompts/get", async (req, res) => {
+  try {
+    const { serverId, promptName, args = {} } = req.body;
+    if (!serverId || !promptName) {
+      return res.status(400).json({ error: "Missing required fields 'serverId' and 'promptName'" });
+    }
+
+    const promptData = await mcpManager.getPrompt(serverId, promptName, args);
+    return res.json({ success: true, prompt: promptData });
+  } catch (error: any) {
+    console.error("Error in POST /api/mcp/prompts/get:", error);
+    return res.status(500).json({ error: "Failed to expand MCP prompt", details: error?.message || String(error) });
+  }
+});
+
+// 10. Get MCP Tool Call Trace Logs
+app.get("/api/mcp/logs", (_req, res) => {
+  try {
+    const logs = mcpManager.getLogs();
+    return res.json({ success: true, count: logs.length, logs });
+  } catch (error: any) {
+    console.error("Error in GET /api/mcp/logs:", error);
+    return res.status(500).json({ error: "Failed to get MCP logs", details: error?.message || String(error) });
+  }
+});
+
 app.post("/api/sana/execute", async (req, res) => {
   try {
     const { userId = "guest_user", proposal } = req.body;

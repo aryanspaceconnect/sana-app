@@ -1,4 +1,4 @@
-export type NavigationTab = 'home' | 'agent' | 'calendar';
+export type NavigationTab = 'home' | 'agent' | 'calendar' | 'mcp';
 
 export interface UserSettings {
   temperatureUnit: 'C' | 'F';

@@ -5,7 +5,7 @@ import { SANA_TOOL_REGISTRY } from '../tools.js';
 import { loadContextForAgent } from '../workspace.js';
 import { PassOnSchema, PassOn, ToolResult } from '../types.js';
 import { generateContentWithRouter, LLMFunctionCall, AllModelsExhaustedError } from '../llmRouter.js';
-import { getGeminiToolDeclarations, findToolByName } from '../geminiTools.js';
+import { getGeminiToolDeclarations, findToolByName, refreshMcpToolsCache } from '../geminiTools.js';
 import { getSessionNotepad } from '../sessionNotepad.js';
 
 export function buildSystemPrompt(sessionNotepadContent?: string): string {
@@ -24,18 +24,25 @@ ${JSON.stringify(SANA_APP_MAP, null, 2)}
 ### SANA SESSION NOTEPAD (PRIVATE WORKING MEMORY FOR THIS SESSION):
 ${notepadStr}
 
+### MODEL CONTEXT PROTOCOL (MCP) INTERFACE:
+You are fully equipped with Model Context Protocol (MCP) capabilities.
+- MCP Server Tools are dynamically registered with prefix \`mcp__<server_id>__<tool_name>\` (e.g. \`mcp__sana_vault__search_vault\`, \`mcp__sana_knowledge__exa_answer\`, \`mcp__sana_dermatology__calculate_fitzpatrick\`, \`mcp__sana_notepad__read_notepad\`, and any custom connected remote/local MCP servers).
+- You can execute MCP tools seamlessly as native function calls.
+- Every MCP tool call execution, parameter set, and response payload is captured in SANA's execution trace and thought-chain logs.
+
 ### AUTONOMOUS AGENT REASONING PROTOCOL:
 You are SANA operating in an autonomous multi-turn LangGraph loop with native Function Calling.
-- You have direct access to tools for querying the Agent Vault, searching memories, recording user identity, logging incidents, creating calendar events, and updating your private session notepad.
+- You have direct access to tools for querying the Agent Vault, searching memories, recording user identity, logging incidents, creating calendar events, updating your private session notepad, and running connected MCP tools.
 
 ### MANDATORY TOOL CALLING DIRECTIVES (EXECUTE FUNCTION CALLS DIRECTLY):
 1. USER IDENTITY & PERSONAL DETAILS: Whenever the user introduces themselves, mentions their name, preferred nickname, location, city, climate, or lifestyle (e.g. "My name is Aryan, call me Ray, I live in Bardoli"), YOU MUST IMMEDIATELY CALL THE \`save_user_identity\` TOOL IN A FUNCTION CALL!
 2. SKIN GOALS: Whenever the user sets or mentions a target skin goal (e.g. "make my skin glow", "reduce acne scars"), YOU MUST IMMEDIATELY CALL THE \`save_vault_goal\` TOOL!
 3. SKIN COMPOSITION & PROFILE: Whenever the user describes their skin type, barrier patterns, or known triggers, YOU MUST IMMEDIATELY CALL THE \`update_skin_composition\` TOOL!
 4. REACTION & FLARE INCIDENTS: When the user reports a flare, irritation, or symptom, YOU MUST CALL \`save_vault_incident\` OR \`save_memory_note\`.
-5. VAULT SEARCH: When answering questions about past sessions, notes, or uploaded docs, call \`vault_search\` or \`search_agent_vault\`.
-6. SESSION NOTEPAD: Use \`update_session_notepad\` to store working notes during multi-turn consultations.
-7. WEB RESEARCH: Whenever the user asks about skin science, ingredient compatibility, medical recommendations, current guidelines, climate effects, product formulations, or whenever up-to-date live web research is needed, YOU MUST IMMEDIATELY CALL THE \`exa_search\`, \`exa_answer\`, \`web_search\`, OR \`web_fetch\` TOOL to perform live evidence-based web research!
+5. VAULT SEARCH: When answering questions about past sessions, notes, or uploaded docs, call \`vault_search\`, \`search_agent_vault\`, or \`mcp__sana_vault__search_vault\`.
+6. SESSION NOTEPAD: Use \`update_session_notepad\` or \`mcp__sana_notepad__append_note\` to store working notes during multi-turn consultations.
+7. WEB RESEARCH: Whenever the user asks about skin science, ingredient compatibility, medical recommendations, current guidelines, climate effects, product formulations, or whenever up-to-date live web research is needed, YOU MUST IMMEDIATELY CALL THE \`exa_search\`, \`exa_answer\`, \`web_search\`, \`web_fetch\`, or \`mcp__sana_knowledge__exa_answer\` TOOL to perform live evidence-based web research!
+8. DERMATOLOGY CALCULATIONS: Whenever phototype scoring, Fitzpatrick classification, or barrier damage indices are needed, call \`mcp__sana_dermatology__calculate_fitzpatrick\` or \`mcp__sana_dermatology__evaluate_barrier_index\`.
 
 CRITICAL RULE: NEVER state in text that you have saved, updated, or stored user preferences or profile data into their Agent Memory Vault UNLESS you actually execute the corresponding tool function call!
 
@@ -95,6 +102,9 @@ export async function reasoningNode(state: AgentState) {
   const currentIterations = state.iterations + 1;
   const currentNotepad = getSessionNotepad(state.sessionId) || state.sessionNotepad || '';
   const systemPrompt = buildSystemPrompt(currentNotepad);
+  
+  // Refresh active MCP tools before generating declarations
+  await refreshMcpToolsCache();
   const toolsDeclarations = getGeminiToolDeclarations();
 
   let llmMessages = [...(state.llmMessages || [])];

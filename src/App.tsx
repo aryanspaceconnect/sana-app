@@ -16,6 +16,7 @@ import { FacialScanModal } from './components/FacialScanModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SanaVaultModal } from './components/SanaVaultModal';
+import { McpHub } from './components/McpHub';
 import { AuthScreen } from './components/AuthScreen';
 import { SanaLogoIcon } from './components/SanaLogoIcon';
 
@@ -231,6 +232,12 @@ export default function App() {
             userProfile={userProfile}
             onOpenScan={() => setIsScanOpen(true)}
           />
+        )}
+
+        {activeTab === 'mcp' && (
+          <div className="w-full h-full overflow-y-auto pb-24">
+            <McpHub />
+          </div>
         )}
       </div>
 
