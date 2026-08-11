@@ -4,6 +4,73 @@ import { Icon } from '@iconify/react';
 import { NavigationTab } from '../types';
 import { SanaAgentLogoIcon } from './SanaAgentLogoIcon';
 
+const DynamicCalendarIcon: React.FC<{ isActive?: boolean }> = ({ isActive = false }) => {
+  const dateNumber = new Date().getDate(); // Current date 1-31
+  const color = isActive ? "#ffffff" : "#616874";
+
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="transition-transform duration-300 shrink-0"
+    >
+      {/* Calendar Outer Frame */}
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="17"
+        rx="4.5"
+        stroke={color}
+        strokeWidth="1.8"
+      />
+      {/* Top Header Line */}
+      <line
+        x1="3"
+        y1="9"
+        x2="21"
+        y2="9"
+        stroke={color}
+        strokeWidth="1.3"
+      />
+      {/* Binder Pegs */}
+      <line
+        x1="7.5"
+        y1="2"
+        x2="7.5"
+        y2="5"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <line
+        x1="16.5"
+        y1="2"
+        x2="16.5"
+        y2="5"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {/* Current Local Date Number */}
+      <text
+        x="12"
+        y="17"
+        textAnchor="middle"
+        fontSize={dateNumber > 9 ? "8.5" : "9.5"}
+        fontWeight="800"
+        fill={color}
+        fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+      >
+        {dateNumber}
+      </text>
+    </svg>
+  );
+};
+
 interface PillNavigationProps {
   activeTab: NavigationTab;
   onTabChange: (tab: NavigationTab) => void;
@@ -150,10 +217,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                   : 'text-[#616874] hover:text-[#1a1c1e] hover:bg-[#f2f4f7]'
               }`}
             >
-              <Icon 
-                icon={activeTab === 'calendar' ? "solar:calendar-bold" : "solar:calendar-minimalistic-linear"} 
-                className="w-5 h-5 transition-transform duration-300" 
-              />
+              <DynamicCalendarIcon isActive={activeTab === 'calendar'} />
               {activeTab === 'calendar' && (
                 <motion.span
                   initial={{ opacity: 0, width: 0 }}
