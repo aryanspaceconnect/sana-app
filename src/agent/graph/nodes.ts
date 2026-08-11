@@ -108,6 +108,20 @@ export async function reasoningNode(state: AgentState) {
       includeThoughts: true
     });
 
+    // Construct PassOn trace step from thoughts or model reasoning
+    const thoughtText = (routerResult.thoughts && routerResult.thoughts.length > 0)
+      ? routerResult.thoughts.join('\n')
+      : (routerResult.functionCalls.length > 0
+          ? `Analyzed skin query and selected ${routerResult.functionCalls.length} tool(s): ${routerResult.functionCalls.map(f => f.name).join(', ')}`
+          : `Synthesized skin health advice & barrier safety guidelines.`);
+
+    const traceStep: PassOn = {
+      thought: thoughtText,
+      intent: routerResult.functionCalls.length > 0 ? 'tool_execution' : 'clinical_synthesis',
+      status: routerResult.functionCalls.length > 0 ? 'need_info' : 'ready',
+      nextTools: routerResult.functionCalls.map(fc => ({ name: fc.name, arguments: fc.args }))
+    };
+
     // Check if the LLM issued function calls
     if (routerResult.functionCalls && routerResult.functionCalls.length > 0) {
       console.log(`[ReasoningNode] LLM selected ${routerResult.functionCalls.length} tool call(s):`, routerResult.functionCalls.map(f => f.name));
@@ -136,6 +150,7 @@ export async function reasoningNode(state: AgentState) {
 
       return {
         pendingFunctionCalls: routerResult.functionCalls,
+        passOnTrace: [traceStep],
         llmMessages,
         status: 'calling_tools',
         iterations: currentIterations
@@ -151,6 +166,7 @@ export async function reasoningNode(state: AgentState) {
 
     return {
       pendingFunctionCalls: [],
+      passOnTrace: [traceStep],
       finalText: responseText,
       llmMessages,
       status: 'done',
@@ -195,8 +211,8 @@ export async function toolsNode(state: AgentState) {
   }
 
   const execContext = {
-    userId: state.userId,
-    sessionId: state.sessionId,
+    userId: state.userId || 'guest_user',
+    sessionId: state.sessionId || 'session_default',
     userRole: 'consumer' as const,
     activeRoute: '/'
   };

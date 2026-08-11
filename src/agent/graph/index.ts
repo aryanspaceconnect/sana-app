@@ -43,7 +43,22 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     }
   } catch (err: any) {
     console.warn('[LangGraph] Stream error, falling back to graph invoke:', err?.message || err);
-    finalState = (await sanaGraph.invoke(initialState, config)) as AgentState;
+    try {
+      finalState = (await sanaGraph.invoke(initialState, config)) as AgentState;
+    } catch (invokeErr: any) {
+      console.error('[LangGraph] Invoke error across all models:', invokeErr?.message || invokeErr);
+      finalState = {
+        ...initialState,
+        finalText: "I am SANA, your skin health agent. I am currently operating in high-demand safeguard mode. For skin barrier safety: 1. Keep active ingredients separated (e.g. retinoids at night, Vitamin C in AM). 2. Apply broad-spectrum SPF 50 daily. 3. Use ceramide-rich moisturizers if experiencing irritation.",
+        passOnTrace: [
+          {
+            thought: `Safeguard triggered: ${invokeErr?.message || 'LLM model quota limit'}`,
+            intent: 'clinical_synthesis',
+            status: 'ready'
+          }
+        ]
+      };
+    }
   }
 
   const finalOutputText = finalState.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
@@ -65,7 +80,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
       summary: finalOutputText.slice(0, 200),
       messages: messagesList,
       intentHistory: ['autonomous_react_loop'],
-      passOnTrace: []
+      passOnTrace: finalState.passOnTrace || []
     });
   } catch (err) {
     console.warn('[LangGraph] Error saving session to Vault:', err);
@@ -75,7 +90,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     text: finalOutputText,
     actionProposal: finalState.actionProposal || undefined,
     sessionId,
-    passOnTrace: [],
+    passOnTrace: finalState.passOnTrace || [],
     iterations: finalState.iterations || 1,
     toolResults: finalState.toolResults || []
   };

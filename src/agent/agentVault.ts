@@ -375,9 +375,10 @@ export function assertAllowedVaultPath(categoryOrPath: string): void {
 const vaultCache: Record<string, AgentVaultData> = {};
 
 export function getOrCreateVaultCache(userId: string): AgentVaultData {
-  if (!vaultCache[userId]) {
-    vaultCache[userId] = {
-      userId,
+  const safeUserId = (userId && typeof userId === 'string' && userId.trim().length > 0) ? userId.trim() : 'guest_user';
+  if (!vaultCache[safeUserId]) {
+    vaultCache[safeUserId] = {
+      userId: safeUserId,
       sessions: [],
       incidents: [],
       events: [],
@@ -387,11 +388,12 @@ export function getOrCreateVaultCache(userId: string): AgentVaultData {
       lastSynced: new Date().toISOString()
     };
   }
-  return vaultCache[userId];
+  return vaultCache[safeUserId];
 }
 
 export function clearAgentVaultCache(userId: string) {
-  delete vaultCache[userId];
+  const safeUserId = (userId && typeof userId === 'string' && userId.trim().length > 0) ? userId.trim() : 'guest_user';
+  delete vaultCache[safeUserId];
 }
 
 // ==========================================
@@ -411,8 +413,9 @@ export async function saveVaultRecordWithVersion<T extends { version?: number }>
   diffSummary: string = 'Updated document content'
 ): Promise<T & { version: number }> {
   assertAllowedVaultPath(category);
+  const safeUserId = (userId && typeof userId === 'string' && userId.trim().length > 0) ? userId.trim() : 'guest_user';
 
-  const docRef = doc(db, 'users', userId, 'vault', category, 'records', docId);
+  const docRef = doc(db, 'users', safeUserId, 'vault', category, 'records', docId);
   const timeInfo = toAbsoluteTime();
 
   let existingVersion = 0;
@@ -442,7 +445,7 @@ export async function saveVaultRecordWithVersion<T extends { version?: number }>
     if (db) {
       // 1. Save snapshot to versions subcollection
       if (previousData) {
-        const versionRef = doc(db, 'users', userId, 'vault', category, 'records', docId, 'versions', `v_${existingVersion}`);
+        const versionRef = doc(db, 'users', safeUserId, 'vault', category, 'records', docId, 'versions', `v_${existingVersion}`);
         const versionRecord: VaultVersionRecord = {
           version: existingVersion,
           previousVersion: existingVersion > 1 ? existingVersion - 1 : null,
@@ -459,7 +462,7 @@ export async function saveVaultRecordWithVersion<T extends { version?: number }>
       await setDoc(docRef, sanitizeForFirestore(updatedRecord));
     }
   } catch (err) {
-    console.warn(`[VaultVersion] Error saving versioned record for ${userId}/${category}/${docId}:`, err);
+    console.warn(`[VaultVersion] Error saving versioned record for ${safeUserId}/${category}/${docId}:`, err);
   }
 
   return updatedRecord;
@@ -476,11 +479,12 @@ export async function getVaultHistory(
   limitCount: number = 5
 ): Promise<VaultVersionRecord[]> {
   assertAllowedVaultPath(category);
+  const safeUserId = (userId && typeof userId === 'string' && userId.trim().length > 0) ? userId.trim() : 'guest_user';
   const history: VaultVersionRecord[] = [];
 
   try {
     if (db) {
-      const versionsRef = collection(db, 'users', userId, 'vault', category, 'records', docId, 'versions');
+      const versionsRef = collection(db, 'users', safeUserId, 'vault', category, 'records', docId, 'versions');
       const q = query(versionsRef, orderBy('version', 'desc'), limitQuery(20));
       const snap = await getDocs(q);
 

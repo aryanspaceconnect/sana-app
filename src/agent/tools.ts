@@ -20,6 +20,43 @@ import {
 } from './agentVault.js';
 
 // Universal Search Tool
+const flexArray = (fallback: string[] = []) => z.preprocess((val) => {
+  if (Array.isArray(val)) return val.map(String);
+  if (typeof val === 'string' || typeof val === 'number') {
+    const str = String(val).trim();
+    if (str.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(str);
+        if (Array.isArray(parsed)) return parsed.map(String);
+      } catch {}
+    }
+    return str.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return fallback;
+}, z.array(z.string()).optional().default(fallback));
+
+const flexIncidentType = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    const clean = val.toLowerCase().trim();
+    if (['reaction', 'breakout', 'flare', 'allergy', 'other'].includes(clean)) return clean;
+    if (clean.includes('breakout') || clean.includes('acne') || clean.includes('pimple') || clean.includes('bump')) return 'breakout';
+    if (clean.includes('react') || clean.includes('irritat') || clean.includes('stinging') || clean.includes('red') || clean.includes('burn')) return 'reaction';
+    if (clean.includes('allerg')) return 'allergy';
+    if (clean.includes('flare')) return 'flare';
+  }
+  return 'flare';
+}, z.enum(['reaction', 'breakout', 'flare', 'allergy', 'other']).optional().default('flare'));
+
+const flexSeverity = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    const clean = val.toLowerCase().trim();
+    if (['mild', 'moderate', 'severe'].includes(clean)) return clean;
+    if (clean.includes('high') || clean.includes('extreme') || clean.includes('bad') || clean.includes('severe')) return 'severe';
+    if (clean.includes('medium') || clean.includes('mod')) return 'moderate';
+  }
+  return 'mild';
+}, z.enum(['mild', 'moderate', 'severe']).optional().default('mild'));
+
 export const universalSearchToolSchema = z.object({
   queries: z.array(z.object({
     type: z.string().optional().default('profile'),
@@ -197,10 +234,10 @@ export const proposeCreateEventTool: ToolDefinition = {
 
 // Propose Log Incident Tool
 export const proposeLogIncidentSchema = z.object({
-  title: z.string(),
-  severity: z.enum(['mild', 'moderate', 'severe']),
-  triggers: z.array(z.string()).optional(),
-  description: z.string().optional()
+  title: z.preprocess((val) => val ? String(val) : 'Skin Incident', z.string()),
+  severity: flexSeverity,
+  triggers: flexArray([]),
+  description: z.preprocess((val) => val ? String(val) : undefined, z.string().optional())
 });
 
 export const proposeLogIncidentTool: ToolDefinition = {
@@ -371,16 +408,16 @@ export const vaultSearchTool: ToolDefinition = {
 
 // Save Vault Incident Tool
 export const saveVaultIncidentSchema = z.object({
-  title: z.string(),
-  occurredAt: z.string().optional(), // Can be relative like 'yesterday', '2 days ago' or ISO
-  type: z.enum(['reaction', 'breakout', 'flare', 'allergy', 'other']).optional().default('flare'),
-  severity: z.enum(['mild', 'moderate', 'severe']).optional().default('mild'),
-  bodyAreas: z.array(z.string()).optional().default(['face']),
-  description: z.string().optional(),
-  suspectedTriggers: z.array(z.string()).optional().default([]),
-  relatedProducts: z.array(z.string()).optional().default([]),
-  relatedIngredients: z.array(z.string()).optional().default([]),
-  notes: z.string().optional()
+  title: z.preprocess((val) => val ? String(val) : 'Skin Incident', z.string().default('Skin Incident')),
+  occurredAt: z.preprocess((val) => val ? String(val) : undefined, z.string().optional()),
+  type: flexIncidentType,
+  severity: flexSeverity,
+  bodyAreas: flexArray(['face']),
+  description: z.preprocess((val) => val ? String(val) : undefined, z.string().optional()),
+  suspectedTriggers: flexArray([]),
+  relatedProducts: flexArray([]),
+  relatedIngredients: flexArray([]),
+  notes: z.preprocess((val) => val ? String(val) : undefined, z.string().optional())
 });
 
 export const saveVaultIncidentTool: ToolDefinition = {
@@ -388,7 +425,10 @@ export const saveVaultIncidentTool: ToolDefinition = {
   description: 'Directly record a skin reaction, flare-up, breakout, or allergy incident into Vault long-term memory. Automatically converts relative time expressions to absolute timestamps.',
   parameters: saveVaultIncidentSchema,
   execute: async (args: z.infer<typeof saveVaultIncidentSchema>, context: AgentContext) => {
-    const saved = await saveVaultIncident(context.userId, args, 'sana');
+    const saved = await saveVaultIncident(context.userId, {
+      ...args,
+      title: args.title || 'Skin Incident'
+    }, 'sana');
     return {
       success: true,
       message: `Incident '${saved.title}' logged in Vault with absolute time (${saved.occurredAtDate}).`,
@@ -456,8 +496,8 @@ export const saveUserIdentitySchema = z.object({
   sexOrHormonalContext: z.string().optional().describe('Hormonal context or gender identity'),
   locationOrClimate: z.string().optional().describe('User city, state, country or climate (e.g. Bardoli, Gujarat, India / Humid Tropical)'),
   occupationOrLifestyle: z.string().optional().describe('Occupation or daily lifestyle environment'),
-  languages: z.array(z.string()).optional(),
-  permanentFacts: z.array(z.string()).optional().describe('List of key permanent facts about the user')
+  languages: flexArray([]),
+  permanentFacts: flexArray([])
 });
 
 export const saveUserIdentityTool: ToolDefinition = {
@@ -480,7 +520,7 @@ export const updateSkinCompositionSchema = z.object({
   barrierStatusPatterns: z.string().optional(),
   pigmentationTendency: z.string().optional(),
   texturePoreElasticity: z.string().optional(),
-  knownTriggers: z.array(z.string()).optional()
+  knownTriggers: flexArray([])
 });
 
 export const updateSkinCompositionTool: ToolDefinition = {

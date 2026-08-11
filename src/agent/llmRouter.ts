@@ -181,10 +181,17 @@ export async function generateContentWithRouter(
         console.warn(`[LLMRouter] Model '${model}' failed (attempt #${attemptsCount}, retry #${modelRetries}):`, errMsg);
         lastError = err;
 
-        const isTransient = /503|UNAVAILABLE|500|429|RESOURCE_EXHAUSTED|RATE_LIMIT|high demand/i.test(errMsg);
+        const isQuotaExceeded = /429|RESOURCE_EXHAUSTED|RATE_LIMIT|quota|limit/i.test(errMsg);
+        const isTransient = /503|UNAVAILABLE|500|high demand/i.test(errMsg);
+
+        if (isQuotaExceeded) {
+          console.log(`[LLMRouter] Model '${model}' quota/rate limit exceeded. Immediately falling through to next model in cascade.`);
+          break; // Skip retrying this model and proceed immediately to next model
+        }
+
         if (isTransient && modelRetries < maxModelRetries) {
           modelRetries++;
-          const delayMs = 600 * Math.pow(2, modelRetries) + Math.floor(Math.random() * 200);
+          const delayMs = 300 * Math.pow(2, modelRetries) + Math.floor(Math.random() * 100);
           console.log(`[LLMRouter] Backing off for ${delayMs}ms before retrying '${model}' (retry #${modelRetries})`);
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
