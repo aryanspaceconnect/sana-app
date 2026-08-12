@@ -1,6 +1,6 @@
 import { sanaGraph } from './graph.js';
 import { AgentRunParams, AgentRunResult, PassOn } from '../types.js';
-import { saveVaultSession } from '../agentVault.js';
+import { AgentMemoryService, AgentChatMessage } from '../../services/AgentMemoryService.js';
 import { AgentState } from './state.js';
 
 export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRunResult> {
@@ -63,27 +63,34 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
 
   const finalOutputText = finalState.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
 
-  // Save session trace to Vault memory
+  // Save session chat log to Application Database (AgentMemoryService)
   try {
-    const messagesList = (params.history || [])
-      .map(h => ({
-        role: h.role as 'user' | 'model',
-        text: h.text,
-        timestamp: new Date().toISOString()
-      }))
-      .concat([{ role: 'model', text: finalOutputText, timestamp: new Date().toISOString() }]);
+    const chatMessages: AgentChatMessage[] = (params.history || []).map((h, i) => ({
+      id: `msg_${i}_${Date.now()}`,
+      role: h.role === 'model' ? 'model' : 'user',
+      text: h.text,
+      timestamp: new Date().toISOString()
+    }));
 
-    await saveVaultSession(params.userId, {
-      sessionId,
-      startedAt: new Date().toISOString(),
-      status: 'active',
-      summary: finalOutputText.slice(0, 200),
-      messages: messagesList,
-      intentHistory: ['autonomous_react_loop'],
-      passOnTrace: finalState.passOnTrace || []
+    // Add current user message and model response
+    chatMessages.push({
+      id: `msg_user_${Date.now()}`,
+      role: 'user',
+      text: params.message,
+      timestamp: new Date().toISOString()
     });
+
+    chatMessages.push({
+      id: `msg_model_${Date.now()}`,
+      role: 'model',
+      text: finalOutputText,
+      timestamp: new Date().toISOString(),
+      actionProposal: finalState.actionProposal || undefined
+    });
+
+    await AgentMemoryService.saveChatSession(params.userId, sessionId, chatMessages);
   } catch (err) {
-    console.warn('[LangGraph] Error saving session to Vault:', err);
+    console.warn('[LangGraph] Error saving chat session to Application Database:', err);
   }
 
   return {

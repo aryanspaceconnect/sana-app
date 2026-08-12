@@ -16,7 +16,14 @@ import {
   saveVaultUserData,
   saveVaultSkinComposition,
   getVaultHistory,
-  toAbsoluteTime
+  toAbsoluteTime,
+  createVaultFolder,
+  createVaultFile,
+  arrangeVaultFiles,
+  createVaultHyperlink,
+  accessVaultFolder,
+  accessVaultFile,
+  getVaultFileSystemIndex
 } from './agentVault.js';
 
 // Universal Search Tool
@@ -752,6 +759,155 @@ export const exaAnswerTool: ToolDefinition = {
   }
 };
 
+export const createFolderSchema = z.object({
+  name: z.string().describe('Name of the folder to create (e.g. PM_Routines, Skin_Scans, Clinical_Notes).'),
+  parentPath: z.string().optional().default('/').describe('Parent directory path (default "/").'),
+  description: z.string().optional().describe('Optional description of the folder purpose.')
+});
+
+export const createFolderTool: ToolDefinition = {
+  name: 'create_folder',
+  description: 'Creates a new virtual folder or nested subfolder in Agent Vault for workspace organization.',
+  parameters: createFolderSchema,
+  execute: async (args: z.infer<typeof createFolderSchema>, context: AgentContext) => {
+    const folder = await createVaultFolder(context.userId, args.name, args.parentPath, args.description);
+    return {
+      success: true,
+      message: `Folder '${folder.name}' created at path '${folder.path}'.`,
+      folder
+    };
+  }
+};
+
+export const createFileSchema = z.object({
+  name: z.string().describe('File name with extension (e.g. barrier_protocol.md, tretinoin_guide.txt).'),
+  content: z.string().describe('Complete text, markdown, or JSON content of the file.'),
+  folderPath: z.string().optional().default('/').describe('Folder path where file should be placed.'),
+  fileType: z.string().optional().default('text/markdown').describe('MIME type or file type identifier.'),
+  tags: flexArray([])
+});
+
+export const createFileTool: ToolDefinition = {
+  name: 'create_file',
+  description: 'Creates a new virtual file with full content inside a folder in Agent Vault.',
+  parameters: createFileSchema,
+  execute: async (args: z.infer<typeof createFileSchema>, context: AgentContext) => {
+    const file = await createVaultFile(context.userId, args.name, args.content, args.folderPath, args.fileType, args.tags);
+    return {
+      success: true,
+      message: `File '${file.name}' created in folder '${file.folderPath}' (path: ${file.path}).`,
+      file
+    };
+  }
+};
+
+export const arrangeFilesSchema = z.object({
+  fileIdsOrPaths: z.array(z.string()).describe('List of file IDs, file names, or file paths to move/re-arrange.'),
+  targetFolderPath: z.string().describe('Target folder path to move the files into.')
+});
+
+export const arrangeFilesTool: ToolDefinition = {
+  name: 'arrange_files',
+  description: 'Arranges, moves, or organizes multiple files into a specific target folder.',
+  parameters: arrangeFilesSchema,
+  execute: async (args: z.infer<typeof arrangeFilesSchema>, context: AgentContext) => {
+    const res = await arrangeVaultFiles(context.userId, args.fileIdsOrPaths, args.targetFolderPath);
+    return {
+      success: true,
+      message: `Successfully arranged ${res.movedCount} file(s) into '${res.targetFolderPath}'.`,
+      movedCount: res.movedCount,
+      targetFolderPath: res.targetFolderPath
+    };
+  }
+};
+
+export const createHyperlinkSchema = z.object({
+  sourceType: z.enum(['file', 'folder']).describe('Source item type to attach hyperlink to.'),
+  sourceIdOrPath: z.string().describe('Source file ID, folder ID, or path.'),
+  title: z.string().describe('Title / label for the hyperlink.'),
+  targetType: z.enum(['file', 'folder', 'external']).describe('Target type being linked to.'),
+  targetIdOrUrl: z.string().describe('Target file path/ID, folder path/ID, or external URL.'),
+  notes: z.string().optional().describe('Optional context notes explaining the connection.')
+});
+
+export const createHyperlinkTool: ToolDefinition = {
+  name: 'create_hyperlink',
+  description: 'Creates a cross-referencing hyperlink to connect files, folders, or external resources in Agent Vault.',
+  parameters: createHyperlinkSchema,
+  execute: async (args: z.infer<typeof createHyperlinkSchema>, context: AgentContext) => {
+    const link = await createVaultHyperlink(
+      context.userId,
+      args.sourceType,
+      args.sourceIdOrPath,
+      args.title,
+      args.targetType,
+      args.targetIdOrUrl,
+      args.notes
+    );
+    return {
+      success: true,
+      message: `Hyperlink '${args.title}' connected successfully.`,
+      hyperlink: link
+    };
+  }
+};
+
+export const accessFolderSchema = z.object({
+  folderPathOrId: z.string().describe('Path or ID of the folder to open and inspect (e.g. "/PM_Routines", "/").')
+});
+
+export const accessFolderTool: ToolDefinition = {
+  name: 'access_folder',
+  description: 'Opens a specific folder and retrieves its full directory map, nested subfolders, files, and connected hyperlinks. Call this whenever you state "I have decided to open this folder".',
+  parameters: accessFolderSchema,
+  execute: async (args: z.infer<typeof accessFolderSchema>, context: AgentContext) => {
+    const contents = await accessVaultFolder(context.userId, args.folderPathOrId);
+    return {
+      success: true,
+      message: `Opened folder '${contents.folderName}' (${contents.folderPath}).`,
+      folderIndex: contents
+    };
+  }
+};
+
+export const accessFileSchema = z.object({
+  filePathOrId: z.string().describe('Path or ID of the file to open and read.')
+});
+
+export const accessFileTool: ToolDefinition = {
+  name: 'access_file',
+  description: 'Opens and reads the full text content, metadata, and connected hyperlinks of a specific file in Agent Vault.',
+  parameters: accessFileSchema,
+  execute: async (args: z.infer<typeof accessFileSchema>, context: AgentContext) => {
+    const res = await accessVaultFile(context.userId, args.filePathOrId);
+    if (!res.found || !res.file) {
+      return {
+        success: false,
+        message: `File '${args.filePathOrId}' was not found in Agent Vault.`
+      };
+    }
+    return {
+      success: true,
+      file: res.file
+    };
+  }
+};
+
+export const getVaultFileSystemIndexSchema = z.object({});
+
+export const getVaultFileSystemIndexTool: ToolDefinition = {
+  name: 'get_vault_file_system_index',
+  description: 'Returns the full hierarchical directory tree index map of all files and folders in user Agent Vault.',
+  parameters: getVaultFileSystemIndexSchema,
+  execute: async (_args: any, context: AgentContext) => {
+    const treeIndex = await getVaultFileSystemIndex(context.userId);
+    return {
+      success: true,
+      directoryTree: treeIndex
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -772,6 +928,13 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   getVaultHistoryTool,
   ingestDocumentTool,
   searchAgentVaultTool,
+  createFolderTool,
+  createFileTool,
+  arrangeFilesTool,
+  createHyperlinkTool,
+  accessFolderTool,
+  accessFileTool,
+  getVaultFileSystemIndexTool,
   proposeUpdateSettingTool,
   proposeCreateEventTool,
   proposeLogIncidentTool,

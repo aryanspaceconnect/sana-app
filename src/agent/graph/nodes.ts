@@ -7,11 +7,20 @@ import { PassOnSchema, PassOn, ToolResult } from '../types.js';
 import { generateContentWithRouter, LLMFunctionCall, AllModelsExhaustedError } from '../llmRouter.js';
 import { getGeminiToolDeclarations, findToolByName, refreshMcpToolsCache } from '../geminiTools.js';
 import { getSessionNotepad } from '../sessionNotepad.js';
+import { getVaultFileSystemIndex } from '../agentVault.js';
+import { touchSession } from '../sessionManager.js';
 
-export function buildSystemPrompt(sessionNotepadContent?: string): string {
+export async function buildSystemPrompt(userId: string, sessionNotepadContent?: string): Promise<string> {
   const notepadStr = sessionNotepadContent && sessionNotepadContent.trim().length > 0
     ? sessionNotepadContent
     : '(Empty - use `update_session_notepad` tool to save working notes, user constraints, or key findings for this session)';
+
+  let fileSystemIndex = '';
+  try {
+    fileSystemIndex = await getVaultFileSystemIndex(userId);
+  } catch (err) {
+    fileSystemIndex = 'ROOT DIRECTORY (/)\n  └── (No files or folders created yet.)';
+  }
 
   return `${SANA_SOUL}
 
@@ -21,8 +30,20 @@ ${SANA_HARD_CONSTRAINTS.map(c => `- ${c}`).join('\n')}
 ### APP ROUTE MAP:
 ${JSON.stringify(SANA_APP_MAP, null, 2)}
 
+### ROOT FILE & FOLDER SYSTEM DIRECTORY INDEX (VAULT WORKSPACE):
+${fileSystemIndex}
+
 ### SANA SESSION NOTEPAD (PRIVATE WORKING MEMORY FOR THIS SESSION):
 ${notepadStr}
+
+### VIRTUAL FILE & FOLDER SYSTEM CAPABILITIES:
+You have complete autonomous authority to manage virtual files and folders inside user Agent Vault:
+1. CREATE FOLDERS (\`create_folder\`): Create new folders or nested subfolders for organization (e.g. \`/PM_Routines\`, \`/Scans/2026\`, \`/Prescriptions\`).
+2. CREATE FILES (\`create_file\`): Create virtual files containing notes, guides, protocols, or logs inside specific folders.
+3. ARRANGE FILES (\`arrange_files\`): Organize and move existing files into designated target folders.
+4. CREATE HYPERLINKS (\`create_hyperlink\`): Link related files, folders, or web URLs together to build a connected knowledge graph.
+5. ACCESS FOLDER (\`access_folder\`): Open and inspect any folder to get its map/index. Whenever you state "I have decided to open this folder", YOU MUST CALL THE \`access_folder\` TOOL!
+6. ACCESS FILE (\`access_file\`): Open and read any file in Agent Vault.
 
 ### MODEL CONTEXT PROTOCOL (MCP) INTERFACE:
 You are fully equipped with Model Context Protocol (MCP) capabilities.
@@ -32,7 +53,7 @@ You are fully equipped with Model Context Protocol (MCP) capabilities.
 
 ### AUTONOMOUS AGENT REASONING PROTOCOL:
 You are SANA operating in an autonomous multi-turn LangGraph loop with native Function Calling.
-- You have direct access to tools for querying the Agent Vault, searching memories, recording user identity, logging incidents, creating calendar events, updating your private session notepad, and running connected MCP tools.
+- You have direct access to tools for querying the Agent Vault, managing files & folders, searching memories, recording user identity, logging incidents, creating calendar events, updating your private session notepad, and running connected MCP tools.
 
 ### MANDATORY TOOL CALLING DIRECTIVES (EXECUTE FUNCTION CALLS DIRECTLY):
 1. USER IDENTITY & PERSONAL DETAILS: Whenever the user introduces themselves, mentions their name, preferred nickname, location, city, climate, or lifestyle (e.g. "My name is Aryan, call me Ray, I live in Bardoli"), YOU MUST IMMEDIATELY CALL THE \`save_user_identity\` TOOL IN A FUNCTION CALL!
@@ -43,6 +64,7 @@ You are SANA operating in an autonomous multi-turn LangGraph loop with native Fu
 6. SESSION NOTEPAD: Use \`update_session_notepad\` or \`mcp__sana_notepad__append_note\` to store working notes during multi-turn consultations.
 7. WEB RESEARCH: Whenever the user asks about skin science, ingredient compatibility, medical recommendations, current guidelines, climate effects, product formulations, or whenever up-to-date live web research is needed, YOU MUST IMMEDIATELY CALL THE \`exa_search\`, \`exa_answer\`, \`web_search\`, \`web_fetch\`, or \`mcp__sana_knowledge__exa_answer\` TOOL to perform live evidence-based web research!
 8. DERMATOLOGY CALCULATIONS: Whenever phototype scoring, Fitzpatrick classification, or barrier damage indices are needed, call \`mcp__sana_dermatology__calculate_fitzpatrick\` or \`mcp__sana_dermatology__evaluate_barrier_index\`.
+9. FILE & FOLDER ORGANIZER: Use \`create_folder\`, \`create_file\`, \`arrange_files\`, \`create_hyperlink\`, \`access_folder\`, and \`access_file\` whenever the user asks you to organize, store, link, or access files and folders in their workspace.
 
 CRITICAL RULE: NEVER state in text that you have saved, updated, or stored user preferences or profile data into their Agent Memory Vault UNLESS you actually execute the corresponding tool function call!
 
@@ -52,6 +74,9 @@ CRITICAL RULE: NEVER state in text that you have saved, updated, or stored user 
 }
 
 export async function initializeNode(state: AgentState) {
+  // Touch active session to refresh 10-min inactivity timer
+  touchSession(state.sessionId, state.userId);
+
   // Load context for agent
   const loadedContext = await loadContextForAgent(state.userId, state.sessionId, {
     profile: true,
@@ -99,9 +124,12 @@ export async function initializeNode(state: AgentState) {
 }
 
 export async function reasoningNode(state: AgentState) {
+  // Refresh active session activity
+  touchSession(state.sessionId, state.userId);
+
   const currentIterations = state.iterations + 1;
   const currentNotepad = getSessionNotepad(state.sessionId) || state.sessionNotepad || '';
-  const systemPrompt = buildSystemPrompt(currentNotepad);
+  const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad);
   
   // Refresh active MCP tools before generating declarations
   await refreshMcpToolsCache();

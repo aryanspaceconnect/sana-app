@@ -340,6 +340,43 @@ export interface VaultDocument {
   version?: number;
 }
 
+export interface VaultHyperlink {
+  id: string;
+  title: string;
+  targetType: 'file' | 'folder' | 'external';
+  targetIdOrUrl: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface VaultFolderRecord {
+  id: string;
+  name: string;
+  path: string;
+  parentPath: string;
+  description?: string;
+  childFolderIds: string[];
+  fileIds: string[];
+  hyperlinks: VaultHyperlink[];
+  createdAt: string;
+  updatedAt: string;
+  version?: number;
+}
+
+export interface VaultFileRecord {
+  id: string;
+  name: string;
+  path: string;
+  folderPath: string;
+  content: string;
+  fileType: string;
+  tags: string[];
+  hyperlinks: VaultHyperlink[];
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
 export interface AgentVaultData {
   userId: string;
   identity?: IdentityData;
@@ -353,6 +390,8 @@ export interface AgentVaultData {
   goals: GoalRecord[];
   notes: VaultNote[];
   documents: VaultDocument[];
+  folders: VaultFolderRecord[];
+  files: VaultFileRecord[];
   lastSynced: string;
 }
 
@@ -385,6 +424,8 @@ export function getOrCreateVaultCache(userId: string): AgentVaultData {
       goals: [],
       notes: [],
       documents: [],
+      folders: [],
+      files: [],
       lastSynced: new Date().toISOString()
     };
   }
@@ -1003,6 +1044,23 @@ export async function loadFullAgentVault(userId: string): Promise<AgentVaultData
       const docsSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'documents', 'records'), orderBy('date', 'desc'), limitQuery(10)));
       if (!docsSnap.empty) cache.documents = docsSnap.docs.map(d => d.data() as VaultDocument);
 
+      // 8. Fetch Folders & Files
+      const foldersSnap = await getDocs(query(collection(db, 'users', userId, 'vault', 'file_system', 'records'), orderBy('updatedAt', 'desc'), limitQuery(50)));
+      if (!foldersSnap.empty) {
+        const rawFolders: VaultFolderRecord[] = [];
+        const rawFiles: VaultFileRecord[] = [];
+        foldersSnap.docs.forEach(d => {
+          const item = d.data();
+          if (item.content !== undefined) {
+            rawFiles.push(item as VaultFileRecord);
+          } else {
+            rawFolders.push(item as VaultFolderRecord);
+          }
+        });
+        cache.folders = rawFolders;
+        cache.files = rawFiles;
+      }
+
       cache.lastSynced = new Date().toISOString();
     }
   } catch (err) {
@@ -1026,4 +1084,320 @@ export function parseDocumentContent(filename: string, rawContent: string): { ti
     content: trimmed,
     summary
   };
+}
+
+// ==========================================
+// 9. VIRTUAL FILE & FOLDER MANAGEMENT ENGINE
+// ==========================================
+
+export function normalizeVaultPath(rawPath?: string): string {
+  if (!rawPath || rawPath.trim() === '' || rawPath.trim() === '.') return '/';
+  let p = rawPath.trim().replace(/\\/g, '/');
+  if (!p.startsWith('/')) p = '/' + p;
+  p = p.replace(/\/+/g, '/');
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+  return p;
+}
+
+/**
+ * Creates a new Virtual Folder in Agent Vault.
+ */
+export async function createVaultFolder(
+  userId: string,
+  name: string,
+  parentPath?: string,
+  description?: string
+): Promise<VaultFolderRecord> {
+  const timeInfo = toAbsoluteTime();
+  const normParent = normalizeVaultPath(parentPath);
+  const cleanName = name.trim().replace(/[/\\?%*:|"<>]/g, '_');
+  const folderPath = normParent === '/' ? `/${cleanName}` : `${normParent}/${cleanName}`;
+  const folderId = `fldr_${Buffer.from(folderPath).toString('hex').substring(0, 16)}`;
+
+  const folderRecord: VaultFolderRecord = {
+    id: folderId,
+    name: cleanName,
+    path: folderPath,
+    parentPath: normParent,
+    description: description || `Folder for ${cleanName}`,
+    childFolderIds: [],
+    fileIds: [],
+    hyperlinks: [],
+    createdAt: timeInfo.recordedAt,
+    updatedAt: timeInfo.recordedAt,
+    version: 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(
+    userId,
+    'file_system',
+    folderId,
+    folderRecord,
+    'sana',
+    `Created folder '${folderPath}'`
+  );
+
+  const cache = getOrCreateVaultCache(userId);
+  const idx = cache.folders.findIndex(f => f.id === folderId || f.path === folderPath);
+  if (idx >= 0) cache.folders[idx] = saved as VaultFolderRecord;
+  else cache.folders.push(saved as VaultFolderRecord);
+
+  return saved as VaultFolderRecord;
+}
+
+/**
+ * Creates a new Virtual File inside a Virtual Folder.
+ */
+export async function createVaultFile(
+  userId: string,
+  name: string,
+  content: string,
+  folderPath?: string,
+  fileType: string = 'text/markdown',
+  tags: string[] = []
+): Promise<VaultFileRecord> {
+  const timeInfo = toAbsoluteTime();
+  const normFolder = normalizeVaultPath(folderPath);
+  const cleanName = name.trim().replace(/[/\\?%*:|"<>]/g, '_');
+  const filePath = normFolder === '/' ? `/${cleanName}` : `${normFolder}/${cleanName}`;
+  const fileId = `file_${Buffer.from(filePath).toString('hex').substring(0, 16)}`;
+
+  // Ensure target folder exists
+  if (normFolder !== '/') {
+    await createVaultFolder(userId, normFolder.split('/').pop() || 'Folder', normFolder.split('/').slice(0, -1).join('/') || '/');
+  }
+
+  const fileRecord: VaultFileRecord = {
+    id: fileId,
+    name: cleanName,
+    path: filePath,
+    folderPath: normFolder,
+    content: content,
+    fileType,
+    tags,
+    hyperlinks: [],
+    createdAt: timeInfo.recordedAt,
+    updatedAt: timeInfo.recordedAt,
+    version: 1
+  };
+
+  const saved = await saveVaultRecordWithVersion(
+    userId,
+    'file_system',
+    fileId,
+    fileRecord,
+    'sana',
+    `Created file '${filePath}'`
+  );
+
+  const cache = getOrCreateVaultCache(userId);
+  const idx = cache.files.findIndex(f => f.id === fileId || f.path === filePath);
+  if (idx >= 0) cache.files[idx] = saved as VaultFileRecord;
+  else cache.files.push(saved as VaultFileRecord);
+
+  return saved as VaultFileRecord;
+}
+
+/**
+ * Re-arranges/moves files into a specific target folder.
+ */
+export async function arrangeVaultFiles(
+  userId: string,
+  fileIdsOrPaths: string[],
+  targetFolderPath: string
+): Promise<{ movedCount: number; targetFolderPath: string }> {
+  const normTarget = normalizeVaultPath(targetFolderPath);
+  const vault = await loadFullAgentVault(userId);
+  let movedCount = 0;
+
+  for (const identifier of fileIdsOrPaths) {
+    const file = vault.files.find(f => f.id === identifier || f.path === identifier || f.name === identifier);
+    if (file) {
+      const newFilePath = normTarget === '/' ? `/${file.name}` : `${normTarget}/${file.name}`;
+      const updatedFile: VaultFileRecord = {
+        ...file,
+        folderPath: normTarget,
+        path: newFilePath,
+        updatedAt: new Date().toISOString()
+      };
+
+      await saveVaultRecordWithVersion(
+        userId,
+        'file_system',
+        file.id,
+        updatedFile,
+        'sana',
+        `Arranged file '${file.name}' into folder '${normTarget}'`
+      );
+      movedCount++;
+    }
+  }
+
+  return { movedCount, targetFolderPath: normTarget };
+}
+
+/**
+ * Creates a hyperlink connecting files, folders, or external URLs.
+ */
+export async function createVaultHyperlink(
+  userId: string,
+  sourceType: 'file' | 'folder',
+  sourceIdOrPath: string,
+  title: string,
+  targetType: 'file' | 'folder' | 'external',
+  targetIdOrUrl: string,
+  notes?: string
+): Promise<VaultHyperlink> {
+  const linkId = `link_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const linkObj: VaultHyperlink = {
+    id: linkId,
+    title,
+    targetType,
+    targetIdOrUrl,
+    notes,
+    createdAt: new Date().toISOString()
+  };
+
+  const vault = await loadFullAgentVault(userId);
+
+  if (sourceType === 'file') {
+    const file = vault.files.find(f => f.id === sourceIdOrPath || f.path === sourceIdOrPath || f.name === sourceIdOrPath);
+    if (file) {
+      const updatedFile = {
+        ...file,
+        hyperlinks: [...(file.hyperlinks || []), linkObj],
+        updatedAt: new Date().toISOString()
+      };
+      await saveVaultRecordWithVersion(userId, 'file_system', file.id, updatedFile, 'sana', `Added hyperlink '${title}'`);
+    }
+  } else {
+    const folder = vault.folders.find(f => f.id === sourceIdOrPath || f.path === sourceIdOrPath || f.name === sourceIdOrPath);
+    if (folder) {
+      const updatedFolder = {
+        ...folder,
+        hyperlinks: [...(folder.hyperlinks || []), linkObj],
+        updatedAt: new Date().toISOString()
+      };
+      await saveVaultRecordWithVersion(userId, 'file_system', folder.id, updatedFolder, 'sana', `Added hyperlink '${title}'`);
+    }
+  }
+
+  return linkObj;
+}
+
+/**
+ * Opens and inspects a folder, returning its full contents and map.
+ */
+export async function accessVaultFolder(
+  userId: string,
+  folderPathOrId: string
+): Promise<{
+  folderPath: string;
+  folderName: string;
+  subfolders: Array<{ id: string; name: string; path: string; description?: string }>;
+  files: Array<{ id: string; name: string; path: string; fileType: string; snippet: string; tags: string[] }>;
+  hyperlinks: VaultHyperlink[];
+}> {
+  const normPath = normalizeVaultPath(folderPathOrId);
+  const vault = await loadFullAgentVault(userId);
+
+  const matchedFolder = vault.folders.find(f => f.id === folderPathOrId || f.path === normPath || f.name === folderPathOrId);
+  const folderName = matchedFolder?.name || (normPath === '/' ? 'Root Workspace' : normPath.split('/').pop() || 'Folder');
+
+  // Find subfolders under normPath
+  const subfolders = vault.folders
+    .filter(f => f.parentPath === normPath || (normPath !== '/' && f.path.startsWith(`${normPath}/`) && f.path.split('/').length === normPath.split('/').length + 1))
+    .map(f => ({ id: f.id, name: f.name, path: f.path, description: f.description }));
+
+  // Find files directly inside normPath
+  const files = vault.files
+    .filter(f => f.folderPath === normPath || (f.path.startsWith(`${normPath}/`) && f.path.substring(normPath.length + 1).indexOf('/') === -1))
+    .map(f => ({
+      id: f.id,
+      name: f.name,
+      path: f.path,
+      fileType: f.fileType,
+      snippet: f.content.length > 200 ? `${f.content.substring(0, 200)}...` : f.content,
+      tags: f.tags || []
+    }));
+
+  return {
+    folderPath: normPath,
+    folderName,
+    subfolders,
+    files,
+    hyperlinks: matchedFolder?.hyperlinks || []
+  };
+}
+
+/**
+ * Accesses and reads a specific file content and connected links.
+ */
+export async function accessVaultFile(
+  userId: string,
+  filePathOrId: string
+): Promise<{
+  file: VaultFileRecord | null;
+  found: boolean;
+}> {
+  const normPath = normalizeVaultPath(filePathOrId);
+  const vault = await loadFullAgentVault(userId);
+
+  const file = vault.files.find(f => f.id === filePathOrId || f.path === normPath || f.name === filePathOrId) || null;
+
+  return {
+    file,
+    found: !!file
+  };
+}
+
+/**
+ * Builds the complete directory tree index map for prompt caching in the system prompt.
+ */
+export async function getVaultFileSystemIndex(userId: string): Promise<string> {
+  const vault = await loadFullAgentVault(userId);
+
+  if ((!vault.folders || vault.folders.length === 0) && (!vault.files || vault.files.length === 0)) {
+    return `ROOT DIRECTORY (/)\n  └── (No files or folders created yet. Use \`create_folder\` or \`create_file\` to structure your workspace.)`;
+  }
+
+  let indexStr = `ROOT DIRECTORY (/)\n`;
+
+  // Folders map
+  const foldersByPath: Record<string, VaultFolderRecord> = {};
+  vault.folders.forEach(f => { foldersByPath[f.path] = f; });
+
+  const filesByFolder: Record<string, VaultFileRecord[]> = {};
+  vault.files.forEach(f => {
+    const fPath = f.folderPath || '/';
+    if (!filesByFolder[fPath]) filesByFolder[fPath] = [];
+    filesByFolder[fPath].push(f);
+  });
+
+  // Render root files
+  if (filesByFolder['/'] && filesByFolder['/'].length > 0) {
+    filesByFolder['/'].forEach(f => {
+      indexStr += `  ├── [FILE] ${f.name} (${f.fileType}) - Path: ${f.path}\n`;
+    });
+  }
+
+  // Render folders
+  const folderPaths = Object.keys(foldersByPath).sort();
+  for (const fPath of folderPaths) {
+    const folder = foldersByPath[fPath];
+    indexStr += `  ├── [FOLDER] ${folder.name}/ - Path: ${folder.path} ${folder.description ? `(${folder.description})` : ''}\n`;
+
+    const folderFiles = filesByFolder[fPath] || [];
+    folderFiles.forEach(f => {
+      indexStr += `  │    ├── [FILE] ${f.name} (${f.fileType}) - Path: ${f.path}\n`;
+    });
+
+    if (folder.hyperlinks && folder.hyperlinks.length > 0) {
+      folder.hyperlinks.forEach(l => {
+        indexStr += `  │    └── [LINK] ${l.title} -> ${l.targetType}:${l.targetIdOrUrl}\n`;
+      });
+    }
+  }
+
+  return indexStr.trim();
 }
