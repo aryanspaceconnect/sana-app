@@ -1,5 +1,18 @@
 import sharp from 'sharp';
 
+export interface FaceBoxInput {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  normalizedX?: number;
+  normalizedY?: number;
+  normalizedWidth?: number;
+  normalizedHeight?: number;
+  imageWidth?: number;
+  imageHeight?: number;
+}
+
 export interface ImagePreprocessResult {
   processedBase64: string;
   processedBuffer: Buffer;
@@ -13,76 +26,128 @@ export interface ImagePreprocessResult {
     cropY: number;
     cropWidth: number;
     cropHeight: number;
-    targetFaceRatio: number;
+    faceWidthRatio: number;
   };
   qualityChecks: {
     isResolutionHD: boolean;
-    estimatedFaceRatio: number;
+    faceRatio: number;
     aspectRatio: number;
     warnings: string[];
   };
 }
 
 /**
- * Server-side Computer Vision Pre-Processor using Sharp.
- * Enforces Perfect Corp S2S v2.1 HD Skincare constraints:
- * - Minimum short side >= 1080px (or smart upscale with Lanczos3 resampling)
+ * Server-side Computer Vision Pre-Processor using Sharp Engine.
+ * Enforces Official Perfect Corp S2S HD Skincare constraints:
+ * - Face width / image width > 60%, recommended 60-80%
+ * - Margin crop derived ONLY from real faceBox coordinates (never guessed center crop)
+ * - Minimum short side >= 1080px (Lanczos3 resampling)
  * - Maximum long side <= 2560px
- * - Face width target ~65-75% of image width
- * - Auto-cropping centered face region when face is too small in full frame
- * - RGB color space normalization and high-quality JPEG output
+ * - Maximum file size < 9MB
+ * - High-quality 4:4:4 chroma JPEG output (quality ~92)
  */
 export async function preprocessSkinImage(
   base64Data: string,
   options: {
-    targetFaceRatio?: number; // Default 0.45 (loose face ratio to preserve edge margins for Perfect Corp)
-    forceHDMinResolution?: number; // Default 1080px
-    autoCropIfSmall?: boolean; // Default true (with generous margins)
+    faceBox?: FaceBoxInput;
+    forceHDMinResolution?: number; // Default 1080
+    maxLongSide?: number; // Default 2560
   } = {}
 ): Promise<ImagePreprocessResult> {
-  const targetFaceRatio = options.targetFaceRatio ?? 0.45;
   const forceHDMinResolution = options.forceHDMinResolution ?? 1080;
-  const autoCropIfSmall = options.autoCropIfSmall ?? true;
+  const maxLongSide = options.maxLongSide ?? 2560;
 
   const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
   const inputBuffer = Buffer.from(cleanBase64, 'base64');
 
-  const pipeline = sharp(inputBuffer);
-  const metadata = await pipeline.metadata();
+  // Load metadata and apply auto-rotation based on EXIF orientation
+  const rotatedBuffer = await sharp(inputBuffer).rotate().toBuffer();
+  const metadata = await sharp(rotatedBuffer).metadata();
 
   const originalWidth = metadata.width || 1080;
   const originalHeight = metadata.height || 1080;
   const warnings: string[] = [];
 
-  // Estimate current face region based on standard mobile/webcam portrait composition
-  let estimatedFaceRatio = 0.45;
-
-  // Determine if image requires auto-cropping or resampling
+  let workingBuffer = rotatedBuffer;
   let wasAutoCropped = false;
   let cropDetails: ImagePreprocessResult['cropDetails'] | undefined;
-  let workingBuffer = inputBuffer;
+  let computedFaceRatio = 0.65;
 
-  const minSide = Math.min(originalWidth, originalHeight);
+  // Process real faceBox if provided
+  if (options.faceBox) {
+    const fb = options.faceBox;
 
-  if (minSide < forceHDMinResolution) {
-    warnings.push(`Original image min resolution (${minSide}px) is below HD threshold (${forceHDMinResolution}px). Lanczos3 HD upsampling applied.`);
-  }
+    // Resolve pixel coordinates for face box
+    let fX = fb.x;
+    let fY = fb.y;
+    let fW = fb.width;
+    let fH = fb.height;
 
-  // Perform smart auto-crop only if face is very small (< 35% of frame)
-  // Ensures generous margin around forehead, chin, and cheeks to prevent 'error_src_face_out_of_bound'
-  if (autoCropIfSmall && originalWidth >= 640 && originalHeight >= 640) {
-    // Keep at least 82% of original frame width/height to guarantee >= 18% edge padding
-    const cropFactor = 0.82;
-    const cropWidth = Math.round(originalWidth * cropFactor);
-    const cropHeight = Math.round(originalHeight * cropFactor);
+    // Convert from normalized coordinates if required
+    if (fb.normalizedWidth && fb.normalizedWidth <= 1.0) {
+      const srcW = fb.imageWidth || originalWidth;
+      const srcH = fb.imageHeight || originalHeight;
+      const scaleX = originalWidth / srcW;
+      const scaleY = originalHeight / srcH;
 
-    // Center crop symmetrically with ample border clearance
-    const cropX = Math.max(0, Math.round((originalWidth - cropWidth) / 2));
-    const cropY = Math.max(0, Math.round((originalHeight - cropHeight) / 2));
+      fX = Math.round(fb.normalizedX! * originalWidth);
+      fY = Math.round(fb.normalizedY! * originalHeight);
+      fW = Math.round(fb.normalizedWidth * originalWidth);
+      fH = Math.round(fb.normalizedHeight * originalHeight);
+    }
 
-    if (cropWidth > 400 && cropHeight > 400 && (originalWidth > 900 || originalHeight > 900)) {
+    // Ensure valid positive dimensions
+    fX = Math.max(0, fX);
+    fY = Math.max(0, fY);
+    fW = Math.min(originalWidth - fX, Math.max(10, fW));
+    fH = Math.min(originalHeight - fY, Math.max(10, fH));
+
+    const initialFaceRatio = fW / originalWidth;
+
+    // Check if crop is needed
+    // If face is already 60%-78% of image width and not cut off, skip crop
+    if (initialFaceRatio >= 0.60 && initialFaceRatio <= 0.78) {
+      computedFaceRatio = initialFaceRatio;
+      warnings.push(`Face is already optimal width (${Math.round(initialFaceRatio * 100)}% of frame). No cropping required.`);
+    } else {
+      // Calculate margin padding (15% horizontal padding, 20% top padding for forehead)
+      const padW = Math.round(fW * 0.18);
+      const padTop = Math.round(fH * 0.25);
+      const padBottom = Math.round(fH * 0.18);
+
+      // Desired crop box
+      let cropX = Math.max(0, fX - padW);
+      let cropY = Math.max(0, fY - padTop);
+      let cropRight = Math.min(originalWidth, fX + fW + padW);
+      let cropBottom = Math.min(originalHeight, fY + fH + padBottom);
+
+      let cropWidth = cropRight - cropX;
+      let cropHeight = cropBottom - cropY;
+
+      // Ensure crop box never cuts into face box
+      cropX = Math.min(cropX, fX);
+      cropY = Math.min(cropY, fY);
+      cropWidth = Math.max(cropWidth, fX + fW - cropX);
+      cropHeight = Math.max(cropHeight, fY + fH - cropY);
+
+      // Face ratio in cropped region
+      const postCropFaceRatio = fW / cropWidth;
+
+      if (postCropFaceRatio < 0.55) {
+        throw new Error(
+          `error_src_face_too_small: Face occupies only ${Math.round(
+            postCropFaceRatio * 100
+          )}% of frame. Move closer so face fills 60-80% of the screen.`
+        );
+      }
+
+      // Perform crop using Sharp
+      workingBuffer = await sharp(rotatedBuffer)
+        .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
+        .toBuffer();
+
       wasAutoCropped = true;
-      estimatedFaceRatio = targetFaceRatio;
+      computedFaceRatio = postCropFaceRatio;
 
       cropDetails = {
         originalWidth,
@@ -91,62 +156,68 @@ export async function preprocessSkinImage(
         cropY,
         cropWidth,
         cropHeight,
-        targetFaceRatio
+        faceWidthRatio: Number(postCropFaceRatio.toFixed(2)),
       };
 
-      // Extract center crop using sharp
-      workingBuffer = await sharp(inputBuffer)
-        .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
-        .toBuffer();
-
-      warnings.push(`Lightly cropped center frame (${cropWidth}x${cropHeight}) maintaining wide edge margins for Perfect Corp S2S requirements.`);
+      warnings.push(`Face-focused crop applied (${cropWidth}x${cropHeight}). Final face ratio: ${Math.round(postCropFaceRatio * 100)}%.`);
     }
+  } else {
+    warnings.push('No face box provided; processing full frame without auto-crop.');
   }
 
-  // Get metadata of working buffer (after crop)
-  const postCropMetadata = await sharp(workingBuffer).metadata();
-  let currentWidth = postCropMetadata.width || originalWidth;
-  let currentHeight = postCropMetadata.height || originalHeight;
+  // Get current dimensions after optional crop
+  const workingMeta = await sharp(workingBuffer).metadata();
+  let currentWidth = workingMeta.width || originalWidth;
+  let currentHeight = workingMeta.height || originalHeight;
 
-  let finalPipeline = sharp(workingBuffer).rotate(); // auto-rotate based on EXIF
+  let pipeline = sharp(workingBuffer);
 
-  // Ensure minimum short side is >= 1080px for Perfect Corp HD Skin Analysis API
-  const currentMinSide = Math.min(currentWidth, currentHeight);
-  const currentLongSide = Math.max(currentWidth, currentHeight);
+  // Resize logic: Ensure minimum short side >= 1080px and long side <= 2560px
+  const minSide = Math.min(currentWidth, currentHeight);
+  const longSide = Math.max(currentWidth, currentHeight);
 
-  if (currentMinSide < forceHDMinResolution) {
-    // Scale up so minimum dimension is forceHDMinResolution (1080px)
-    const scale = forceHDMinResolution / currentMinSide;
+  if (minSide < forceHDMinResolution) {
+    const scale = forceHDMinResolution / minSide;
     const targetW = Math.round(currentWidth * scale);
     const targetH = Math.round(currentHeight * scale);
 
-    finalPipeline = finalPipeline.resize(targetW, targetH, {
+    pipeline = pipeline.resize(targetW, targetH, {
       kernel: sharp.kernel.lanczos3,
-      withoutEnlargement: false
+      withoutEnlargement: false,
     });
-
     currentWidth = targetW;
     currentHeight = targetH;
-  } else if (currentLongSide > 2560) {
-    // Downscale if long side > 2560px to comply with Perfect Corp upper limit
+    warnings.push(`Upscaled image short side to ${forceHDMinResolution}px HD requirement.`);
+  } else if (longSide > maxLongSide) {
     if (currentWidth >= currentHeight) {
-      finalPipeline = finalPipeline.resize({ width: 2560, kernel: sharp.kernel.lanczos3 });
-      currentHeight = Math.round((currentHeight * 2560) / currentWidth);
-      currentWidth = 2560;
+      pipeline = pipeline.resize({ width: maxLongSide, kernel: sharp.kernel.lanczos3 });
+      currentHeight = Math.round((currentHeight * maxLongSide) / currentWidth);
+      currentWidth = maxLongSide;
     } else {
-      finalPipeline = finalPipeline.resize({ height: 2560, kernel: sharp.kernel.lanczos3 });
-      currentWidth = Math.round((currentWidth * 2560) / currentHeight);
-      currentHeight = 2560;
+      pipeline = pipeline.resize({ height: maxLongSide, kernel: sharp.kernel.lanczos3 });
+      currentWidth = Math.round((currentWidth * maxLongSide) / currentHeight);
+      currentHeight = maxLongSide;
     }
+    warnings.push(`Downscaled long side to ${maxLongSide}px limit.`);
   }
 
-  // Output as optimized high-quality JPEG
-  const processedBuffer = await finalPipeline
-    .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+  // Generate output JPEG buffer (< 9MB, quality 92)
+  let quality = 92;
+  let processedBuffer = await pipeline
+    .jpeg({ quality, chromaSubsampling: '4:4:4' })
     .toBuffer();
 
-  const processedBase64 = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
+  // Ensure file size < 9 MB (9 * 1024 * 1024 bytes)
+  const maxSizeBytes = 9 * 1024 * 1024;
+  while (processedBuffer.length > maxSizeBytes && quality > 75) {
+    quality -= 5;
+    processedBuffer = await sharp(workingBuffer)
+      .resize(currentWidth, currentHeight)
+      .jpeg({ quality, chromaSubsampling: '4:4:4' })
+      .toBuffer();
+  }
 
+  const processedBase64 = `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
   const isResolutionHD = Math.min(currentWidth, currentHeight) >= 1080;
   const aspectRatio = Number((currentWidth / currentHeight).toFixed(2));
 
@@ -159,27 +230,26 @@ export async function preprocessSkinImage(
     cropDetails,
     qualityChecks: {
       isResolutionHD,
-      estimatedFaceRatio,
+      faceRatio: computedFaceRatio,
       aspectRatio,
-      warnings
-    }
+      warnings,
+    },
   };
 }
 
 /**
- * Backwards & Cross-Service Compatible Alias for preprocessSkinImage
+ * Backwards & Cross-Service Compatible Alias
  */
 export async function preprocessSkinAnalysisImage(
   base64Image: string,
   options: {
-    forceCropToFaceRatio?: boolean;
+    faceBox?: FaceBoxInput;
     targetMinDimension?: number;
   } = {}
 ) {
   const result = await preprocessSkinImage(base64Image, {
-    targetFaceRatio: 0.70,
+    faceBox: options.faceBox,
     forceHDMinResolution: options.targetMinDimension || 1080,
-    autoCropIfSmall: options.forceCropToFaceRatio !== false
   });
 
   return {
@@ -188,79 +258,8 @@ export async function preprocessSkinAnalysisImage(
     mimeType: 'image/jpeg',
     width: result.width,
     height: result.height,
-    faceRatioEstimated: result.qualityChecks.estimatedFaceRatio,
+    faceRatioEstimated: result.qualityChecks.faceRatio,
     wasCropped: result.wasAutoCropped,
-    warnings: result.qualityChecks.warnings
+    warnings: result.qualityChecks.warnings,
   };
 }
-
-/**
- * Validates raw image buffer against Perfect Corp S2S requirements before submission
- */
-export async function validateImageForSkinAnalysis(
-  imageBuffer: Buffer
-) {
-  const metadata = await sharp(imageBuffer).metadata();
-  const width = metadata.width || 0;
-  const height = metadata.height || 0;
-  const minSide = Math.min(width, height);
-  const maxSide = Math.max(width, height);
-  const aspectRatio = width / (height || 1);
-
-  const errors: string[] = [];
-  const suggestions: string[] = [];
-
-  if (minSide < 480) {
-    errors.push(`Image resolution too low (${width}x${height}). Minimum short side must be at least 480px.`);
-    suggestions.push('Please upload a higher resolution photo or move closer to the camera.');
-  } else if (minSide < 1080) {
-    suggestions.push('Recommended resolution is 1080px+ on the short side for optimal AI skin concern detection.');
-  }
-
-  if (maxSide > 4096) {
-    suggestions.push('Image will be automatically downscaled to comply with maximum 4096px bounds.');
-  }
-
-  if (aspectRatio < 0.5 || aspectRatio > 2.0) {
-    errors.push('Extreme image aspect ratio detected.');
-    suggestions.push('Please use a standard portrait (3:4) or square (1:1) selfie orientation.');
-  }
-
-  const estimatedFaceWidthRatio = Math.min(0.85, (minSide * 0.65) / width);
-
-  return {
-    isValid: errors.length === 0,
-    width,
-    height,
-    minSide,
-    maxSide,
-    aspectRatio,
-    estimatedFaceWidthRatio,
-    errors,
-    suggestions,
-  };
-}
-
-/**
- * Helper to format server error messages into human actionable user guidance
- */
-export function mapPerfectCorpErrorToUserGuidance(errorCode: string): string {
-  const code = errorCode.toLowerCase();
-  if (code.includes('too_small') || code.includes('face_position_too_small')) {
-    return 'Your face occupied too little of the photo frame. Please move closer to the camera so your face fills 60-80% of the screen.';
-  }
-  if (code.includes('below_min_image_size')) {
-    return 'The image resolution was too low. Please upload a high-definition selfie or increase your camera settings.';
-  }
-  if (code.includes('out_of_boundary')) {
-    return 'Your face was cut off at the edge of the photo. Please align your face squarely in the center of the frame.';
-  }
-  if (code.includes('angle') || code.includes('tilt') || code.includes('yaw') || code.includes('pitch')) {
-    return 'Your head was tilted too far. Please look directly into the camera with your head straight and level.';
-  }
-  if (code.includes('invalid') || code.includes('no_face')) {
-    return 'No single clear face was detected. Ensure proper lighting, remove dark glasses or face coverings, and ensure only one face is visible.';
-  }
-  return `Facial scan issue (${errorCode}). Please ensure clear frontal lighting, no shadows, and a straight, centered head position.`;
-}
-

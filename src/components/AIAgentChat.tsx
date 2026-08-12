@@ -22,6 +22,7 @@ interface ChatMessageBubbleProps {
   userProfile: UserProfile | null;
   chatId: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  onSendMessage?: (text: string) => void;
 }
 
 const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: number } => {
@@ -63,7 +64,7 @@ const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: numbe
 };
 
 const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
-  ({ msg, userProfile, chatId, setMessages }) => {
+  ({ msg, userProfile, chatId, setMessages, onSendMessage }) => {
     const isUser = msg.role === 'user';
 
     // Extract search query if present in msg.searchQuery or embedded text
@@ -182,7 +183,9 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
                   proposal={msg.actionProposal}
                   userId={userProfile?.uid || 'guest_user'}
                   onAnswersSubmitted={(answersText) => {
-                    handleSendMessage(answersText);
+                    if (onSendMessage) {
+                      onSendMessage(answersText);
+                    }
                   }}
                   onExecuted={(res) => {
                     setMessages((prevMsgs) => {
@@ -518,6 +521,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             userProfile={userProfile}
             chatId={chatId}
             setMessages={setMessages}
+            onSendMessage={handleSendMessage}
           />
         ))}
 

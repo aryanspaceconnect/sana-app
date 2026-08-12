@@ -11,7 +11,10 @@ import { preprocessSkinImage } from './skinImagePreprocessor.js';
  */
 export async function analyzeSkinWithPerfectCorp(
   imageBase64: string,
-  userId: string = 'guest'
+  userId: string = 'guest',
+  options: {
+    faceBox?: any;
+  } = {}
 ): Promise<PerfectCorpRawOutput> {
   // Perfect Corp S2S API requires the Bearer token starting with 'sk-'
   const envApiKey = (process.env.PERFECT_CORP_API_KEY || '').trim().replace(/^["']|["']$/g, '');
@@ -36,9 +39,8 @@ export async function analyzeSkinWithPerfectCorp(
 
   // Run Server-Side Computer Vision Pre-Processor (Sharp Engine)
   let prepResult = await preprocessSkinImage(imageBase64, {
-    targetFaceRatio: 0.45,
-    forceHDMinResolution: 1080,
-    autoCropIfSmall: false
+    faceBox: options.faceBox,
+    forceHDMinResolution: 1080
   });
 
   if (prepResult.wasAutoCropped) {

@@ -217,10 +217,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </span>
               </div>
             </div>
-
-            <div className="p-1.5 rounded-2xl bg-[#f2f5f8] text-[#2c3038] group-hover:bg-[#121316] group-hover:text-white transition-colors">
-              <Icon icon="solar:sun-cloud-linear" className="w-4 h-4" />
-            </div>
           </div>
 
           {/* Temperature & Weather Condition */}
@@ -236,14 +232,16 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
             {/* UV & Humidity Badges */}
             <div className="flex items-center space-x-1.5 text-[10.5px] font-semibold">
-              <div className="px-2 py-1 rounded-xl bg-[#fff7ed] border border-[#ffedd5] text-[#c2410c] flex items-center space-x-1">
-                <Icon icon="solar:sun-bold" className="w-3 h-3 text-[#ea580c]" />
-                <span>UV {dailyBrief.uvIndex}</span>
-              </div>
+              {Number(dailyBrief.uvIndex) > 0 && (
+                <div className="px-2 py-1 rounded-xl bg-[#fff7ed] border border-[#ffedd5] text-[#c2410c] flex items-center space-x-1">
+                  <Icon icon="solar:sun-bold" className="w-3 h-3 text-[#ea580c]" />
+                  <span>UV {dailyBrief.uvIndex}</span>
+                </div>
+              )}
               {dailyBrief.humidity && (
-                <div className="px-2 py-1 rounded-xl bg-[#f0f9ff] border border-[#e0f2fe] text-[#0369a1] flex items-center space-x-1">
-                  <Icon icon="solar:droplet-bold" className="w-3 h-3 text-[#0284c7]" />
-                  <span>{dailyBrief.humidity}</span>
+                <div className="px-2.5 py-1 rounded-xl bg-[#f0f9ff] border border-[#e0f2fe] text-[#0369a1] flex items-center space-x-1 shadow-2xs">
+                  <Icon icon="solar:droplet-bold" className="w-3.5 h-3.5 text-[#0284c7]" />
+                  <span>{dailyBrief.humidity.includes('Humidity') ? dailyBrief.humidity : `${dailyBrief.humidity} Humidity`}</span>
                 </div>
               )}
             </div>

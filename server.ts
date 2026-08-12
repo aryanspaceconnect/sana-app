@@ -545,7 +545,7 @@ app.post("/api/sana/execute", async (req, res) => {
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64, userId = "guest_user", pastScans = [] } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [], faceBox } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
@@ -553,7 +553,7 @@ app.post("/api/facial-scan", async (req, res) => {
     console.log(`[FacialScanPipeline] Starting dual-path scan workflow for user: ${userId}`);
 
     // STEP 1: Perfect Corp API Analysis Path
-    const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId);
+    const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId, { faceBox });
 
     // STEP 2: Return Pure Perfect Corp Raw S2S Response (No LLM calls or image sent to AI)
     let savedDocId = null;

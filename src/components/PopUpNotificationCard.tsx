@@ -51,7 +51,7 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
       <div className="fixed bottom-[92px] left-0 right-0 z-40 flex justify-center px-4 pointer-events-none">
         <motion.div
           key={notification.id}
-          initial={{ opacity: 0, y: 24, scale: 0.9, width: '340px' }}
+          initial={{ opacity: 0, y: 24, scale: 0.9, width: '380px' }}
           animate={
             isDocking
               ? {
@@ -65,7 +65,7 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
               : {
                   opacity: 1,
                   y: 0,
-                  width: '340px',
+                  width: '380px',
                   height: 'auto',
                   scale: 1,
                   borderRadius: '28px'
@@ -98,18 +98,19 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
               handleStartDismiss();
             }
           }}
-          className="pointer-events-auto relative overflow-hidden bg-white/95 backdrop-blur-2xl border border-white/90 shadow-[0_20px_50px_rgba(0,0,0,0.12)] p-4 flex flex-col justify-between select-none cursor-grab active:cursor-grabbing"
+          className="pointer-events-auto relative overflow-hidden bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-[0_22px_60px_rgba(0,0,0,0.15),0_0_24px_rgba(16,185,129,0.12)] p-4.5 flex flex-col justify-between select-none cursor-grab active:cursor-grabbing rounded-[28px]"
         >
           {/* Top Header Row */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#616874]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#475569]">
                 {notification.badgeText || (notification.type === 'facial_scan' ? 'DAILY FACIAL SCAN' : 'SANA ACTION POP-UP')}
               </span>
             </div>
 
             <div className="flex items-center space-x-1">
-              <span className="text-[10px] font-medium text-[#787f8d] bg-[#f0f3f6] px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold text-[#64748b] bg-[#f1f5f9] px-2.5 py-0.5 rounded-full border border-slate-200/60">
                 {notification.timeAgo}
               </span>
             </div>
@@ -118,15 +119,15 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
           {/* Main Body Info */}
           <div
             onClick={() => onAction(notification)}
-            className="flex items-start space-x-3.5 my-1 group cursor-pointer"
+            className="flex items-start space-x-3.5 my-1.5 group cursor-pointer"
           >
             {/* Custom Icon Box */}
-            <div className="w-10 h-10 rounded-2xl bg-[#f4f6f9] border border-[#eaedf1] flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+            <div className="w-10.5 h-10.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
               {renderIcon(notification.iconType)}
             </div>
 
             <div className="flex-1 min-w-0 text-left">
-              <h4 className="text-[14px] font-bold text-[#121316] tracking-tight leading-snug line-clamp-1">
+              <h4 className="text-[14.5px] font-bold text-[#121316] tracking-tight leading-snug line-clamp-1">
                 {notification.title}
               </h4>
               <p className="text-[12px] text-[#5e6573] line-clamp-2 mt-0.5 leading-relaxed">
@@ -137,16 +138,16 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
 
           {/* Action Footer Button */}
           <div className="mt-3 pt-2.5 border-t border-[#f0f3f6] flex items-center justify-between">
-            <span className="text-[10px] text-[#949be] font-medium italic">
+            <span className="text-[10px] text-[#94a3b8] font-medium italic">
               Swipe down to dock into bar
             </span>
 
             <button
               onClick={() => onAction(notification)}
-              className="px-4 py-2 rounded-2xl bg-[#121316] text-white text-[12.5px] font-semibold hover:bg-[#282a30] active:scale-95 transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
+              className="px-4.5 py-2.2 rounded-2xl bg-[#121316] text-white text-[12.5px] font-bold hover:bg-black active:scale-95 transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
             >
               <span>{notification.actionText || 'Start Routine'}</span>
-              <Icon icon="solar:alt-arrow-right-bold" className="w-3.5 h-3.5 text-white/80" />
+              <Icon icon="solar:alt-arrow-right-bold" className="w-3.5 h-3.5 text-white/90" />
             </button>
           </div>
         </motion.div>

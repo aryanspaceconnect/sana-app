@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { UserProfile, FacialScanResult, PerfectCorpRegionOverlay } from '../types';
 import { saveFacialScan } from '../lib/firebase';
+import { mapPerfectCorpError, ScanUiError } from '../utils/perfectCorpErrorMapper';
+import { assessFaceOnElement, FaceBox, FaceAssessmentResult } from '../lib/faceDetection';
 
 interface FacialScanModalProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const [scanResult, setScanResult] = useState<FacialScanResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scanUiError, setScanUiError] = useState<ScanUiError | null>(null);
   
   // Tab states for pure Perfect Corp API testing
   const [activeTab, setActiveTab] = useState<'raw_json' | 'gallery' | 'raw_scores' | 's2s_logs'>('raw_json');
@@ -33,103 +36,35 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
   const [jsonFilterQuery, setJsonFilterQuery] = useState('');
 
-  // Real-time Computer Vision HUD State
-  const [liveFaceMetrics, setLiveFaceMetrics] = useState<{
-    faceRatio: number;
-    status: 'optimal' | 'move_closer' | 'move_back' | 'auto_crop_ready' | 'tilt_warning' | 'low_light';
-    message: string;
-    lightingScore: number;
-    headTiltAngle: number;
-  }>({
-    faceRatio: 65,
-    status: 'optimal',
-    message: 'Face Position Optimal • Ready to Scan',
-    lightingScore: 85,
-    headTiltAngle: 0
+  // Real-time MediaPipe Face Detection HUD State
+  const [faceAssessment, setFaceAssessment] = useState<FaceAssessmentResult>({
+    status: 'loading',
+    statusText: 'Initializing face detector...',
+    hint: 'Center your face inside the guide frame.',
+    faceRatio: 0,
+    canShutter: false,
+    warnings: []
   });
+  const [currentFaceBox, setCurrentFaceBox] = useState<FaceBox | null>(null);
 
-  // Real-time camera stream frame analyzer loop
+  // Real-time camera stream frame analyzer loop using MediaPipe FaceDetector
   useEffect(() => {
     if (!isOpen || scanResult || !stream || isAnalyzing) return;
 
     let animFrameId: number;
     let lastCheckTime = 0;
 
-    const analyzeStreamFrame = (now: number) => {
-      if (now - lastCheckTime > 200 && videoRef.current && videoRef.current.readyState >= 2) {
+    const analyzeStreamFrame = async (now: number) => {
+      if (now - lastCheckTime > 250 && videoRef.current && videoRef.current.readyState >= 2) {
         lastCheckTime = now;
         const video = videoRef.current;
         const vw = video.videoWidth || 640;
         const vh = video.videoHeight || 640;
 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 160;
-        tempCanvas.height = 160;
-        const ctx = tempCanvas.getContext('2d', { willReadFrequently: true });
-
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, 160, 160);
-          const imgData = ctx.getImageData(0, 0, 160, 160);
-          const pixels = imgData.data;
-
-          let totalLuma = 0;
-          for (let i = 0; i < pixels.length; i += 16) {
-            totalLuma += 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
-          }
-          const avgLuminance = Math.round(totalLuma / (pixels.length / 16));
-
-          let centerBrightness = 0;
-          let borderBrightness = 0;
-          let centerCount = 0;
-          let borderCount = 0;
-
-          for (let y = 0; y < 160; y += 8) {
-            for (let x = 0; x < 160; x += 8) {
-              const idx = (y * 160 + x) * 4;
-              const luma = 0.299 * pixels[idx] + 0.587 * pixels[idx + 1] + 0.114 * pixels[idx + 2];
-
-              const dx = (x - 80) / 50;
-              const dy = (y - 80) / 60;
-              if (dx * dx + dy * dy <= 1.0) {
-                centerBrightness += luma;
-                centerCount++;
-              } else {
-                borderBrightness += luma;
-                borderCount++;
-              }
-            }
-          }
-
-          const avgCenter = centerCount ? centerBrightness / centerCount : 128;
-          const avgBorder = borderCount ? borderBrightness / borderCount : 128;
-          const contrastDiff = Math.abs(avgCenter - avgBorder);
-
-          let estimatedFaceRatio = Math.min(85, Math.max(30, Math.round(50 + contrastDiff * 0.4)));
-
-          let status: typeof liveFaceMetrics.status = 'optimal';
-          let message = 'Face Position Optimal • Ready to Scan';
-
-          if (avgLuminance < 45) {
-            status = 'low_light';
-            message = 'Low Ambient Light • Move to a Well-Lit Area';
-          } else if (estimatedFaceRatio < 40 && vw < 1280) {
-            status = 'move_closer';
-            message = `Move Closer to Camera (${estimatedFaceRatio}% Face Ratio)`;
-          } else if (estimatedFaceRatio < 60) {
-            status = 'auto_crop_ready';
-            message = `Smart Auto-Crop Active (${estimatedFaceRatio}% Face Ratio → 70% Target)`;
-          } else if (estimatedFaceRatio > 82) {
-            status = 'move_back';
-            message = `Move Slightly Back (${estimatedFaceRatio}% Face Ratio)`;
-          }
-
-          setLiveFaceMetrics({
-            faceRatio: estimatedFaceRatio,
-            status,
-            message,
-            lightingScore: Math.min(100, Math.round((avgLuminance / 220) * 100)),
-            headTiltAngle: 0
-          });
+        const assessment = await assessFaceOnElement(video, vw, vh);
+        setFaceAssessment(assessment);
+        if (assessment.faceBox) {
+          setCurrentFaceBox(assessment.faceBox);
         }
       }
 
@@ -152,6 +87,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
   const startCamera = async () => {
     setCameraError(null);
+    setScanUiError(null);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } }
@@ -173,10 +109,11 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     }
   };
 
-  const processScanImage = async (base64Image: string) => {
+  const processScanImage = async (base64Image: string, faceBox?: FaceBox) => {
     setCapturedImage(base64Image);
     setIsAnalyzing(true);
     setCameraError(null);
+    setScanUiError(null);
 
     try {
       const response = await fetch('/api/facial-scan', {
@@ -185,22 +122,17 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         body: JSON.stringify({
           imageBase64: base64Image,
           userId: userProfile?.uid || 'guest_user',
-          pastScans
+          pastScans,
+          faceBox: faceBox || currentFaceBox || undefined
         })
       });
 
       const data = await response.json();
 
       if (!response.ok || data.error) {
-        let errorMsg = data.error || data.details || 'Failed to complete skin scan analysis';
-        if (errorMsg.includes('error_src_face_out_of_bound') || errorMsg.includes('out_of_bound')) {
-          errorMsg = 'Face Boundary Alert: The face is too close to the image border or clipped at the edges. Please hold your phone at arm\'s length and keep your entire face (forehead to chin) centered with visible margins.';
-        } else if (errorMsg.includes('error_face_position_too_small')) {
-          errorMsg = 'Face Distance Alert: The face in the photo is too small or too far away. Please move slightly closer or keep face centered.';
-        } else if (errorMsg.includes('error_face_position_invalid')) {
-          errorMsg = 'Face Alignment Alert: Could not clearly detect a single frontal face. Please ensure good lighting and open eyes.';
-        }
-        setCameraError(errorMsg);
+        const mappedErr = mapPerfectCorpError(data.error, data.details);
+        setScanUiError(mappedErr);
+        setIsAnalyzing(false);
         return;
       }
 
@@ -247,17 +179,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       const vw = video.videoWidth || 640;
       const vh = video.videoHeight || 640;
 
-      // Capture wide center frame (~92% width) to guarantee wide edge margins around face
-      const cropW = Math.round(vw * 0.92);
-      const cropH = Math.min(vh, Math.round(cropW * (4 / 3)));
-      const cropX = Math.max(0, Math.round((vw - cropW) / 2));
-      const cropY = Math.max(0, Math.round((vh - cropH) / 2));
-
-      canvas.width = cropW;
-      canvas.height = cropH;
+      // Capture FULL video frame — sharp/preprocessor on server handles margin crop from faceBox
+      canvas.width = vw;
+      canvas.height = vh;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        ctx.drawImage(video, 0, 0, vw, vh);
         base64Image = canvas.toDataURL('image/jpeg', 0.92);
       }
     }
@@ -266,7 +193,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       base64Image = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/";
     }
 
-    await processScanImage(base64Image);
+    await processScanImage(base64Image, currentFaceBox || undefined);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -276,7 +203,18 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64Image = reader.result as string;
-      await processScanImage(base64Image);
+
+      // Detect face on uploaded image using HTMLImageElement
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = async () => {
+        const assessment = await assessFaceOnElement(img, img.width, img.height);
+        await processScanImage(base64Image, assessment.faceBox);
+      };
+      img.onerror = async () => {
+        await processScanImage(base64Image);
+      };
+      img.src = base64Image;
     };
     reader.readAsDataURL(file);
   };
@@ -350,34 +288,30 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               {/* Squircle Facial Frame HUD */}
               <div
                 className={`absolute inset-10 sm:inset-12 border-2 rounded-[40px] pointer-events-none transition-all duration-300 flex flex-col justify-between p-3 ${
-                  liveFaceMetrics.status === 'optimal'
+                  faceAssessment.status === 'ready'
                     ? 'border-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.3)]'
-                    : liveFaceMetrics.status === 'auto_crop_ready'
-                    ? 'border-blue-400 shadow-[0_0_24px_rgba(96,165,250,0.3)]'
                     : 'border-amber-400/80 border-dashed animate-pulse'
                 }`}
               >
                 <div className="self-center px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-xs border border-white/20 text-[10.5px] font-medium text-white flex items-center space-x-1.5 shadow-md">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      liveFaceMetrics.status === 'optimal'
+                      faceAssessment.status === 'ready'
                         ? 'bg-emerald-400 animate-pulse'
-                        : liveFaceMetrics.status === 'auto_crop_ready'
-                        ? 'bg-blue-400'
                         : 'bg-amber-400 animate-ping'
                     }`}
                   />
-                  <span>{liveFaceMetrics.message}</span>
+                  <span>{faceAssessment.statusText} • {faceAssessment.hint}</span>
                 </div>
 
                 <div className="text-center px-2 py-1 rounded-xl bg-black/60 backdrop-blur-xs text-[10px] text-emerald-300 font-medium self-center border border-emerald-500/20 max-w-[90%]">
-                  Hold phone at arm's length • Keep entire face inside guide with edge margin
+                  {faceAssessment.hint}
                 </div>
 
                 <div className="self-center flex items-center space-x-2 text-[9.5px] font-mono text-white/80 bg-slate-900/90 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-white/10">
-                  <span>WIDE EDGE MARGIN ACTIVE</span>
+                  <span>FACE RATIO: {Math.round((faceAssessment.faceRatio || 0) * 100)}%</span>
                   <span>•</span>
-                  <span>LIGHTING: {liveFaceMetrics.lightingScore}%</span>
+                  <span>TARGET: 60-78%</span>
                 </div>
               </div>
 
@@ -385,6 +319,69 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 <div className="absolute inset-0 bg-slate-950/90 p-4 flex flex-col items-center justify-center text-center space-y-2 z-10">
                   <Icon icon="solar:camera-square-bold" className="w-10 h-10 text-rose-400" />
                   <p className="text-xs text-rose-200 font-semibold">{cameraError}</p>
+                </div>
+              )}
+
+              {/* Section F: Recommended Error UI Pattern (Title + Instruction + Primary Action Button) */}
+              {scanUiError && (
+                <div className="absolute inset-0 bg-slate-950/95 p-6 flex flex-col items-center justify-center text-center z-30 animate-fade-in">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
+                    <Icon icon="solar:danger-circle-bold" className="w-7 h-7 text-rose-400" />
+                  </div>
+
+                  {/* 1. Short title */}
+                  <h3 className="text-base font-bold text-white mb-1.5 tracking-tight">
+                    {scanUiError.title}
+                  </h3>
+
+                  {/* 2. One instruction */}
+                  <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-5">
+                    {scanUiError.hint}
+                  </p>
+
+                  {/* 3. Primary button */}
+                  <div className="flex items-center space-x-2.5">
+                    {scanUiError.action === 'retry' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScanUiError(null);
+                          if (capturedImage) {
+                            processScanImage(capturedImage);
+                          } else {
+                            startCamera();
+                          }
+                        }}
+                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                      >
+                        <Icon icon="solar:restart-bold" className="w-4 h-4" />
+                        <span>Try Again</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScanUiError(null);
+                          setCapturedImage(null);
+                          startCamera();
+                        }}
+                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                      >
+                        <Icon icon="solar:camera-bold" className="w-4 h-4" />
+                        <span>Retake Photo</span>
+                      </button>
+                    )}
+
+                    {scanUiError.action === 'wait' && (
+                      <button
+                        type="button"
+                        onClick={() => setScanUiError(null)}
+                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all border border-slate-700 cursor-pointer"
+                      >
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -649,11 +646,19 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               <>
                 <button
                   onClick={handleCapture}
-                  disabled={isAnalyzing}
-                  className="flex-1 py-3 rounded-2xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition-colors cursor-pointer shadow-md flex items-center justify-center space-x-2"
+                  disabled={isAnalyzing || (!faceAssessment.canShutter && faceAssessment.status !== 'ready')}
+                  className={`flex-1 py-3 rounded-2xl text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md flex items-center justify-center space-x-2 ${
+                    faceAssessment.canShutter || faceAssessment.status === 'ready'
+                      ? 'bg-emerald-500 hover:bg-emerald-400'
+                      : 'bg-amber-500 hover:bg-amber-400'
+                  }`}
                 >
                   <Icon icon="solar:camera-bold" className="w-4 h-4" />
-                  <span>Scan Face Now</span>
+                  <span>
+                    {faceAssessment.canShutter || faceAssessment.status === 'ready'
+                      ? 'Scan Face Now'
+                      : faceAssessment.statusText || 'Position Face in Oval'}
+                  </span>
                 </button>
 
                 <label className="p-3 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center">
