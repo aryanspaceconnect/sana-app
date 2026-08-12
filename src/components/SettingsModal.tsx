@@ -20,6 +20,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onTestTriggerPopup
 }) => {
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   if (!isOpen) return null;
 
@@ -27,7 +32,87 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     temperatureUnit: 'C',
     scanNotificationTime: '00:00',
     scanReminderEnabled: true,
-    theme: 'light'
+    theme: 'light',
+    locationName: 'Bardoli, IN',
+    latitude: 21.12,
+    longitude: 73.11
+  };
+
+  const handleSearchLocation = async (q: string) => {
+    setSearchQuery(q);
+    if (!q || q.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearchingLocation(true);
+    try {
+      const res = await fetch(`/api/location/search?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      }
+    } catch (e) {
+      console.warn("Location search error:", e);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  const handleSelectLocation = (loc: any) => {
+    const updated: UserSettings = {
+      ...currentSettings,
+      locationName: loc.displayName || `${loc.name}, ${loc.country}`,
+      latitude: loc.latitude,
+      longitude: loc.longitude
+    };
+    onUpdateSettings(updated);
+    if (userProfile?.uid && !userProfile.isAnonymous) {
+      syncUserProfile({ uid: userProfile.uid } as any, updated);
+    }
+    setShowLocationSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const handleDetectGps = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    setIsDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        let locName = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+        try {
+          const res = await fetch(`/api/location/reverse?lat=${lat}&lon=${lon}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.locationName) locName = data.locationName;
+          }
+        } catch (e) {
+          console.warn("Reverse geocode error:", e);
+        }
+        const updated: UserSettings = {
+          ...currentSettings,
+          locationName: locName,
+          latitude: lat,
+          longitude: lon
+        };
+        onUpdateSettings(updated);
+        if (userProfile?.uid && !userProfile.isAnonymous) {
+          syncUserProfile({ uid: userProfile.uid } as any, updated);
+        }
+        setIsDetectingGps(false);
+      },
+      (err) => {
+        console.warn("GPS detection error:", err);
+        alert("Could not access GPS location. You can search for your city manually!");
+        setIsDetectingGps(false);
+      },
+      { timeout: 10000 }
+    );
   };
 
   const handleToggleTemp = (unit: 'C' | 'F') => {
@@ -171,12 +256,92 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* Temperature & Unit Settings */}
+          {/* Preferences & Environmental Location Settings */}
           <div className="space-y-3 pt-1">
             <span className="text-[11px] font-semibold uppercase text-[#8e95a2] tracking-wider block">
-              Preferences
+              Preferences & Location
             </span>
 
+            {/* Weather Station Location Selector */}
+            <div className="p-3.5 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-semibold text-[#121316]">Environmental Location</p>
+                  <p className="text-[11px] text-[#787f8d]">Weather & UV Exposome station</p>
+                </div>
+                <button
+                  onClick={handleDetectGps}
+                  disabled={isDetectingGps}
+                  className="px-2.5 py-1 rounded-xl bg-sky-50 border border-sky-200 text-[#0284c7] text-[11px] font-semibold hover:bg-sky-100 transition-colors cursor-pointer flex items-center space-x-1"
+                >
+                  <Icon icon={isDetectingGps ? "solar:restart-bold-duotone" : "solar:gps-bold"} className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-spin' : ''}`} />
+                  <span>{isDetectingGps ? 'Locating...' : 'GPS Detect'}</span>
+                </button>
+              </div>
+
+              {/* Current Active Location display */}
+              <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#e2e8f0]">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <div className="p-1.5 rounded-lg bg-[#0284c7]/10 text-[#0284c7]">
+                    <Icon icon="solar:map-point-bold-duotone" className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-semibold text-[#121316] truncate">
+                      {currentSettings.locationName || 'Bardoli, IN'}
+                    </p>
+                    <p className="text-[10px] text-[#94a3b8]">
+                      Lat: {currentSettings.latitude ?? 21.12}, Lon: {currentSettings.longitude ?? 73.11}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowLocationSearch(!showLocationSearch)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#475569] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
+                >
+                  {showLocationSearch ? 'Close' : 'Change'}
+                </button>
+              </div>
+
+              {/* Location Search Dropdown */}
+              {showLocationSearch && (
+                <div className="p-2.5 rounded-xl bg-white border border-[#cbd5e1] space-y-2 mt-2">
+                  <div className="relative flex items-center">
+                    <Icon icon="solar:magnifer-linear" className="w-4 h-4 text-[#94a3b8] absolute left-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Search city e.g. London, Tokyo, New York..."
+                      value={searchQuery}
+                      onChange={(e) => handleSearchLocation(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[12px] text-[#121316] focus:outline-none focus:border-[#0284c7]"
+                    />
+                  </div>
+
+                  {isSearchingLocation && (
+                    <p className="text-[11px] text-[#94a3b8] px-1 py-1">Searching cities...</p>
+                  )}
+
+                  {searchResults.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto space-y-1 pt-1 border-t border-[#f1f5f9]">
+                      {searchResults.map((loc, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSelectLocation(loc)}
+                          className="w-full text-left p-2 rounded-lg hover:bg-[#f8fafc] text-[12px] transition-colors cursor-pointer flex flex-col"
+                        >
+                          <span className="font-semibold text-[#121316]">{loc.displayName}</span>
+                          <span className="text-[10px] text-[#94a3b8]">
+                            Lat: {loc.latitude.toFixed(2)}, Lon: {loc.longitude.toFixed(2)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Temperature Unit */}
             <div className="p-3.5 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] flex items-center justify-between">
               <div>
                 <p className="text-[13px] font-semibold text-[#121316]">Temperature Unit</p>

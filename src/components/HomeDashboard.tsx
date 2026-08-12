@@ -10,6 +10,7 @@ interface HomeDashboardProps {
   onOpenScan: () => void;
   onOpenAgent: () => void;
   onOpenCalendar: () => void;
+  onOpenSettings?: () => void;
 }
 
 interface RoutineStep {
@@ -25,7 +26,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   dailyBrief,
   onOpenScan,
   onOpenAgent,
-  onOpenCalendar
+  onOpenCalendar,
+  onOpenSettings
 }) => {
   // Dynamic hydration logs with local persistence
   const [hydrationLogs, setHydrationLogs] = useState<number>(() => {
@@ -96,28 +98,58 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </h1>
       </motion.div>
 
-      {/* Weather Card */}
+      {/* Weather & Environmental Exposome Card */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
-        className="grid grid-cols-2 gap-3"
       >
-        {/* Weather Card - Squaricle Shape */}
-        <div className="squircle-card p-4.5 flex flex-col justify-between relative overflow-hidden rounded-[24px]">
+        <div
+          onClick={onOpenSettings}
+          className="squircle-card p-4.5 flex flex-col justify-between relative overflow-hidden rounded-[24px] bg-white border border-[#eaedf1] shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+        >
+          {/* Card Top: Weather Title & Location Pin Badge */}
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[12px] font-medium text-[#737a87]">Weather</span>
-            <div className="p-1.5 rounded-2xl bg-[#f2f5f8] text-[#2c3038]">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-[12px] font-medium text-[#737a87]">Weather</span>
+              <span className="text-[10px] text-[#cbd5e1]">•</span>
+              <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-[10.5px] font-medium">
+                <Icon icon="solar:map-point-bold-duotone" className="w-3 h-3 text-[#0284c7]" />
+                <span className="truncate max-w-[110px]">
+                  {dailyBrief.locationName || userProfile?.settings?.locationName || 'Bardoli, IN'}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-1.5 rounded-2xl bg-[#f2f5f8] text-[#2c3038] group-hover:bg-[#121316] group-hover:text-white transition-colors">
               <Icon icon="solar:sun-cloud-linear" className="w-4 h-4" />
             </div>
           </div>
-          <div>
-            <div className="text-[28px] font-bold text-[#121316] tracking-tight">
-              {dailyBrief.temperature}
+
+          {/* Temperature & Weather Condition */}
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="text-[30px] font-bold text-[#121316] tracking-tight leading-none">
+                {dailyBrief.temperature}
+              </div>
+              <p className="text-[12.5px] font-medium text-[#5e6573] mt-1 flex items-center space-x-1">
+                <span>{dailyBrief.weatherCondition}</span>
+              </p>
             </div>
-            <p className="text-[12px] font-medium text-[#5e6573] mt-0.5">
-              {dailyBrief.weatherCondition}
-            </p>
+
+            {/* UV & Humidity Badges */}
+            <div className="flex items-center space-x-1.5 text-[10.5px] font-semibold">
+              <div className="px-2 py-1 rounded-xl bg-[#fff7ed] border border-[#ffedd5] text-[#c2410c] flex items-center space-x-1">
+                <Icon icon="solar:sun-bold" className="w-3 h-3 text-[#ea580c]" />
+                <span>UV {dailyBrief.uvIndex}</span>
+              </div>
+              {dailyBrief.humidity && (
+                <div className="px-2 py-1 rounded-xl bg-[#f0f9ff] border border-[#e0f2fe] text-[#0369a1] flex items-center space-x-1">
+                  <Icon icon="solar:droplet-bold" className="w-3 h-3 text-[#0284c7]" />
+                  <span>{dailyBrief.humidity}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </motion.div>

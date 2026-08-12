@@ -78,28 +78,74 @@ const DEFAULT_LAT = 21.12;
 const DEFAULT_LON = 73.11;
 
 /**
+ * Search locations via Open-Meteo Geocoding API
+ */
+export async function searchLocations(query: string) {
+  try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=en&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.results || !Array.isArray(data.results)) return [];
+    return data.results.map((item: any) => ({
+      name: item.name,
+      admin1: item.admin1,
+      country: item.country,
+      countryCode: item.country_code,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      elevation: item.elevation,
+      displayName: [item.name, item.admin1, item.country].filter(Boolean).join(', ')
+    }));
+  } catch (err) {
+    console.warn('[WeatherAwarenessEngine] Geocoding search error:', err);
+    return [];
+  }
+}
+
+/**
+ * Reverse geocode coordinates to location name
+ */
+export async function reverseGeocode(lat: number, lon: number): Promise<string> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'SanaApp/1.0' } });
+    if (!res.ok) return `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+    const data = await res.json();
+    const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county || data.address?.state;
+    const country = data.address?.country;
+    if (city && country) return `${city}, ${country}`;
+    if (city) return city;
+    return `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+  } catch {
+    return `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+  }
+}
+
+/**
  * WMO Weather Interpretation Codes mapping
  */
 function getWmoConditionName(code: number): string {
   if (code === 0) return 'Clear Sky';
   if (code === 1) return 'Mainly Clear';
-  if (code === 2) return 'Partly Cloudy';
+  if (code === 2) return 'Partly Sunny';
   if (code === 3) return 'Overcast';
   if (code >= 45 && code <= 48) return 'Foggy';
   if (code >= 51 && code <= 55) return 'Drizzle';
-  if (code >= 61 && code <= 65) return 'Rain';
+  if (code >= 61 && code <= 65) return 'Rainy';
   if (code >= 71 && code <= 77) return 'Snow';
-  if (code >= 80 && code <= 82) return 'Rain Showers';
+  if (code >= 80 && code <= 82) return 'Showers';
   if (code >= 95 && code <= 99) return 'Thunderstorm';
-  return 'Variable';
+  return 'Partly Sunny';
 }
 
 /**
  * Fetches lightweight baseline current weather from Open-Meteo with 20-min caching.
  */
-export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: number = DEFAULT_LON) {
+export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: number = DEFAULT_LON, locationNameOverride?: string) {
+  const cacheKey = `${lat.toFixed(2)}_${lon.toFixed(2)}`;
   const now = Date.now();
-  if (baselineCache && (now - baselineCache.timestamp) < CACHE_TTL_MS) {
+  if (baselineCache && (now - baselineCache.timestamp) < CACHE_TTL_MS && (baselineCache as any).cacheKey === cacheKey) {
     return baselineCache.data;
   }
 
@@ -110,6 +156,13 @@ export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: num
     const json = await res.json();
 
     const current = json.current || {};
+    const condName = getWmoConditionName(current.weather_code ?? 2);
+
+    let displayLocName = locationNameOverride;
+    if (!displayLocName) {
+      displayLocName = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+    }
+
     const data = {
       tempC: current.temperature_2m ?? 28,
       feelsLikeC: current.apparent_temperature ?? 30,
@@ -117,12 +170,13 @@ export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: num
       dewPointC: current.dew_point_2m ?? 21,
       uvIndex: current.uv_index ?? 6.5,
       precipMm: current.precipitation ?? 0,
-      weatherCode: current.weather_code ?? 0,
+      weatherCode: current.weather_code ?? 2,
+      weatherCondition: condName,
       windSpeedKmH: current.wind_speed_10m ?? 10,
-      locationName: `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`
+      locationName: displayLocName
     };
 
-    baselineCache = { timestamp: now, data };
+    baselineCache = { timestamp: now, data, cacheKey } as any;
     return data;
   } catch (err) {
     console.warn('[WeatherAwarenessEngine] Failed to fetch live Open-Meteo baseline weather, using fallback:', err);
@@ -134,8 +188,9 @@ export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: num
       uvIndex: 6.5,
       precipMm: 0,
       weatherCode: 2,
+      weatherCondition: 'Partly Sunny',
       windSpeedKmH: 10,
-      locationName: `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E (Cached/Fallback)`
+      locationName: locationNameOverride || `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`
     };
   }
 }

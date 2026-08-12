@@ -9,6 +9,7 @@ import { generateContentWithRouter, generateContentStreamWithRouter } from "./sr
 import { executeWebSearch } from "./src/agent/searchService.js";
 import { performExaSearch, performExaContents, performExaAnswer } from "./src/agent/exaSearchService.js";
 import { mcpManager } from "./src/agent/mcp/McpManager.js";
+import { getBaselineWeatherData, searchLocations, reverseGeocode } from "./src/agent/services/WeatherAwarenessEngine.js";
 
 dotenv.config();
 
@@ -639,27 +640,78 @@ Return ONLY a valid JSON object matching this schema exactly (no markdown surrou
   }
 });
 
+// Location Search Endpoint
+app.get("/api/location/search", async (req, res) => {
+  try {
+    const query = req.query.q as string;
+    if (!query || query.trim().length < 2) {
+      return res.json({ results: [] });
+    }
+    const results = await searchLocations(query);
+    res.json({ results });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to search locations", details: err?.message });
+  }
+});
+
+// Location Reverse Geocode Endpoint
+app.get("/api/location/reverse", async (req, res) => {
+  try {
+    const lat = parseFloat(req.query.lat as string);
+    const lon = parseFloat(req.query.lon as string);
+    if (isNaN(lat) || isNaN(lon)) {
+      return res.status(400).json({ error: "Invalid lat/lon" });
+    }
+    const locationName = await reverseGeocode(lat, lon);
+    res.json({ locationName, lat, lon });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to reverse geocode", details: err?.message });
+  }
+});
+
 // Daily Briefing Endpoint
 app.post("/api/daily-brief", async (req, res) => {
   try {
-    const { temperatureUnit, location } = req.body;
+    const { temperatureUnit = "C", latitude = 21.12, longitude = 73.11, locationName } = req.body;
     
-    // Generates personalized morning brief metrics
+    const weather = await getBaselineWeatherData(
+      typeof latitude === 'number' ? latitude : 21.12,
+      typeof longitude === 'number' ? longitude : 73.11,
+      locationName
+    );
+
+    const isFahrenheit = temperatureUnit === "F";
+    const displayTemp = isFahrenheit 
+      ? `${Math.round((weather.tempC * 9/5) + 32)}°F` 
+      : `${Math.round(weather.tempC)}°C`;
+      
+    let uvLevel = "Moderate";
+    if (weather.uvIndex < 3) uvLevel = "Low";
+    else if (weather.uvIndex < 6) uvLevel = "Moderate";
+    else if (weather.uvIndex < 8) uvLevel = "High";
+    else if (weather.uvIndex < 11) uvLevel = "Very High";
+    else uvLevel = "Extreme";
+
+    const displayLocation = locationName || weather.locationName || "Bardoli, IN";
+
     res.json({
       greeting: "Morning, sunshine",
-      temperature: temperatureUnit === "F" ? "73°F" : "23°C",
-      weatherCondition: "Partly Sunny",
-      uvIndex: 6,
-      uvLevel: "Moderate High",
-      humidity: "58%",
+      temperature: displayTemp,
+      weatherCondition: weather.weatherCondition || "Partly Sunny",
+      uvIndex: weather.uvIndex,
+      uvLevel: uvLevel,
+      humidity: `${weather.humidity}%`,
+      dewPoint: `${weather.dewPointC}°C`,
+      locationName: displayLocation,
       waterTargetLiters: "2.4L",
       primaryReminders: [
-        "Apply broad-spectrum sunscreen before going outdoors",
+        `Apply broad-spectrum sunscreen before going outdoors (UV: ${weather.uvIndex} ${uvLevel})`,
         "Hydration target: 2.4L throughout the day",
         "Scheduled evening facial barrier check at 9:00 PM"
       ]
     });
   } catch (error: any) {
+    console.warn("Daily brief generation fallback:", error);
     res.status(500).json({ error: "Failed to generate daily brief" });
   }
 });

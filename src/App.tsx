@@ -89,7 +89,10 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            temperatureUnit: userProfile?.settings?.temperatureUnit || 'C'
+            temperatureUnit: userProfile?.settings?.temperatureUnit || 'C',
+            latitude: userProfile?.settings?.latitude ?? 21.12,
+            longitude: userProfile?.settings?.longitude ?? 73.11,
+            locationName: userProfile?.settings?.locationName || 'Bardoli, IN'
           })
         });
         if (res.ok) {
@@ -102,7 +105,12 @@ export default function App() {
     };
 
     fetchDailyBrief();
-  }, [userProfile?.settings?.temperatureUnit]);
+  }, [
+    userProfile?.settings?.temperatureUnit,
+    userProfile?.settings?.latitude,
+    userProfile?.settings?.longitude,
+    userProfile?.settings?.locationName
+  ]);
 
   // Subscribe to Facial Scans in Firestore
   useEffect(() => {
@@ -215,6 +223,7 @@ export default function App() {
             onOpenScan={() => setIsScanOpen(true)}
             onOpenAgent={() => setActiveTab('agent')}
             onOpenCalendar={() => setActiveTab('calendar')}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
 

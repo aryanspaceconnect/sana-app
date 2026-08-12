@@ -6,6 +6,9 @@ export interface UserSettings {
   scanReminderEnabled?: boolean;
   lastCompletedScanDate?: string; // YYYY-MM-DD
   theme: 'light' | 'dark';
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface UserProfile {
@@ -69,6 +72,8 @@ export interface DailyBriefing {
   humidity: string;
   waterTargetLiters: string;
   primaryReminders: string[];
+  locationName?: string;
+  dewPoint?: string;
 }
 
 export interface PopUpNotification {
