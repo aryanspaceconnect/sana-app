@@ -10,9 +10,11 @@ import { getSessionNotepad } from '../sessionNotepad.js';
 import { getVaultFileSystemIndex } from '../agentVault.js';
 import { touchSession } from '../sessionManager.js';
 import { getTemporalPromptHeader } from '../services/TemporalEngine.js';
+import { getBaselineWeatherPromptHeader } from '../services/WeatherAwarenessEngine.js';
 
 export async function buildSystemPrompt(userId: string, sessionNotepadContent?: string): Promise<string> {
   const temporalHeader = getTemporalPromptHeader();
+  const weatherHeader = await getBaselineWeatherPromptHeader();
   const notepadStr = sessionNotepadContent && sessionNotepadContent.trim().length > 0
     ? sessionNotepadContent
     : '(Empty - use `update_session_notepad` tool to save working notes, user constraints, or key findings for this session)';
@@ -25,8 +27,24 @@ export async function buildSystemPrompt(userId: string, sessionNotepadContent?: 
   }
 
   return `${temporalHeader}
+${weatherHeader}
 
 ${SANA_SOUL}
+
+### IN-CONTEXT LEARNING (ICL): ENVIRONMENTAL & GEOLOGICAL DECISION RULES
+1. BASELINE CONTEXT (No tool needed):
+   - For routine casual conversations, simple routine checks, or basic skin queries, rely ONCE on the baseline \`[ENVIRONMENT & WEATHER]\` context header above (~45 tokens). DO NOT invoke \`fetch_advanced_environmental_data\`.
+
+2. ADVANCED TOOL TRIGGER CONDITIONS (Invoke \`fetch_advanced_environmental_data\`):
+   - Trigger Condition A (Acute Flare-Ups): User reports sudden inexplicable breakout, barrier burning, atopic dermatitis flare, or rosacea flushing. Query \`includeAirQuality: true\` (PM2.5/AhR check) and \`includeHourlyForecast: true\`.
+   - Trigger Condition B (Geological Relocation / Travel): User mentions traveling, changing cities, or moving to a different altitude/climate. Query with target lat/long, \`includeDaily7DayTrend: true\` and \`includeGeologicalSoil: true\`.
+   - Trigger Condition C (Sunscreen / Hyperpigmentation Regimen): User asks about dark spot treatment or SPF dosage during extreme UV periods. Query \`includeSolarRadiation: true\` and \`includeDaily7DayTrend: true\`.
+   - Trigger Condition D (Seasonal Transition Adjustments): User asks how to transition routine from Summer -> Autumn or Winter -> Spring. Query 7-day temperature and dew point trends.
+
+3. TIMESTAMPED MEMORY NOTEPAD LOGGING:
+   - When you execute \`fetch_advanced_environmental_data\`, analyze the payload and write a concise, structured entry to the Session Notepad using \`update_session_notepad\` in format:
+     \`[ENV_LOG: <ISO_TIMESTAMP>] Location: <Name> | US AQI: <AQI> (PM2.5: <val>) | Dew Point: <val> | Max UV Today: <val> | Clinical Assessment: <Summary>\`
+   - When reading old \`[ENV_LOG]\` entries from the notepad, compare its timestamp against the Real-Time Temporal Ground Truth in the prompt header to calculate how many hours/days old it is before using it.
 
 ### HARD CONSTRAINTS:
 ${SANA_HARD_CONSTRAINTS.map(c => `- ${c}`).join('\n')}

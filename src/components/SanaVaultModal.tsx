@@ -382,6 +382,94 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
                   </div>
                 )}
 
+                {/* TAB: SKIN PROFILE */}
+                {activeTab === 'skin_profile' && vaultData && (
+                  <div className="space-y-6">
+                    {/* Skin Composition Card */}
+                    <div className="p-5 rounded-2xl bg-[#121316] text-white space-y-4 shadow-xs">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h4 className="text-sm font-semibold flex items-center space-x-2">
+                          <Icon icon="solar:face-scan-circle-bold" className="w-5 h-5 text-emerald-400" />
+                          <span>Skin Composition & Barrier Metrics (v{vaultData.composition?.version || 1})</span>
+                        </h4>
+                        <button
+                          onClick={() => inspectVersions('skin_profile', 'composition', 'Skin Profile Composition')}
+                          className="text-xs text-slate-300 hover:text-white underline cursor-pointer"
+                        >
+                          Version History
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-300">
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-medium">Skin Type Tendency</span>
+                          <p className="text-sm font-bold text-white mt-0.5">{vaultData.composition?.skinTypeTendency || 'Combination / Sensitive'}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-medium">Barrier Status & Health</span>
+                          <p className="text-sm font-bold text-emerald-400 mt-0.5">{vaultData.composition?.barrierStatusPatterns || 'Healthy & Hydrated'}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-medium">Pigmentation Tendency</span>
+                          <p className="text-sm font-semibold text-white mt-0.5">{vaultData.composition?.pigmentationTendency || 'Low - Moderate'}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-medium">Texture & Elasticity</span>
+                          <p className="text-sm font-semibold text-white mt-0.5">{vaultData.composition?.texturePoreElasticity || 'Normal elasticity, refined pores'}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Known Sensitivity Triggers</span>
+                        {vaultData.composition?.knownTriggers && vaultData.composition.knownTriggers.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {vaultData.composition.knownTriggers.map((trig, idx) => (
+                              <span key={idx} className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium">
+                                ⚡ {trig}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-white/10 text-slate-300 text-xs">Synthetic Fragrance</span>
+                            <span className="px-2.5 py-1 rounded-lg bg-white/10 text-slate-300 text-xs">Over-exfoliation</span>
+                            <span className="px-2.5 py-1 rounded-lg bg-white/10 text-slate-300 text-xs">High UV Exposure</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Skin Evolution Timeline */}
+                    <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-4">
+                      <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                        <Icon icon="solar:history-linear" className="w-4 h-4 text-slate-700" />
+                        <span>Skin Health Evolution Timeline</span>
+                      </h4>
+
+                      {vaultData.evolution?.timeline && vaultData.evolution.timeline.length > 0 ? (
+                        <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                          {vaultData.evolution.timeline.map((item, idx) => (
+                            <div key={idx} className="relative space-y-1">
+                              <div className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-xs" />
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900">{item.summary}</span>
+                                <span className="text-[10px] text-slate-500">{item.date}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-2">
+                          <p className="font-semibold text-slate-800">Baseline Assessment Active</p>
+                          <p className="text-slate-500">
+                            Vault skin profile active. As you perform facial scans, log routines, or record incidents, Sana AI automatically tracks your skin barrier progression over time.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* TAB: INCIDENTS */}
                 {activeTab === 'incidents' && vaultData && (
                   <div className="space-y-4">

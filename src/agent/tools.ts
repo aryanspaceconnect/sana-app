@@ -908,12 +908,38 @@ export const getVaultFileSystemIndexTool: ToolDefinition = {
   }
 };
 
+import { fetchAdvancedEnvironmentalData } from './services/WeatherAwarenessEngine.js';
+
+export const fetchAdvancedEnvironmentalDataSchema = z.object({
+  latitude: z.number().optional().describe('Latitude of user/location (default: 21.12)'),
+  longitude: z.number().optional().describe('Longitude of user/location (default: 73.11)'),
+  includeAirQuality: z.boolean().optional().default(true).describe('Include PM2.5, PM10, NO2, O3, US AQI metrics'),
+  includeHourlyForecast: z.boolean().optional().default(true).describe('Include hourly temp, humidity, dew point trends'),
+  includeDaily7DayTrend: z.boolean().optional().default(true).describe('Include 7-day UV index max, temperature, rain forecast'),
+  includeGeologicalSoil: z.boolean().optional().default(false).describe('Include soil moisture and dew point depression'),
+  includeSolarRadiation: z.boolean().optional().default(true).describe('Include direct solar radiation & max UV spectrum')
+});
+
+export const fetchAdvancedEnvironmentalDataTool: ToolDefinition = {
+  name: 'fetch_advanced_environmental_data',
+  description: 'Deep environmental exposome & meteorological analysis tool. Retrieves PM2.5, air quality (AQI), 7-day UV trends, humidity/dew point TEWL dynamics, and soil/geological parameters from Open-Meteo. Use on acute flare-ups, travel, or seasonal skin routine shifts.',
+  parameters: fetchAdvancedEnvironmentalDataSchema,
+  execute: async (args: z.infer<typeof fetchAdvancedEnvironmentalDataSchema>) => {
+    const data = await fetchAdvancedEnvironmentalData(args);
+    return {
+      success: true,
+      environmentalExposome: data
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
   exaSearchTool,
   exaContentsTool,
   exaAnswerTool,
+  fetchAdvancedEnvironmentalDataTool,
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,
