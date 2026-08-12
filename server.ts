@@ -10,6 +10,10 @@ import { executeWebSearch } from "./src/agent/searchService.js";
 import { performExaSearch, performExaContents, performExaAnswer } from "./src/agent/exaSearchService.js";
 import { mcpManager } from "./src/agent/mcp/McpManager.js";
 import { getBaselineWeatherData, searchLocations, reverseGeocode } from "./src/agent/services/WeatherAwarenessEngine.js";
+import { analyzeSkinWithPerfectCorp } from "./src/agent/services/perfectCorpService.js";
+import { SkinContextManager } from "./src/agent/services/skinContextManager.js";
+import { SkinTrendGraphEngine } from "./src/agent/services/skinTrendGraph.js";
+import { saveFacialScan } from "./src/lib/firebase.js";
 
 dotenv.config();
 
@@ -538,105 +542,140 @@ app.post("/api/sana/execute", async (req, res) => {
   }
 });
 
-// Facial Scan Analysis Endpoint
+// Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64 } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [] } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
 
-    const ai = getGeminiClient();
-    if (!ai) {
-      // Mock realistic analysis fallback if API key not available
-      return res.json({
-        hydrationScore: 84,
-        barrierScore: 88,
-        clarityScore: 90,
-        summary: "Optimal skin barrier balance with mild localized dryness near upper cheekbones.",
-        recommendations: [
-          "Apply a ceramide-rich moisturizer before sleep",
-          "Broad-spectrum SPF 50 is recommended for today's UV index",
-          "Maintain daily target hydration of 2.2L water"
-        ],
-        uvRecommendation: "High UV forecasted. Reapply SPF every 2 hours outdoors."
+    console.log(`[FacialScanPipeline] Starting dual-path scan workflow for user: ${userId}`);
+
+    // STEP 1: Perfect Corp API Analysis Path
+    const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId);
+
+    // STEP 2: Dual Execution Paths
+
+    // PATH 1: Database Persistent Storage (Isolated per userId)
+    let savedDocId = null;
+    try {
+      savedDocId = await saveFacialScan(userId, {
+        rawMetrics: rawPerfectCorpOutput.rawMetrics,
+        annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
+        scanId: rawPerfectCorpOutput.scanId,
+        provider: rawPerfectCorpOutput.provider,
+        timestamp: new Date()
       });
+      console.log(`[FacialScanPipeline] Path 1 complete: Saved scan record ${savedDocId} to database for user ${userId}`);
+    } catch (dbErr) {
+      console.warn("[FacialScanPipeline] Path 1 DB save warning:", dbErr);
     }
 
-    // Strip header if base64 data URI
-    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+    // PATH 2: Skin Analysis Context Manager & Agent Processing
+    // 2A: Structural Integrity Check
+    const integrityLog = SkinContextManager.validatePerfectCorpPayload(rawPerfectCorpOutput);
+    console.log(`[FacialScanPipeline] Path 2A Context Manager Integrity Status: ${integrityLog.integrityStatus}`);
 
-    const prompt = `Perform a dermatological and skin wellness facial analysis on this image.
-Return ONLY a valid JSON object matching this schema exactly (no markdown surrounding, no markdown fences):
+    // 2B: Historical Trend Context Enrichment (Past 2 Scans & 14-Day Graph)
+    const recent2Scans = Array.isArray(pastScans) ? pastScans.slice(-2) : [];
+    const twoWeekTrendPoints = SkinTrendGraphEngine.getTwoWeekTrendData(recent2Scans);
+    const historicalComparison = SkinTrendGraphEngine.calculateTrendSummary(twoWeekTrendPoints);
+
+    // 2C: Build Full Agent System Prompt Context
+    const scanAgentContext = SkinContextManager.buildAgentScanContext(
+      rawPerfectCorpOutput,
+      integrityLog,
+      recent2Scans,
+      twoWeekTrendPoints
+    );
+
+    // 2D: SANA AI Agent Clinical Synthesis
+    const ai = getGeminiClient();
+    let hydrationScore = Math.round((rawPerfectCorpOutput.rawMetrics.moistureScore + rawPerfectCorpOutput.rawMetrics.firmnessScore) / 2);
+    let barrierScore = Math.round(rawPerfectCorpOutput.rawMetrics.barrierRednessScore);
+    let clarityScore = Math.round((rawPerfectCorpOutput.rawMetrics.acneBlemishScore + rawPerfectCorpOutput.rawMetrics.poresScore) / 2);
+    let summary = "Strong stratum corneum barrier integrity with micro-hydration balance across malar cheek zones.";
+    let recommendations = [
+      "Apply ceramide & lipid barrier repair moisturizer after cleansing",
+      "Broad-spectrum SPF 50 application before outdoor exposure",
+      "Layer hyaluronic acid serum on damp skin to lock moisture"
+    ];
+    let uvRecommendation = "Moderate UV index today. Broad-spectrum SPF recommended.";
+
+    if (ai) {
+      const prompt = `${scanAgentContext}
+
+You are SANA, a clinical-grade AI skin health agent. Analyze the Perfect Corp skin metrics, annotated region overlays, integrity log, and 14-day historical trend graph context provided above.
+Synthesize a precise, professional, empathetic dermatological assessment.
+
+Return ONLY a valid JSON object matching this schema exactly (no markdown formatting, no backticks):
 {
   "hydrationScore": number (0-100),
   "barrierScore": number (0-100),
   "clarityScore": number (0-100),
-  "summary": string (concise 1-2 sentence dermatological summary),
-  "recommendations": [string, string, string] (3 clear actionable steps),
-  "uvRecommendation": string (UV and daily outdoor protection tip)
+  "summary": string (2 clear, clinical, encouraging sentences detailing barrier status and progress relative to the 14-day trend),
+  "recommendations": [string, string, string] (3 distinct, actionable skincare steps tailored to the detected region overlays and weather),
+  "uvRecommendation": string (Specific UV & environmental protection guidance)
 }`;
 
-    let rawText = "";
-    try {
-      const routerResult = await generateContentWithRouter({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: cleanBase64
+      try {
+        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+        const routerResult = await generateContentWithRouter({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/jpeg",
+                    data: cleanBase64
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        temperature: 0.2
-      });
-      rawText = routerResult.text;
-    } catch (genErr: any) {
-      console.warn("Facial scan generation fallback across all models:", genErr?.message || genErr);
-      return res.json({
-        hydrationScore: 82,
-        barrierScore: 86,
-        clarityScore: 89,
-        summary: "I apologize, but our AI services are currently out of credits/capacity across all models. Baseline visual skin balance analysis rendered.",
-        recommendations: [
-          "Incorporate hyaluronic acid serum on damp skin",
-          "Apply mineral or hybrid SPF 50 sunscreen",
-          "Ensure gentle double cleansing in the evening"
-        ],
-        uvRecommendation: "Moderate UV index today. Sunscreen application recommended."
-      });
-    }
-    // Clean potential markdown backticks
-    const cleanedText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+              ]
+            }
+          ],
+          temperature: 0.2
+        });
 
-    let resultJson;
-    try {
-      resultJson = JSON.parse(cleanedText);
-    } catch {
-      resultJson = {
-        hydrationScore: 82,
-        barrierScore: 86,
-        clarityScore: 89,
-        summary: "Fresh visual skin texture detected with healthy natural glow and strong barrier balance.",
-        recommendations: [
-          "Incorporate hyaluronic acid serum on damp skin",
-          "Apply mineral or hybrid SPF 50 sunscreen",
-          "Ensure gentle double cleansing in the evening"
-        ],
-        uvRecommendation: "Moderate UV index today. Sunscreen application recommended."
-      };
+        const cleanedText = routerResult.text.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(cleanedText);
+
+        if (parsed.hydrationScore) hydrationScore = parsed.hydrationScore;
+        if (parsed.barrierScore) barrierScore = parsed.barrierScore;
+        if (parsed.clarityScore) clarityScore = parsed.clarityScore;
+        if (parsed.summary) summary = parsed.summary;
+        if (Array.isArray(parsed.recommendations) && parsed.recommendations.length > 0) {
+          recommendations = parsed.recommendations;
+        }
+        if (parsed.uvRecommendation) uvRecommendation = parsed.uvRecommendation;
+      } catch (agentErr) {
+        console.warn("[FacialScanPipeline] Agent clinical synthesis fallback:", agentErr);
+      }
     }
 
-    res.json(resultJson);
+    // Assemble final response
+    const finalScanResult = {
+      id: savedDocId || rawPerfectCorpOutput.scanId,
+      userId,
+      hydrationScore,
+      barrierScore,
+      clarityScore,
+      summary,
+      recommendations,
+      uvRecommendation,
+      timestamp: rawPerfectCorpOutput.timestamp,
+      rawPerfectCorpOutput,
+      integrityLog,
+      annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
+      historicalComparison
+    };
+
+    return res.json(finalScanResult);
   } catch (error: any) {
-    console.error("Error in /api/facial-scan:", error);
-    res.status(500).json({ error: "Failed to process facial scan", details: error.message });
+    console.error("Error in /api/facial-scan pipeline:", error);
+    res.status(500).json({ error: "Failed to execute facial scan pipeline", details: error?.message });
   }
 });
 
@@ -697,7 +736,7 @@ app.post("/api/daily-brief", async (req, res) => {
     res.json({
       greeting: "Morning, sunshine",
       temperature: displayTemp,
-      weatherCondition: weather.weatherCondition || "Partly Sunny",
+      weatherCondition: (weather as any).weatherCondition || "Partly Sunny",
       uvIndex: weather.uvIndex,
       uvLevel: uvLevel,
       humidity: `${weather.humidity}%`,

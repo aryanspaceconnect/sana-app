@@ -52,6 +52,13 @@ export default function App() {
   // Pop-up Notification State (starts null so no hardcoded popups appear)
   const [notification, setNotification] = useState<PopUpNotification | null>(null);
 
+  // Listen for custom trigger events from agent / approval cards
+  useEffect(() => {
+    const handleOpenScan = () => setIsScanOpen(true);
+    window.addEventListener('sana:open_facial_scan', handleOpenScan);
+    return () => window.removeEventListener('sana:open_facial_scan', handleOpenScan);
+  }, []);
+
   // Listen to Firebase Auth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {

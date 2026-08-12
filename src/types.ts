@@ -20,8 +20,56 @@ export interface UserProfile {
   settings: UserSettings;
 }
 
+export interface PerfectCorpRegionOverlay {
+  regionId: string;
+  regionName: 'pores' | 'dark_circles' | 'redness_barrier' | 'acne_spots' | 'wrinkles_texture';
+  label: string;
+  severityScore: number; // 0-100
+  severityLevel: 'mild' | 'moderate' | 'elevated' | 'severe';
+  // Bounding box in percentage [top, left, width, height]
+  bbox: [number, number, number, number];
+  colorHex: string;
+  description: string;
+}
+
+export interface PerfectCorpRawOutput {
+  scanId: string;
+  timestamp: string;
+  provider: 'PerfectCorp_AI_Engine' | 'PerfectCorp_Simulator';
+  rawMetrics: {
+    poresScore: number;
+    darkCirclesScore: number;
+    barrierRednessScore: number;
+    acneBlemishScore: number;
+    moistureScore: number;
+    skinAge: number;
+    firmnessScore: number;
+  };
+  annotatedRegions: PerfectCorpRegionOverlay[];
+  rawResponseLog: string;
+}
+
+export interface SkinAnalysisIntegrityLog {
+  integrityStatus: 'VALID' | 'WARNING' | 'FAILED';
+  passedChecks: string[];
+  integrityErrors: string[];
+  schemaVerified: boolean;
+  directUploadFlag: boolean;
+  validatedAt: string;
+}
+
+export interface SkinTrendGraphPoint {
+  date: string; // YYYY-MM-DD
+  hydrationScore: number;
+  barrierScore: number;
+  clarityScore: number;
+  acneIndex: number;
+  notes?: string;
+}
+
 export interface FacialScanResult {
   id?: string;
+  userId?: string;
   hydrationScore: number;
   barrierScore: number;
   clarityScore: number;
@@ -29,6 +77,15 @@ export interface FacialScanResult {
   recommendations: string[];
   uvRecommendation?: string;
   timestamp?: any;
+  // Perfect Corp API & Context Manager Extensions
+  rawPerfectCorpOutput?: PerfectCorpRawOutput;
+  integrityLog?: SkinAnalysisIntegrityLog;
+  annotatedRegions?: PerfectCorpRegionOverlay[];
+  historicalComparison?: {
+    past2ScansSummary: string;
+    twoWeekTrendSummary: string;
+    progressNotes: string[];
+  };
 }
 
 export interface ThinkingMeta {

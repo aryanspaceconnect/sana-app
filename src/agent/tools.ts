@@ -933,6 +933,32 @@ export const fetchAdvancedEnvironmentalDataTool: ToolDefinition = {
   }
 };
 
+export const requestFacialScanSchema = z.object({
+  reason: z.string().describe('Reason for suggesting a facial scan right now (e.g. daily baseline check, post-treatment follow-up, UV alert)'),
+  title: z.string().optional().default('Take a Facial Scan Now').describe('Title for the scan prompt card'),
+  urgentText: z.string().optional().describe('Optional urgent callout note')
+});
+
+export const requestFacialScanTool: ToolDefinition = {
+  name: 'request_facial_scan',
+  description: 'Initiates a facial scan trigger request to the user. Creates an interactive UI prompt card in the chat allowing the user to click and immediately launch the camera for Perfect Corp skin analysis.',
+  parameters: requestFacialScanSchema,
+  execute: async (args: z.infer<typeof requestFacialScanSchema>) => {
+    return {
+      success: true,
+      message: `Facial scan request triggered to user UI.`,
+      actionProposal: {
+        actionId: `scan_req_${Date.now()}`,
+        actionType: 'TRIGGER_FACIAL_SCAN',
+        title: args.title || 'Take a Facial Scan Now',
+        description: args.reason,
+        urgentText: args.urgentText,
+        actionTarget: 'scan'
+      }
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -940,6 +966,7 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   exaContentsTool,
   exaAnswerTool,
   fetchAdvancedEnvironmentalDataTool,
+  requestFacialScanTool,
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,
