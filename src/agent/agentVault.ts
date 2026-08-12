@@ -1091,12 +1091,14 @@ export function parseDocumentContent(filename: string, rawContent: string): { ti
 // ==========================================
 
 export function normalizeVaultPath(rawPath?: string): string {
-  if (!rawPath || rawPath.trim() === '' || rawPath.trim() === '.') return '/';
-  let p = rawPath.trim().replace(/\\/g, '/');
+  if (!rawPath || typeof rawPath !== 'string' || rawPath.trim() === '' || rawPath.trim() === '.') return '/';
+  let p = rawPath.trim().replace(/\0/g, '').replace(/\\/g, '/');
+  // Strip relative parent traversal dots to secure against directory escapes
+  p = p.replace(/\/\.\.\//g, '/').replace(/\/\.\.$/g, '');
   if (!p.startsWith('/')) p = '/' + p;
   p = p.replace(/\/+/g, '/');
   if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
-  return p;
+  return p || '/';
 }
 
 /**

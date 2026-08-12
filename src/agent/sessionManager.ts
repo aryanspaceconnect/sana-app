@@ -105,3 +105,29 @@ export function getSessionPromptCache(sessionId: string): { folderIndex?: string
   }
   return null;
 }
+
+/**
+ * Automatically purges expired sessions inactive for > 30 minutes to prevent memory leaks.
+ */
+export function cleanupExpiredSessions(): number {
+  const now = Date.now();
+  const PURGE_TIMEOUT_MS = 30 * 60 * 1000;
+  let purgedCount = 0;
+
+  for (const sessionId of Object.keys(activeSessions)) {
+    const session = activeSessions[sessionId];
+    if (session && (now - session.lastActivityTimestamp > PURGE_TIMEOUT_MS || session.isFinished)) {
+      delete activeSessions[sessionId];
+      purgedCount++;
+    }
+  }
+
+  return purgedCount;
+}
+
+// Run cleanup sweep every 15 minutes
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    cleanupExpiredSessions();
+  }, 15 * 60 * 1000);
+}

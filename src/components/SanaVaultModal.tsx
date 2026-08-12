@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
+import { VaultFileExplorer } from './VaultFileExplorer';
 import {
   loadFullAgentVault,
   getVaultHistory,
@@ -19,7 +20,7 @@ interface SanaVaultModalProps {
   userId: string;
 }
 
-type VaultTab = 'overview' | 'sessions' | 'identity' | 'skin_profile' | 'incidents' | 'events' | 'goals' | 'search';
+type VaultTab = 'overview' | 'files' | 'sessions' | 'identity' | 'skin_profile' | 'incidents' | 'events' | 'goals' | 'search';
 
 export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
   isOpen,
@@ -134,6 +135,7 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
           <div className="px-6 py-2 bg-slate-100/60 border-b border-slate-200/60 flex items-center space-x-1.5 overflow-x-auto no-scrollbar">
             {[
               { id: 'overview', label: 'Overview', icon: 'solar:widget-3-linear' },
+              { id: 'files', label: 'Files & Portals', icon: 'solar:laptop-minimalistic-linear' },
               { id: 'sessions', label: 'Sessions', icon: 'solar:chat-round-line-linear' },
               { id: 'identity', label: 'User Data', icon: 'solar:user-hand-up-linear' },
               { id: 'skin_profile', label: 'Skin Profile', icon: 'solar:face-scan-circle-linear' },
@@ -166,6 +168,14 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
               </div>
             ) : (
               <>
+                {/* TAB: FILES & PORTALS */}
+                {activeTab === 'files' && vaultData && (
+                  <VaultFileExplorer
+                    userId={userId}
+                    vaultData={vaultData}
+                    onRefreshVault={fetchVault}
+                  />
+                )}
                 {/* TAB: OVERVIEW */}
                 {activeTab === 'overview' && vaultData && (
                   <div className="space-y-6">

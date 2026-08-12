@@ -1,4 +1,4 @@
-import { getGenAIClient } from './llmRouter.js';
+import { getGenAIClient, googleRateLimiter } from './llmRouter.js';
 import { performExaSearch, ExaSearchOptions } from './exaSearchService.js';
 
 export interface WebSearchSiteItem {
@@ -92,6 +92,7 @@ export async function executeWebSearch(query: string, options?: Partial<ExaSearc
   // Try Google Search Grounding via Gemini API
   if (ai) {
     try {
+      await googleRateLimiter.acquire();
       console.log(`[SearchService] Executing Google Search Grounding for: "${trimmedQuery}"`);
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',

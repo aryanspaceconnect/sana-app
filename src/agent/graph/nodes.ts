@@ -9,8 +9,10 @@ import { getGeminiToolDeclarations, findToolByName, refreshMcpToolsCache } from 
 import { getSessionNotepad } from '../sessionNotepad.js';
 import { getVaultFileSystemIndex } from '../agentVault.js';
 import { touchSession } from '../sessionManager.js';
+import { getTemporalPromptHeader } from '../services/TemporalEngine.js';
 
 export async function buildSystemPrompt(userId: string, sessionNotepadContent?: string): Promise<string> {
+  const temporalHeader = getTemporalPromptHeader();
   const notepadStr = sessionNotepadContent && sessionNotepadContent.trim().length > 0
     ? sessionNotepadContent
     : '(Empty - use `update_session_notepad` tool to save working notes, user constraints, or key findings for this session)';
@@ -22,7 +24,9 @@ export async function buildSystemPrompt(userId: string, sessionNotepadContent?: 
     fileSystemIndex = 'ROOT DIRECTORY (/)\n  └── (No files or folders created yet.)';
   }
 
-  return `${SANA_SOUL}
+  return `${temporalHeader}
+
+${SANA_SOUL}
 
 ### HARD CONSTRAINTS:
 ${SANA_HARD_CONSTRAINTS.map(c => `- ${c}`).join('\n')}
@@ -126,6 +130,11 @@ export async function initializeNode(state: AgentState) {
 export async function reasoningNode(state: AgentState) {
   // Refresh active session activity
   touchSession(state.sessionId, state.userId);
+
+  if (state.iterations > 0) {
+    // Pacing delay between multi-tool autonomous reasoning turns
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   const currentIterations = state.iterations + 1;
   const currentNotepad = getSessionNotepad(state.sessionId) || state.sessionNotepad || '';
