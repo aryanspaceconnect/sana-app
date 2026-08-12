@@ -65,9 +65,37 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
         <>
           <span className="font-semibold text-slate-900 block mb-1">{proposal.title}</span>
           <p className="text-slate-600 text-[12.5px] leading-relaxed">{proposal.description}</p>
-          {proposal.payload && (
-            <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200/80 font-mono text-[11px] text-slate-700 overflow-x-auto max-h-28 no-scrollbar">
-              <pre>{JSON.stringify(proposal.payload, null, 2)}</pre>
+          {proposal.payload && typeof proposal.payload === 'object' && (
+            <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-left">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block px-0.5">
+                Action Parameters
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {Object.entries(proposal.payload).map(([key, val]) => (
+                  <div key={key} className="p-2 rounded-lg bg-white border border-slate-100 shadow-2xs flex flex-col justify-between">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())}
+                    </span>
+                    <div className="mt-1">
+                      {typeof val === 'boolean' ? (
+                        val ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                            Completed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                            Pending Execution
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-[12px] font-semibold text-slate-800 break-words">
+                          {typeof val === 'object' ? JSON.stringify(val) : String(val || 'N/A')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

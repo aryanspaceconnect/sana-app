@@ -244,6 +244,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const userId = userProfile?.uid || 'guest_user';
   const chatId = userProfile ? `chat_${userProfile.uid}` : 'chat_default';
 
@@ -307,6 +308,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, processingStatus]);
 
+  const handleAbortRequest = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setProcessingStatus('idle');
+  };
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
     if (!text.trim() || processingStatus !== 'idle') return;
@@ -331,10 +340,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       saveChatMessage(userProfile.uid, chatId, updatedMessages);
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const response = await fetch('/api/sana', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           userId: userProfile?.uid || 'guest_user',
           message: text.trim(),
@@ -446,7 +459,22 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
       }
       refreshVault();
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('SanaAgent request aborted by user.');
+        const cancelMsg: ChatMessage = {
+          id: `aborted_${Date.now()}`,
+          role: 'model',
+          text: "Response generation was terminated by user.",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        const finalMessages = [...updatedMessages, cancelMsg];
+        setMessages(finalMessages);
+        if (userProfile?.uid) {
+          saveChatMessage(userProfile.uid, chatId, finalMessages);
+        }
+        return;
+      }
       console.error('SanaAgent Chat error:', err);
 
       const fallbackText = "I encountered a transient network connection error. For your skin safety, always maintain hydrated skin barrier repair and apply SPF 50 daily.";
@@ -555,13 +583,25 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             placeholder="Ask SANA or log a skin memory..."
             className="flex-1 px-1.5 text-[13px] text-[#121316] font-medium bg-transparent focus:outline-none placeholder-[#94a3b8] min-w-0"
           />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || processingStatus !== 'idle'}
-            className="w-8.5 h-8.5 rounded-full bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
-          >
-            <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
-          </button>
+          {processingStatus === 'idle' ? (
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              title="Send message"
+              className="w-8.5 h-8.5 rounded-[12px] bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
+            >
+              <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAbortRequest}
+              title="Terminate response request"
+              className="w-8.5 h-8.5 rounded-[12px] bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xs shrink-0 active:scale-95 animate-pulse"
+            >
+              <Icon icon="solar:stop-bold" className="w-3.5 h-3.5" />
+            </button>
+          )}
         </form>
       </div>
 

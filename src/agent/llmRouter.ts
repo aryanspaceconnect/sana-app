@@ -30,13 +30,23 @@ export interface LLMRouterResult {
  * 2. gemini-2.5-flash (High intelligence fallback)
  * 3. gemini-2.0-flash (Fast, reliable high-throughput fallback)
  * 4. gemini-2.0-flash-lite (Ultra-fast, high quota availability fallback)
- * 5. gemini-2.5-pro (Pro tier fallback)
+ * 5. gemma-4-31b-it (Google Gemma 4 31B instruction-tuned dense multimodal model)
+ * 6. gemma-4-26b-moe (Google Gemma 4 26B Mixture-of-Experts)
+ * 7. gemma-3-27b-it (Google Gemma 3 27B instruction-tuned open weights model tier)
+ * 8. gemma-2-27b-it (Google Gemma 2 27B open weights model tier)
+ * 9. gemma-2-9b-it (Google Gemma 2 9B lightweight fast tier)
+ * 10. gemini-2.5-pro (Pro tier fallback)
  */
 export const GEMINI_MODEL_CASCADE = [
   'gemini-3.6-flash',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
+  'gemma-4-31b-it',
+  'gemma-4-26b-moe',
+  'gemma-3-27b-it',
+  'gemma-2-27b-it',
+  'gemma-2-9b-it',
   'gemini-2.5-pro'
 ];
 
