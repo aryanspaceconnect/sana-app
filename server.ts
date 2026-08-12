@@ -555,9 +555,7 @@ app.post("/api/facial-scan", async (req, res) => {
     // STEP 1: Perfect Corp API Analysis Path
     const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId);
 
-    // STEP 2: Dual Execution Paths
-
-    // PATH 1: Database Persistent Storage (Isolated per userId)
+    // STEP 2: Return Pure Perfect Corp Raw S2S Response (No LLM calls or image sent to AI)
     let savedDocId = null;
     try {
       savedDocId = await saveFacialScan(userId, {
@@ -567,109 +565,33 @@ app.post("/api/facial-scan", async (req, res) => {
         provider: rawPerfectCorpOutput.provider,
         timestamp: new Date()
       });
-      console.log(`[FacialScanPipeline] Path 1 complete: Saved scan record ${savedDocId} to database for user ${userId}`);
+      console.log(`[FacialScanPipeline] Saved scan record ${savedDocId} to database for user ${userId}`);
     } catch (dbErr) {
-      console.warn("[FacialScanPipeline] Path 1 DB save warning:", dbErr);
+      console.warn("[FacialScanPipeline] DB save warning:", dbErr);
     }
 
-    // PATH 2: Skin Analysis Context Manager & Agent Processing
-    // 2A: Structural Integrity Check
-    const integrityLog = SkinContextManager.validatePerfectCorpPayload(rawPerfectCorpOutput);
-    console.log(`[FacialScanPipeline] Path 2A Context Manager Integrity Status: ${integrityLog.integrityStatus}`);
-
-    // 2B: Historical Trend Context Enrichment (Past 2 Scans & 14-Day Graph)
-    const recent2Scans = Array.isArray(pastScans) ? pastScans.slice(-2) : [];
-    const twoWeekTrendPoints = SkinTrendGraphEngine.getTwoWeekTrendData(recent2Scans);
-    const historicalComparison = SkinTrendGraphEngine.calculateTrendSummary(twoWeekTrendPoints);
-
-    // 2C: Build Full Agent System Prompt Context
-    const scanAgentContext = SkinContextManager.buildAgentScanContext(
-      rawPerfectCorpOutput,
-      integrityLog,
-      recent2Scans,
-      twoWeekTrendPoints
-    );
-
-    // 2D: SANA AI Agent Clinical Synthesis
-    const ai = getGeminiClient();
-    let hydrationScore = Math.round((rawPerfectCorpOutput.rawMetrics.moistureScore + rawPerfectCorpOutput.rawMetrics.firmnessScore) / 2);
-    let barrierScore = Math.round(rawPerfectCorpOutput.rawMetrics.barrierRednessScore);
-    let clarityScore = Math.round((rawPerfectCorpOutput.rawMetrics.acneBlemishScore + rawPerfectCorpOutput.rawMetrics.poresScore) / 2);
-    let summary = "Strong stratum corneum barrier integrity with micro-hydration balance across malar cheek zones.";
-    let recommendations = [
-      "Apply ceramide & lipid barrier repair moisturizer after cleansing",
-      "Broad-spectrum SPF 50 application before outdoor exposure",
-      "Layer hyaluronic acid serum on damp skin to lock moisture"
-    ];
-    let uvRecommendation = "Moderate UV index today. Broad-spectrum SPF recommended.";
-
-    if (ai) {
-      const prompt = `${scanAgentContext}
-
-You are SANA, a clinical-grade AI skin health agent. Analyze the Perfect Corp skin metrics, annotated region overlays, integrity log, and 14-day historical trend graph context provided above.
-Synthesize a precise, professional, empathetic dermatological assessment.
-
-Return ONLY a valid JSON object matching this schema exactly (no markdown formatting, no backticks):
-{
-  "hydrationScore": number (0-100),
-  "barrierScore": number (0-100),
-  "clarityScore": number (0-100),
-  "summary": string (2 clear, clinical, encouraging sentences detailing barrier status and progress relative to the 14-day trend),
-  "recommendations": [string, string, string] (3 distinct, actionable skincare steps tailored to the detected region overlays and weather),
-  "uvRecommendation": string (Specific UV & environmental protection guidance)
-}`;
-
-      try {
-        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-        const routerResult = await generateContentWithRouter({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: "image/jpeg",
-                    data: cleanBase64
-                  }
-                }
-              ]
-            }
-          ],
-          temperature: 0.2
-        });
-
-        const cleanedText = routerResult.text.replace(/```json/g, "").replace(/```/g, "").trim();
-        const parsed = JSON.parse(cleanedText);
-
-        if (parsed.hydrationScore) hydrationScore = parsed.hydrationScore;
-        if (parsed.barrierScore) barrierScore = parsed.barrierScore;
-        if (parsed.clarityScore) clarityScore = parsed.clarityScore;
-        if (parsed.summary) summary = parsed.summary;
-        if (Array.isArray(parsed.recommendations) && parsed.recommendations.length > 0) {
-          recommendations = parsed.recommendations;
-        }
-        if (parsed.uvRecommendation) uvRecommendation = parsed.uvRecommendation;
-      } catch (agentErr) {
-        console.warn("[FacialScanPipeline] Agent clinical synthesis fallback:", agentErr);
-      }
+    // Assemble final response with EXACT raw Perfect Corp API payload
+    let parsedRawJson = null;
+    try {
+      parsedRawJson = JSON.parse(rawPerfectCorpOutput.rawResponseLog || '{}');
+    } catch {
+      parsedRawJson = { raw: rawPerfectCorpOutput.rawResponseLog };
     }
 
-    // Assemble final response
     const finalScanResult = {
       id: savedDocId || rawPerfectCorpOutput.scanId,
       userId,
-      hydrationScore,
-      barrierScore,
-      clarityScore,
-      summary,
-      recommendations,
-      uvRecommendation,
+      scanId: rawPerfectCorpOutput.scanId,
+      taskId: rawPerfectCorpOutput.taskId,
+      fileId: rawPerfectCorpOutput.fileId,
+      provider: rawPerfectCorpOutput.provider,
       timestamp: rawPerfectCorpOutput.timestamp,
-      rawPerfectCorpOutput,
-      integrityLog,
+      rawMetrics: rawPerfectCorpOutput.rawMetrics,
+      scoreInfo: rawPerfectCorpOutput.scoreInfo,
       annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
-      historicalComparison
+      s2sStepLogs: rawPerfectCorpOutput.s2sStepLogs,
+      rawResponseLog: rawPerfectCorpOutput.rawResponseLog,
+      rawJson: parsedRawJson
     };
 
     return res.json(finalScanResult);

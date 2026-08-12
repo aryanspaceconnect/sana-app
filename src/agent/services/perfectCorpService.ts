@@ -13,8 +13,19 @@ export async function analyzeSkinWithPerfectCorp(
   imageBase64: string,
   userId: string = 'guest'
 ): Promise<PerfectCorpRawOutput> {
-  const apiKeyRaw = process.env.PERFECT_CORP_SECRET_KEY || process.env.PERFECT_CORP_API_KEY || '';
-  const apiKey = apiKeyRaw.trim().replace(/^["']|["']$/g, '');
+  // Perfect Corp S2S API requires the Bearer token starting with 'sk-'
+  const envApiKey = (process.env.PERFECT_CORP_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const envSecretKey = (process.env.PERFECT_CORP_SECRET_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const fallbackKey = 'sk-RI6uwTjK2WDrazFe2dFgeNNK2RNp77ySHc7lQ2FGE2MFqamASP34LpaxZJRQS9jI';
+
+  let apiKey = '';
+  if (envApiKey && envApiKey.startsWith('sk-')) {
+    apiKey = envApiKey;
+  } else if (envSecretKey && envSecretKey.startsWith('sk-')) {
+    apiKey = envSecretKey;
+  } else {
+    apiKey = envApiKey || envSecretKey || fallbackKey;
+  }
   const apiHost = (process.env.PERFECT_CORP_API_HOST || 'https://yce-api-01.makeupar.com').replace(/\/+$/, '');
 
   const scanId = `pc_scan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -44,46 +55,62 @@ export async function analyzeSkinWithPerfectCorp(
       // Use preprocessed binary image buffer
       let imageBuffer = prepResult.processedBuffer;
 
-      // 2. Step 2: POST /s2s/v2.1/file
-      s2sStepLogs.push(`[S2S Step 2/4] Initializing file metadata on ${apiHost}/s2s/v2.1/file`);
-      const fileRes = await fetch(`${apiHost}/s2s/v2.1/file`, {
+      // 2. Step 2a: Initialize file slot (JSON — NOT multipart)
+      s2sStepLogs.push(`[S2S Step 2/4] Initializing file slot at ${apiHost}/s2s/v2.1/file...`);
+
+      const fileInitRes = await fetch(`${apiHost}/s2s/v2.1/file`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          file_type: 'image/jpeg',
-          file_size: imageBuffer.length
-        })
+          files: [
+            {
+              content_type: 'image/jpg',
+              file_name: `skin_scan_${scanId}.jpg`,
+              file_size: imageBuffer.length,
+            },
+          ],
+        }),
       });
 
-      if (!fileRes.ok) {
-        const errText = await fileRes.text().catch(() => '');
-        throw new Error(`File initialization failed (${fileRes.status} ${fileRes.statusText}): ${errText}`);
+      if (!fileInitRes.ok) {
+        const errText = await fileInitRes.text().catch(() => '');
+        throw new Error(`File initialization failed (${fileInitRes.status}): ${errText}`);
       }
 
-      const fileJson = await fileRes.json().catch(() => ({}));
-      const fileId = fileJson?.data?.file_id || fileJson?.file_id || fileJson?.data?.id || fileJson?.id;
-      const uploadUrl = fileJson?.data?.upload_url || fileJson?.upload_url;
+      const fileJson = await fileInitRes.json().catch(() => ({}));
+      const fileEntry = fileJson?.data?.files?.[0] || fileJson?.files?.[0] || fileJson?.data;
+      const fileId = fileEntry?.file_id || fileJson?.data?.file_id || fileJson?.file_id || fileJson?.data?.id || fileJson?.id;
+      const uploadUrl =
+        fileEntry?.requests?.[0]?.url ||
+        fileEntry?.upload_url ||
+        fileJson?.data?.upload_url ||
+        fileJson?.upload_url;
 
-      if (!fileId) {
-        throw new Error(`file_id not found in response: ${JSON.stringify(fileJson)}`);
+      if (!fileId || !uploadUrl) {
+        throw new Error(`file_id or upload URL missing: ${JSON.stringify(fileJson)}`);
       }
 
-      s2sStepLogs.push(`[S2S Step 2/4] Received file_id: ${fileId}. Uploading image binary (${imageBuffer.length} bytes)...`);
+      s2sStepLogs.push(`[S2S Step 2/4] Slot initialized. file_id: ${fileId}. Uploading binary (${imageBuffer.length} bytes)...`);
 
-      // Upload binary to pre-signed upload URL if available
-      if (uploadUrl) {
-        const uploadRes = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'image/jpeg' },
-          body: imageBuffer
-        });
-        if (!uploadRes.ok) {
-          throw new Error(`Binary upload to pre-signed URL failed with status ${uploadRes.status}`);
-        }
+      // Step 2b: PUT binary to presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'image/jpg',
+          'Content-Length': String(imageBuffer.length),
+        },
+        body: imageBuffer,
+      });
+
+      if (!uploadRes.ok) {
+        const uploadErrText = await uploadRes.text().catch(() => '');
+        throw new Error(`Binary upload failed (${uploadRes.status}): ${uploadErrText}`);
       }
+
+      s2sStepLogs.push(`[S2S Step 2/4] Binary upload succeeded for file_id: ${fileId}`);
 
       // 3. Step 3: POST /s2s/v2.1/task/skin-analysis (Using required v2.1 payload format)
       s2sStepLogs.push(`[S2S Step 3/4] Creating AI skin analysis task for src_file_id: ${fileId}`);
@@ -312,6 +339,34 @@ function extractConcernScore(
 ): { raw: number; ui: number; maskUrls?: string[] } {
   if (!resultsData) return { raw: defaultScore, ui: defaultScore };
 
+  // 1. Check if resultsData.output is an array (standard format=json S2S response schema)
+  const outputArr = Array.isArray(resultsData.output)
+    ? resultsData.output
+    : Array.isArray(resultsData.results?.output)
+    ? resultsData.results.output
+    : null;
+
+  if (outputArr) {
+    for (const item of outputArr) {
+      if (item && item.type) {
+        const itemType = String(item.type).toLowerCase();
+        for (const key of concernKeys) {
+          if (itemType.includes(key.toLowerCase()) || key.toLowerCase().includes(itemType)) {
+            const raw = item.raw_score ?? item.score ?? defaultScore;
+            const ui = item.ui_score ?? item.score ?? raw;
+            const maskUrls = Array.isArray(item.mask_urls)
+              ? item.mask_urls
+              : typeof item.mask_url === 'string'
+              ? [item.mask_url]
+              : undefined;
+            return { raw: Math.round(raw), ui: Math.round(ui), maskUrls };
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Object property candidate search fallback
   const scoreInfoData = resultsData.score_info || resultsData;
   const concernsObj = scoreInfoData.concerns || scoreInfoData;
 

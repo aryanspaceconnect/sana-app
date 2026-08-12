@@ -168,3 +168,102 @@ export async function preprocessSkinImage(
     }
   };
 }
+
+/**
+ * Backwards & Cross-Service Compatible Alias for preprocessSkinImage
+ */
+export async function preprocessSkinAnalysisImage(
+  base64Image: string,
+  options: {
+    forceCropToFaceRatio?: boolean;
+    targetMinDimension?: number;
+  } = {}
+) {
+  const result = await preprocessSkinImage(base64Image, {
+    targetFaceRatio: 0.70,
+    forceHDMinResolution: options.targetMinDimension || 1080,
+    autoCropIfSmall: options.forceCropToFaceRatio !== false
+  });
+
+  return {
+    processedBase64: result.processedBase64,
+    processedBuffer: result.processedBuffer,
+    mimeType: 'image/jpeg',
+    width: result.width,
+    height: result.height,
+    faceRatioEstimated: result.qualityChecks.estimatedFaceRatio,
+    wasCropped: result.wasAutoCropped,
+    warnings: result.qualityChecks.warnings
+  };
+}
+
+/**
+ * Validates raw image buffer against Perfect Corp S2S requirements before submission
+ */
+export async function validateImageForSkinAnalysis(
+  imageBuffer: Buffer
+) {
+  const metadata = await sharp(imageBuffer).metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+  const minSide = Math.min(width, height);
+  const maxSide = Math.max(width, height);
+  const aspectRatio = width / (height || 1);
+
+  const errors: string[] = [];
+  const suggestions: string[] = [];
+
+  if (minSide < 480) {
+    errors.push(`Image resolution too low (${width}x${height}). Minimum short side must be at least 480px.`);
+    suggestions.push('Please upload a higher resolution photo or move closer to the camera.');
+  } else if (minSide < 1080) {
+    suggestions.push('Recommended resolution is 1080px+ on the short side for optimal AI skin concern detection.');
+  }
+
+  if (maxSide > 4096) {
+    suggestions.push('Image will be automatically downscaled to comply with maximum 4096px bounds.');
+  }
+
+  if (aspectRatio < 0.5 || aspectRatio > 2.0) {
+    errors.push('Extreme image aspect ratio detected.');
+    suggestions.push('Please use a standard portrait (3:4) or square (1:1) selfie orientation.');
+  }
+
+  const estimatedFaceWidthRatio = Math.min(0.85, (minSide * 0.65) / width);
+
+  return {
+    isValid: errors.length === 0,
+    width,
+    height,
+    minSide,
+    maxSide,
+    aspectRatio,
+    estimatedFaceWidthRatio,
+    errors,
+    suggestions,
+  };
+}
+
+/**
+ * Helper to format server error messages into human actionable user guidance
+ */
+export function mapPerfectCorpErrorToUserGuidance(errorCode: string): string {
+  const code = errorCode.toLowerCase();
+  if (code.includes('too_small') || code.includes('face_position_too_small')) {
+    return 'Your face occupied too little of the photo frame. Please move closer to the camera so your face fills 60-80% of the screen.';
+  }
+  if (code.includes('below_min_image_size')) {
+    return 'The image resolution was too low. Please upload a high-definition selfie or increase your camera settings.';
+  }
+  if (code.includes('out_of_boundary')) {
+    return 'Your face was cut off at the edge of the photo. Please align your face squarely in the center of the frame.';
+  }
+  if (code.includes('angle') || code.includes('tilt') || code.includes('yaw') || code.includes('pitch')) {
+    return 'Your head was tilted too far. Please look directly into the camera with your head straight and level.';
+  }
+  if (code.includes('invalid') || code.includes('no_face')) {
+    return 'No single clear face was detected. Ensure proper lighting, remove dark glasses or face coverings, and ensure only one face is visible.';
+  }
+  return `Facial scan issue (${errorCode}). Please ensure clear frontal lighting, no shadows, and a straight, centered head position.`;
+}
+

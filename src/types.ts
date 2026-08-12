@@ -99,6 +99,11 @@ export interface FacialScanResult {
   rawPerfectCorpOutput?: PerfectCorpRawOutput;
   integrityLog?: SkinAnalysisIntegrityLog;
   annotatedRegions?: PerfectCorpRegionOverlay[];
+  s2sStepLogs?: string[];
+  rawResponseLog?: string;
+  rawJson?: any;
+  rawMetrics?: any;
+  scoreInfo?: any;
   historicalComparison?: {
     past2ScansSummary: string;
     twoWeekTrendSummary: string;
