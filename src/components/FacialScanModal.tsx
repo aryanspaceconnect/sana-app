@@ -105,9 +105,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       setScanResult(result);
       onScanComplete(result);
 
-      if (userProfile?.uid) {
-        await saveFacialScan(userProfile.uid, result);
-      }
+      await saveFacialScan(userProfile?.uid || 'guest_user', result);
     } catch (err) {
       console.error("Facial scan error:", err);
     } finally {

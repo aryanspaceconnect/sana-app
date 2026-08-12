@@ -50,7 +50,7 @@ export interface PerfectCorpRawOutput {
   taskId: string;
   fileId: string;
   timestamp: string;
-  provider: 'PerfectCorp_S2S_v2.0_Live' | 'PerfectCorp_S2S_v2.0_Simulator';
+  provider: 'PerfectCorp_S2S_v2.1_Live' | 'PerfectCorp_S2S_v2.1_Simulator' | 'PerfectCorp_S2S_v2.0_Live' | 'PerfectCorp_S2S_v2.0_Simulator' | string;
   rawMetrics: {
     poresScore: number;
     darkCirclesScore: number;
