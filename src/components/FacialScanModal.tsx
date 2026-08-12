@@ -68,6 +68,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const processScanImage = async (base64Image: string) => {
     setCapturedImage(base64Image);
     setIsAnalyzing(true);
+    setCameraError(null);
 
     try {
       const response = await fetch('/api/facial-scan', {
@@ -81,6 +82,17 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       });
 
       const data = await response.json();
+
+      if (!response.ok || data.error) {
+        let errorMsg = data.error || data.details || 'Failed to complete skin scan analysis';
+        if (errorMsg.includes('error_face_position_too_small')) {
+          errorMsg = 'Face Distance Alert: The face in the photo is too small or too far away. Please move closer to the camera or upload a tighter portrait photo.';
+        } else if (errorMsg.includes('error_face_position_invalid')) {
+          errorMsg = 'Face Alignment Alert: Could not clearly detect a single frontal face. Please ensure good lighting and open eyes.';
+        }
+        setCameraError(errorMsg);
+        return;
+      }
 
       const result: FacialScanResult = {
         id: data.id || `scan_${Date.now()}`,
@@ -106,8 +118,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       onScanComplete(result);
 
       await saveFacialScan(userProfile?.uid || 'guest_user', result);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Facial scan error:", err);
+      setCameraError(err?.message || "Scan processing error. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -119,13 +132,23 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     let base64Image = '';
 
     if (videoRef.current && videoRef.current.readyState >= 2) {
+      const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 640;
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 640;
+
+      // Smart auto-crop to target 70% face ratio (Perfect Corp S2S standard requirement)
+      const cropW = Math.round(vw * 0.65);
+      const cropH = Math.min(vh, Math.round(cropW * (4 / 3)));
+      const cropX = Math.round((vw - cropW) / 2);
+      const cropY = Math.max(0, Math.round((vh - cropH) * 0.35));
+
+      canvas.width = cropW;
+      canvas.height = cropH;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        base64Image = canvas.toDataURL('image/jpeg', 0.85);
+        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        base64Image = canvas.toDataURL('image/jpeg', 0.92);
       }
     }
 

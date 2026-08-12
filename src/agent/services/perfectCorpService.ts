@@ -1,4 +1,5 @@
 import { PerfectCorpRawOutput, PerfectCorpRegionOverlay, PerfectCorpScoreInfo } from '../../types.js';
+import { preprocessSkinImage } from './skinImagePreprocessor.js';
 
 /**
  * Perfect Corp Official S2S v2.1 Skin Analysis API Service
@@ -22,14 +23,26 @@ export async function analyzeSkinWithPerfectCorp(
 
   s2sStepLogs.push(`[S2S Step 1/4] Base64 image payload received and prepared for user: ${userId}`);
 
+  // Run Server-Side Computer Vision Pre-Processor (Sharp Engine)
+  let prepResult = await preprocessSkinImage(imageBase64, {
+    targetFaceRatio: 0.70,
+    forceHDMinResolution: 1080,
+    autoCropIfSmall: true
+  });
+
+  if (prepResult.wasAutoCropped) {
+    s2sStepLogs.push(`[Computer Vision Pre-Processor] Auto-cropped face region. New resolution: ${prepResult.width}x${prepResult.height} (HD: ${prepResult.qualityChecks.isResolutionHD})`);
+  } else {
+    s2sStepLogs.push(`[Computer Vision Pre-Processor] Sanitized image geometry: ${prepResult.width}x${prepResult.height} (HD: ${prepResult.qualityChecks.isResolutionHD})`);
+  }
+
   // If live API credentials are configured, execute live S2S v2.1 workflow
   if (apiKey) {
     try {
       console.log(`[PerfectCorpService] Initiating S2S v2.1 flow with host ${apiHost}...`);
 
-      // 1. Convert base64 to binary buffer
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-      const imageBuffer = Buffer.from(cleanBase64, 'base64');
+      // Use preprocessed binary image buffer
+      let imageBuffer = prepResult.processedBuffer;
 
       // 2. Step 2: POST /s2s/v2.1/file
       s2sStepLogs.push(`[S2S Step 2/4] Initializing file metadata on ${apiHost}/s2s/v2.1/file`);
