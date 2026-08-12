@@ -17,11 +17,11 @@ export class SkinContextManager {
     const passedChecks: string[] = [];
     const integrityErrors: string[] = [];
 
-    // Check 1: Scan ID & Provider Signature
-    if (rawOutput.scanId && rawOutput.scanId.length > 5) {
-      passedChecks.push('Valid Perfect Corp scan identifier signature');
+    // Check 1: Scan ID, Task ID, and S2S Provider Signature
+    if (rawOutput.scanId && rawOutput.taskId && rawOutput.fileId) {
+      passedChecks.push(`Valid Perfect Corp S2S v2.0 signature (task_id: ${rawOutput.taskId}, file_id: ${rawOutput.fileId})`);
     } else {
-      integrityErrors.push('Missing or invalid scanId signature');
+      integrityErrors.push('Missing or invalid S2S v2.0 task/file identifier signature');
     }
 
     // Check 2: Metrics Schema Integrity
@@ -112,12 +112,18 @@ export class SkinContextManager {
 
     return `=== SANA DERMATOLOGICAL FACIAL SCAN ANALYSIS CONTEXT ===
 Scan Identifier: ${currentOutput.scanId}
+S2S Task ID: ${currentOutput.taskId}
+S2S File ID: ${currentOutput.fileId}
 Timestamp: ${currentOutput.timestamp}
 Integrity Validation Status: ${integrityLog.integrityStatus}
 Passed Checks: ${integrityLog.passedChecks.join("; ")}
 ${integrityLog.integrityErrors.length > 0 ? `Integrity Warnings: ${integrityLog.integrityErrors.join("; ")}` : ''}
 
-FRESH PERFECT CORP METRICS:
+PERFECT CORP S2S V2.0 PROTOCOL TRACE:
+${currentOutput.s2sStepLogs?.map(step => `- ${step}`).join("\n") || 'Direct S2S pipeline'}
+
+FRESH PERFECT CORP METRICS (score_info.json):
+- Overall Health Score (all): ${currentOutput.scoreInfo?.all || metrics.overallScore}/100
 - Pores Score: ${metrics.poresScore}/100
 - Dark Circles Score: ${metrics.darkCirclesScore}/100
 - Barrier Redness Score: ${metrics.barrierRednessScore}/100 (Higher is healthier / less redness)

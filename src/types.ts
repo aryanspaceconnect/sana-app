@@ -32,10 +32,25 @@ export interface PerfectCorpRegionOverlay {
   description: string;
 }
 
+export interface PerfectCorpConcernDetail {
+  concernName: string;
+  raw_score: number;
+  ui_score: number;
+  mask_urls?: string[];
+}
+
+export interface PerfectCorpScoreInfo {
+  all: number; // Overall skin score (1-100)
+  skin_age: number; // AI estimated skin age
+  concerns: Record<string, PerfectCorpConcernDetail>;
+}
+
 export interface PerfectCorpRawOutput {
   scanId: string;
+  taskId: string;
+  fileId: string;
   timestamp: string;
-  provider: 'PerfectCorp_AI_Engine' | 'PerfectCorp_Simulator';
+  provider: 'PerfectCorp_S2S_v2.0_Live' | 'PerfectCorp_S2S_v2.0_Simulator';
   rawMetrics: {
     poresScore: number;
     darkCirclesScore: number;
@@ -44,7 +59,10 @@ export interface PerfectCorpRawOutput {
     moistureScore: number;
     skinAge: number;
     firmnessScore: number;
+    overallScore: number;
   };
+  scoreInfo: PerfectCorpScoreInfo;
+  s2sStepLogs: string[];
   annotatedRegions: PerfectCorpRegionOverlay[];
   rawResponseLog: string;
 }

@@ -229,12 +229,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               <div className="flex items-center justify-between p-2.5 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0]">
                 <div className="flex items-center space-x-2 text-[11px] text-[#0f172a] font-medium">
                   <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
-                  <span>Perfect Corp AI Engine</span>
+                  <span>Perfect Corp S2S v2.0</span>
                   <span className="text-[#94a3b8]">•</span>
                   <span className="text-[#2563eb]">Context Manager VALID</span>
                 </div>
                 <span className="text-[10px] text-[#64748b] bg-[#e2e8f0] px-2 py-0.5 rounded-full font-mono">
-                  {scanResult.id?.substring(0, 12)}
+                  {scanResult.rawPerfectCorpOutput?.taskId || scanResult.id?.substring(0, 12)}
                 </span>
               </div>
 
