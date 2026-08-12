@@ -193,8 +193,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
       if (!response.ok || data.error) {
         let errorMsg = data.error || data.details || 'Failed to complete skin scan analysis';
-        if (errorMsg.includes('error_face_position_too_small')) {
-          errorMsg = 'Face Distance Alert: The face in the photo is too small or too far away. Please move closer to the camera or upload a tighter portrait photo.';
+        if (errorMsg.includes('error_src_face_out_of_bound') || errorMsg.includes('out_of_bound')) {
+          errorMsg = 'Face Boundary Alert: The face is too close to the image border or clipped at the edges. Please hold your phone at arm\'s length and keep your entire face (forehead to chin) centered with visible margins.';
+        } else if (errorMsg.includes('error_face_position_too_small')) {
+          errorMsg = 'Face Distance Alert: The face in the photo is too small or too far away. Please move slightly closer or keep face centered.';
         } else if (errorMsg.includes('error_face_position_invalid')) {
           errorMsg = 'Face Alignment Alert: Could not clearly detect a single frontal face. Please ensure good lighting and open eyes.';
         }
@@ -245,10 +247,11 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       const vw = video.videoWidth || 640;
       const vh = video.videoHeight || 640;
 
-      const cropW = Math.round(vw * 0.65);
+      // Capture wide center frame (~92% width) to guarantee wide edge margins around face
+      const cropW = Math.round(vw * 0.92);
       const cropH = Math.min(vh, Math.round(cropW * (4 / 3)));
-      const cropX = Math.round((vw - cropW) / 2);
-      const cropY = Math.max(0, Math.round((vh - cropH) * 0.35));
+      const cropX = Math.max(0, Math.round((vw - cropW) / 2));
+      const cropY = Math.max(0, Math.round((vh - cropH) / 2));
 
       canvas.width = cropW;
       canvas.height = cropH;
@@ -346,7 +349,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
               {/* Squircle Facial Frame HUD */}
               <div
-                className={`absolute inset-6 border-2 rounded-[32px] pointer-events-none transition-all duration-300 flex flex-col justify-between p-3 ${
+                className={`absolute inset-10 sm:inset-12 border-2 rounded-[40px] pointer-events-none transition-all duration-300 flex flex-col justify-between p-3 ${
                   liveFaceMetrics.status === 'optimal'
                     ? 'border-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.3)]'
                     : liveFaceMetrics.status === 'auto_crop_ready'
@@ -367,10 +370,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <span>{liveFaceMetrics.message}</span>
                 </div>
 
-                <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-white/80 to-transparent animate-bounce self-center" />
+                <div className="text-center px-2 py-1 rounded-xl bg-black/60 backdrop-blur-xs text-[10px] text-emerald-300 font-medium self-center border border-emerald-500/20 max-w-[90%]">
+                  Hold phone at arm's length • Keep entire face inside guide with edge margin
+                </div>
 
                 <div className="self-center flex items-center space-x-2 text-[9.5px] font-mono text-white/80 bg-slate-900/90 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-white/10">
-                  <span>S2S HD AUTO-CROP ACTIVE</span>
+                  <span>WIDE EDGE MARGIN ACTIVE</span>
                   <span>•</span>
                   <span>LIGHTING: {liveFaceMetrics.lightingScore}%</span>
                 </div>

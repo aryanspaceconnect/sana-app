@@ -20,6 +20,69 @@ interface RoutineStep {
   time: 'AM' | 'PM' | 'ANY';
 }
 
+const getDynamicGreetingConfig = (name: string, variantOffset = 0) => {
+  const now = new Date();
+  const hour = now.getHours();
+  const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let greetingList: string[];
+  let subtext: string;
+  let iconName: string;
+  let iconColor: string;
+
+  if (hour >= 4 && hour < 12) {
+    greetingList = [
+      `Good morning, ${name}`,
+      `Rise & glow, ${name}`,
+      `Bright morning, ${name}`,
+      `Sun's up, ${name}`,
+      `Fresh morning, ${name}`
+    ];
+    subtext = "Time for your morning barrier & SPF routine";
+    iconName = "solar:sun-2-bold-duotone";
+    iconColor = "text-amber-500";
+  } else if (hour >= 12 && hour < 17) {
+    greetingList = [
+      `Good afternoon, ${name}`,
+      `Sunlit afternoon, ${name}`,
+      `Midday refresh, ${name}`,
+      `Afternoon glow, ${name}`,
+      `Radiant afternoon, ${name}`
+    ];
+    subtext = "Hydrate & reapply UV protection if needed";
+    iconName = "solar:sun-bold-duotone";
+    iconColor = "text-amber-400";
+  } else if (hour >= 17 && hour < 21) {
+    greetingList = [
+      `Good evening, ${name}`,
+      `Golden hour, ${name}`,
+      `Evening unwind, ${name}`,
+      `Twilight glow, ${name}`,
+      `Peaceful evening, ${name}`
+    ];
+    subtext = "Unwind & prepare for your evening repair regimen";
+    iconName = "solar:sunset-bold-duotone";
+    iconColor = "text-orange-500";
+  } else {
+    greetingList = [
+      `Restful night, ${name}`,
+      `Late night breeze, ${name}`,
+      `Nighttime glow, ${name}`,
+      `Peaceful night, ${name}`,
+      `Starlit night, ${name}`
+    ];
+    subtext = "Overnight cellular recovery in progress";
+    iconName = "solar:moon-stars-bold-duotone";
+    iconColor = "text-indigo-400";
+  }
+
+  const baseIndex = Math.floor(now.getMinutes() / 12);
+  const greetingIndex = (baseIndex + variantOffset) % greetingList.length;
+  const greeting = greetingList[greetingIndex];
+
+  return { greeting, subtext, iconName, iconColor, formattedTime };
+};
+
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   userProfile,
   latestScan,
@@ -29,6 +92,28 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenCalendar,
   onOpenSettings
 }) => {
+  const [variantOffset, setVariantOffset] = useState(0);
+
+  const userName = userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Marcy';
+
+  const [greetingConfig, setGreetingConfig] = useState(() =>
+    getDynamicGreetingConfig(userName, variantOffset)
+  );
+
+  useEffect(() => {
+    setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
+
+    const interval = setInterval(() => {
+      setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [userName, variantOffset]);
+
+  const cycleGreeting = () => {
+    setVariantOffset(prev => prev + 1);
+  };
+
   // Dynamic hydration logs with local persistence
   const [hydrationLogs, setHydrationLogs] = useState<number>(() => {
     const saved = localStorage.getItem('sana_hydration_logs');
@@ -93,9 +178,21 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         transition={{ duration: 0.6 }}
         className="pt-2 pb-1"
       >
-        <h1 className="text-[26px] font-bold leading-tight text-[#121316] tracking-tight">
-          Good morning, {userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Marcy'}
-        </h1>
+        <div
+          onClick={cycleGreeting}
+          className="group cursor-pointer select-none inline-block"
+          title="Click to cycle creative greeting"
+        >
+          <div className="flex items-center space-x-2 text-[11px] font-medium text-[#737a87] mb-1">
+            <Icon icon={greetingConfig.iconName} className={`w-3.5 h-3.5 ${greetingConfig.iconColor}`} />
+            <span>{greetingConfig.formattedTime}</span>
+            <span className="text-[#cbd5e1]">•</span>
+            <span className="text-[#94a3b8]">{greetingConfig.subtext}</span>
+          </div>
+          <h1 className="text-[26px] font-bold leading-tight text-[#121316] tracking-tight group-hover:text-black transition-colors flex items-center space-x-2">
+            <span>{greetingConfig.greeting}</span>
+          </h1>
+        </div>
       </motion.div>
 
       {/* Weather & Environmental Exposome Card */}

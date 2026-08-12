@@ -36,9 +36,9 @@ export async function analyzeSkinWithPerfectCorp(
 
   // Run Server-Side Computer Vision Pre-Processor (Sharp Engine)
   let prepResult = await preprocessSkinImage(imageBase64, {
-    targetFaceRatio: 0.70,
+    targetFaceRatio: 0.45,
     forceHDMinResolution: 1080,
-    autoCropIfSmall: true
+    autoCropIfSmall: false
   });
 
   if (prepResult.wasAutoCropped) {
@@ -167,34 +167,72 @@ export async function analyzeSkinWithPerfectCorp(
 
       // 4. Step 4: GET /s2s/v2.1/task/skin-analysis/{task_id} polling loop
       let pollAttempts = 0;
-      const maxPolls = 30; // 30 * 2000ms = 60s max polling
-      let taskStatus = 'processing';
+      const maxPolls = 45; // 45 * 2000ms = 90s max polling budget for 16 HD concerns
       let finalResponseJson: any = null;
 
-      while (pollAttempts < maxPolls && (taskStatus === 'created' || taskStatus === 'processing' || taskStatus === 'pending')) {
+      const IN_FLIGHT_STATUSES = new Set([
+        'created',
+        'processing',
+        'pending',
+        'running',
+        'queued',
+        'in_progress',
+        'starting',
+        'init'
+      ]);
+
+      let isCompleted = false;
+
+      while (pollAttempts < maxPolls && !isCompleted) {
         pollAttempts++;
         await new Promise(r => setTimeout(r, 2000));
 
-        const pollRes = await fetch(`${apiHost}/s2s/v2.1/task/skin-analysis/${taskId}`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
+        try {
+          const pollRes = await fetch(`${apiHost}/s2s/v2.1/task/skin-analysis/${taskId}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
 
-        if (pollRes.ok) {
-          const pollJson = await pollRes.json().catch(() => ({}));
-          taskStatus = pollJson?.data?.task_status || pollJson?.task_status || pollJson?.status || pollJson?.data?.status || 'processing';
-          
-          console.log(`[PerfectCorpService] Poll attempt ${pollAttempts}/${maxPolls}, status = ${taskStatus}`);
+          if (pollRes.ok) {
+            const pollJson = await pollRes.json().catch(() => ({}));
+            const rawStatus = pollJson?.data?.task_status || pollJson?.task_status || pollJson?.data?.status || pollJson?.status;
+            const taskStatus = (rawStatus || 'processing').toLowerCase();
 
-          if (taskStatus === 'success') {
-            finalResponseJson = pollJson;
-            break;
+            const hasResults = !!(pollJson?.data?.results || pollJson?.results);
+
+            console.log(`[PerfectCorpService Poll] Attempt ${pollAttempts}/${maxPolls}:`, {
+              http: pollRes.status,
+              taskStatus,
+              rawStatus,
+              hasResults,
+              keys: pollJson?.data ? Object.keys(pollJson.data) : Object.keys(pollJson || {}),
+              rawSnippet: JSON.stringify(pollJson).slice(0, 300)
+            });
+
+            if (taskStatus === 'success' || hasResults) {
+              finalResponseJson = pollJson;
+              isCompleted = true;
+              s2sStepLogs.push(`[S2S Step 4/4] Task completed successfully on attempt ${pollAttempts}.`);
+              break;
+            }
+
+            if (taskStatus === 'error' || taskStatus === 'failed') {
+              const errDetails = pollJson?.data?.error_message || pollJson?.data?.error || pollJson?.error || JSON.stringify(pollJson);
+              throw new Error(`Perfect Corp API task failed with status '${taskStatus}': ${errDetails}`);
+            }
+
+            if (!IN_FLIGHT_STATUSES.has(taskStatus)) {
+              console.warn(`[PerfectCorpService Poll] Unrecognized status '${taskStatus}', continuing polling loop...`);
+            }
+          } else {
+            const errBody = await pollRes.text().catch(() => '');
+            console.warn(`[PerfectCorpService Poll] HTTP ${pollRes.status} on attempt ${pollAttempts}: ${errBody}`);
           }
-          if (taskStatus === 'error' || taskStatus === 'failed') {
-            throw new Error(`Perfect Corp API task failed with status 'error': ${JSON.stringify(pollJson)}`);
+        } catch (pollErr: any) {
+          if (pollErr?.message?.includes('task failed with status')) {
+            throw pollErr;
           }
-        } else {
-          console.warn(`[PerfectCorpService] Polling HTTP error ${pollRes.status} on attempt ${pollAttempts}`);
+          console.warn(`[PerfectCorpService Poll] Exception on attempt ${pollAttempts}:`, pollErr?.message || pollErr);
         }
       }
 

@@ -181,6 +181,9 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
                 <ApprovalCard
                   proposal={msg.actionProposal}
                   userId={userProfile?.uid || 'guest_user'}
+                  onAnswersSubmitted={(answersText) => {
+                    handleSendMessage(answersText);
+                  }}
                   onExecuted={(res) => {
                     setMessages((prevMsgs) => {
                       const nextMsgs = prevMsgs.map((m) => {

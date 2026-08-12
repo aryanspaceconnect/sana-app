@@ -1,7 +1,15 @@
+"use client";
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { ActionProposal } from '../agent/types';
+
+export type QuestionItem = {
+  q: string;
+  type: 'radio' | 'check';
+  options: string[];
+};
 
 export type RecommendationOption = {
   key: string;
@@ -18,10 +26,30 @@ export type RecommendationOption = {
 interface ApprovalCardProps {
   proposal?: ActionProposal;
   options?: RecommendationOption[];
+  questions?: QuestionItem[];
   title?: string;
   userId?: string;
   onExecuted?: (result: { success: boolean; message: string }) => void;
+  onAnswersSubmitted?: (answersText: string) => void;
 }
+
+const DEFAULT_QUESTIONS: QuestionItem[] = [
+  {
+    q: "How many flavors should we launch?",
+    type: "radio",
+    options: ["Three (core line)", "Five (full case)", "Just one hero"],
+  },
+  {
+    q: "Which mix-ins should we stock?",
+    type: "check",
+    options: ["Chocolate chips", "Waffle bits", "Sprinkles"],
+  },
+  {
+    q: "Which market do we enter first?",
+    type: "radio",
+    options: ["Food trucks", "Grocery freezers", "Scoop shops"],
+  },
+];
 
 export function Meter({ signal, tone }: { signal: number; tone: string }) {
   return (
@@ -43,12 +71,36 @@ export function Meter({ signal, tone }: { signal: number; tone: string }) {
 export const ApprovalCard: React.FC<ApprovalCardProps> = ({
   proposal,
   options: customOptions,
+  questions: customQuestions,
   title,
   userId = 'guest_user',
-  onExecuted
+  onExecuted,
+  onAnswersSubmitted
 }) => {
+  // Determine if this is a questionnaire / human-in-the-loop input request
+  const isQuestionnaire = Boolean(
+    customQuestions ||
+    proposal?.questions ||
+    proposal?.payload?.questions ||
+    proposal?.actionType === 'REQUEST_USER_INPUT'
+  );
+
+  const activeQuestions: QuestionItem[] = 
+    customQuestions ||
+    proposal?.questions ||
+    proposal?.payload?.questions ||
+    (proposal?.actionType === 'REQUEST_USER_INPUT' ? DEFAULT_QUESTIONS : DEFAULT_QUESTIONS);
+
+  // --- QUESTIONNAIRE STATE ---
+  const [qi, setQi] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, number[]>>({});
+  const [custom, setCustom] = useState<Record<number, string>>({});
+  const [sent, setSent] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  // --- PROPOSAL STATE ---
   const [selected, setSelected] = useState(0);
-  const [open, setOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [status, setStatus] = useState<'pending' | 'executing' | 'approved' | 'denied'>(
     proposal?.status || (proposal?.executed ? 'approved' : 'pending')
   );
@@ -56,7 +108,230 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
     proposal?.executedMessage || (proposal?.executed ? 'Action executed successfully.' : null)
   );
 
-  // Generate options if not explicitly provided
+  // If questionnaire mode and dismissed
+  if (isQuestionnaire && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-[12.5px] font-medium text-slate-800 shadow-xs transition-colors duration-150 hover:bg-slate-50 cursor-pointer"
+      >
+        Open approval
+      </button>
+    );
+  }
+
+  // --- RENDER QUESTIONNAIRE UI IF QUESTIONNAIRE MODE ---
+  if (isQuestionnaire) {
+    const question = activeQuestions[qi] || activeQuestions[0];
+    const last = qi === activeQuestions.length - 1;
+    const selectedIndices = answers[qi] ?? [];
+    const hasAnswer = selectedIndices.length > 0 || Boolean(custom[qi]?.trim());
+
+    const submitAnswers = (currentAnswers = answers, currentCustom = custom) => {
+      setSent(true);
+
+      const summaryLines: string[] = [];
+      activeQuestions.forEach((q, idx) => {
+        const picked = currentAnswers[idx] ?? [];
+        const customVal = currentCustom[idx]?.trim();
+        const optionLabels = picked.map(i => q.options[i]).filter(Boolean);
+        if (customVal) optionLabels.push(customVal);
+
+        const answerText = optionLabels.length > 0 ? optionLabels.join(', ') : 'No answer selected';
+        summaryLines.push(`- **${q.q}**: ${answerText}`);
+      });
+
+      const formattedResponse = `[User Input Provided]\nI have answered your questions:\n${summaryLines.join('\n')}`;
+
+      if (onAnswersSubmitted) {
+        onAnswersSubmitted(formattedResponse);
+      } else if (onExecuted) {
+        onExecuted({ success: true, message: formattedResponse });
+      }
+    };
+
+    const toggle = (index: number) => {
+      const picked = answers[qi] ?? [];
+      const nextPicked = question.type === "radio"
+        ? [index]
+        : picked.includes(index)
+          ? picked.filter((item) => item !== index)
+          : [...picked, index];
+
+      const newAnswers = { ...answers, [qi]: nextPicked };
+      setAnswers(newAnswers);
+
+      if (question.type === "radio") {
+        const newCustom = { ...custom, [qi]: "" };
+        setCustom(newCustom);
+
+        // single-choice auto-advances
+        window.setTimeout(() => {
+          if (qi === activeQuestions.length - 1) {
+            submitAnswers(newAnswers, newCustom);
+          } else {
+            setQi((current) => Math.min(activeQuestions.length - 1, current + 1));
+          }
+        }, 480);
+      }
+    };
+
+    const reset = () => {
+      setQi(0);
+      setAnswers({});
+      setCustom({});
+      setSent(false);
+      setOpen(true);
+    };
+
+    return (
+      <div className="flex min-h-[196px] w-full max-w-80 flex-col items-stretch my-3">
+        <div className="w-full self-start overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all text-[#1a1c1e]">
+          {sent ? (
+            <div className="flex h-37 flex-col items-center justify-center gap-2 py-6">
+              <span
+                className="flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white"
+                style={{ animation: "pop-in 300ms cubic-bezier(0.23,1,0.32,1) both" }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </span>
+              <span className="text-[13px] font-medium text-slate-900" style={{ animation: "fade-up 350ms cubic-bezier(0.23,1,0.32,1) 100ms both" }}>
+                Answers sent
+              </span>
+              <button type="button" onClick={reset} className="text-[12px] font-medium text-slate-700 hover:underline cursor-pointer">
+                Start over
+              </button>
+            </div>
+          ) : (
+            <div key={qi} className="p-4" style={{ animation: "fade-up 350ms cubic-bezier(0.23,1,0.32,1) both" }}>
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-[13px] font-medium text-slate-900">{question.q}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setOpen(false)}
+                  className="shrink-0 size-6 flex items-center justify-center rounded-md text-slate-400 transition-colors duration-100 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-2 flex flex-col gap-0.5">
+                {question.options.map((option, i) => {
+                  const on = selectedIndices.includes(i);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggle(i)}
+                      className="-mx-1.5 flex items-center gap-2 rounded-xl px-1.5 py-1.5 text-left transition-colors duration-100 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <span
+                        className={`flex size-4 shrink-0 items-center justify-center transition-colors duration-200
+                          ${question.type === "radio" ? "rounded-full" : "rounded-[5px]"}
+                          ${on ? "bg-slate-900 text-white" : "border border-slate-300 text-transparent"}`}
+                      >
+                        {question.type === "radio" ? (
+                          <span className="size-1.5 rounded-full bg-white transition-transform duration-200" style={{ transform: on ? "scale(1)" : "scale(0)" }} />
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                        )}
+                      </span>
+                      <span className={`text-[13px] transition-colors duration-200 ${on ? "text-slate-900 font-medium" : "text-slate-600"}`}>
+                        {option}
+                      </span>
+                    </button>
+                  );
+                })}
+                <label className="-mx-1.5 flex items-center gap-2 rounded-xl px-1.5 py-1.5 transition-colors duration-100 focus-within:bg-slate-50 hover:bg-slate-50">
+                  <span aria-hidden="true" className="size-4 shrink-0" />
+                  <input
+                    value={custom[qi] ?? ""}
+                    onChange={(event) => {
+                      setCustom((current) => ({ ...current, [qi]: event.target.value }));
+                      if (question.type === "radio") setAnswers((current) => ({ ...current, [qi]: [] }));
+                    }}
+                    placeholder="Type something…"
+                    aria-label="Custom answer"
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* footer — ring-dot pager + send arrow */}
+          <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-3.5 py-2.5">
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Previous"
+                disabled={qi === 0 || sent}
+                onClick={() => setQi((current) => Math.max(0, current - 1))}
+                className="flex size-6 items-center justify-center rounded-[5px] text-slate-400 transition-colors duration-100 enabled:hover:bg-slate-200 enabled:hover:text-slate-700 disabled:opacity-35 cursor-pointer"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+              </button>
+              <span className="flex items-center gap-1">
+                {activeQuestions.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-label={`Go to question ${i + 1}`}
+                    aria-current={i === qi && !sent ? "step" : undefined}
+                    disabled={sent}
+                    onClick={() => setQi(i)}
+                    className="rounded-full transition-all duration-300 disabled:cursor-default"
+                    style={
+                      i === qi && !sent
+                        ? { width: 9, height: 9, border: "2.5px solid #0f172a" }
+                        : sent || i < qi
+                          ? { width: 7, height: 7, background: "#94a3b8" }
+                          : { width: 7, height: 7, border: "1.5px solid #94a3b8" }
+                    }
+                  />
+                ))}
+              </span>
+              <button
+                type="button"
+                aria-label="Next"
+                disabled={last || sent}
+                onClick={() => setQi((current) => Math.min(activeQuestions.length - 1, current + 1))}
+                className="flex size-6 items-center justify-center rounded-[5px] text-slate-400 transition-colors duration-100 enabled:hover:bg-slate-200 enabled:hover:text-slate-700 disabled:opacity-35 cursor-pointer"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+            </span>
+            {!sent && (
+              <button
+                type="button"
+                aria-label={last ? "Send answers" : "Next question"}
+                disabled={!hasAnswer}
+                onClick={() => last ? submitAnswers() : setQi((current) => current + 1)}
+                className="-mr-0.5 flex size-7 items-center justify-center rounded-[8px] transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.96] cursor-pointer"
+                style={{
+                  background: hasAnswer ? "#0f172a" : "#f1f5f9",
+                  color: hasAnswer ? "#ffffff" : "#94a3b8",
+                  boxShadow: hasAnswer ? "inset 0 1px 0 rgba(255,255,255,0.14)" : "0 1px 2px rgba(0,0,0,0.05)",
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- PROPOSAL EXECUTION UI (WHEN NOT IN QUESTIONNAIRE MODE) ---
   const options: RecommendationOption[] = customOptions || (proposal ? [
     {
       key: proposal.actionId || 'primary',
@@ -161,7 +436,6 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
       return;
     }
 
-    // Execute via API if proposal exists
     if (proposal) {
       if (proposal.actionType === 'TRIGGER_FACIAL_SCAN' || proposal.actionTarget === 'scan') {
         window.dispatchEvent(new CustomEvent('sana:open_facial_scan'));
@@ -205,7 +479,6 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       className="w-full max-w-[400px] my-3 overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all text-[#1a1c1e]"
     >
-      {/* Top Header & Main Body */}
       <div className="p-4 pb-3">
         <span className="text-[13px] font-semibold text-slate-900 block">
           {title || (proposal ? 'Want me to execute this action?' : 'Agent Recommendation')}
@@ -219,13 +492,12 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
         </div>
       </div>
 
-      {/* Alternatives Drawer — Expandable Section */}
       {others.length > 0 && (
         <div
           className="grid transition-[grid-template-rows,opacity] duration-300"
           style={{
-            gridTemplateRows: open ? '1fr' : '0fr',
-            opacity: open ? 1 : 0,
+            gridTemplateRows: drawerOpen ? '1fr' : '0fr',
+            opacity: drawerOpen ? 1 : 0,
             transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         >
@@ -241,7 +513,7 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
                   onClick={() => {
                     setSelected(i);
                     setStatus('pending');
-                    setOpen(false);
+                    setDrawerOpen(false);
                   }}
                   className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors duration-150 hover:bg-slate-200/60 active:scale-[0.98] cursor-pointer"
                 >
@@ -259,7 +531,6 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
         </div>
       )}
 
-      {/* Footer Bar */}
       <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-3.5 py-2.5">
         <span className="flex items-center gap-2">
           <Meter signal={active.signal} tone={active.tone} />
@@ -287,10 +558,10 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
               {others.length > 0 && (
                 <button
                   type="button"
-                  aria-expanded={open}
-                  onClick={() => setOpen((current) => !current)}
+                  aria-expanded={drawerOpen}
+                  onClick={() => setDrawerOpen((current) => !current)}
                   className={`h-7 rounded-xl px-2.5 text-[12px] font-medium shadow-xs transition-all duration-150 active:scale-[0.96] cursor-pointer ${
-                    open
+                    drawerOpen
                       ? 'bg-slate-200 text-slate-900'
                       : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
                   }`}
@@ -323,4 +594,3 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
 
 export const RecommendationCard = ApprovalCard;
 export default ApprovalCard;
-

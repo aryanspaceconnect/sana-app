@@ -35,12 +35,12 @@ export interface ImagePreprocessResult {
 export async function preprocessSkinImage(
   base64Data: string,
   options: {
-    targetFaceRatio?: number; // Default 0.70 (70% face ratio required by Perfect Corp)
+    targetFaceRatio?: number; // Default 0.45 (loose face ratio to preserve edge margins for Perfect Corp)
     forceHDMinResolution?: number; // Default 1080px
-    autoCropIfSmall?: boolean; // Default true
+    autoCropIfSmall?: boolean; // Default true (with generous margins)
   } = {}
 ): Promise<ImagePreprocessResult> {
-  const targetFaceRatio = options.targetFaceRatio ?? 0.70;
+  const targetFaceRatio = options.targetFaceRatio ?? 0.45;
   const forceHDMinResolution = options.forceHDMinResolution ?? 1080;
   const autoCropIfSmall = options.autoCropIfSmall ?? true;
 
@@ -55,9 +55,7 @@ export async function preprocessSkinImage(
   const warnings: string[] = [];
 
   // Estimate current face region based on standard mobile/webcam portrait composition
-  // In typical uncropped photos, face is centered and occupies ~35-50% of the frame.
-  // Perfect Corp requires face width to be 60%-80% of total image width.
-  let estimatedFaceRatio = 0.45; // default estimate for full portrait
+  let estimatedFaceRatio = 0.45;
 
   // Determine if image requires auto-cropping or resampling
   let wasAutoCropped = false;
@@ -70,20 +68,19 @@ export async function preprocessSkinImage(
     warnings.push(`Original image min resolution (${minSide}px) is below HD threshold (${forceHDMinResolution}px). Lanczos3 HD upsampling applied.`);
   }
 
-  // Perform smart auto-crop if face is estimated to occupy < 60% of image width
-  if (autoCropIfSmall && originalWidth >= 480 && originalHeight >= 480) {
-    // If we want face to occupy ~70% (targetFaceRatio) of the cropped width,
-    // and face width in original photo is estimated as ~42% of original width:
-    // Crop width = (original face width) / targetFaceRatio = (originalWidth * 0.42) / 0.70 = originalWidth * 0.60
-    const cropFactor = 0.62; // Crops in to center 62% of the frame
+  // Perform smart auto-crop only if face is very small (< 35% of frame)
+  // Ensures generous margin around forehead, chin, and cheeks to prevent 'error_src_face_out_of_bound'
+  if (autoCropIfSmall && originalWidth >= 640 && originalHeight >= 640) {
+    // Keep at least 82% of original frame width/height to guarantee >= 18% edge padding
+    const cropFactor = 0.82;
     const cropWidth = Math.round(originalWidth * cropFactor);
     const cropHeight = Math.round(originalHeight * cropFactor);
 
-    // Center the crop with slight upward offset (face is usually in upper 55% of portrait)
+    // Center crop symmetrically with ample border clearance
     const cropX = Math.max(0, Math.round((originalWidth - cropWidth) / 2));
-    const cropY = Math.max(0, Math.round((originalHeight - cropHeight) * 0.38));
+    const cropY = Math.max(0, Math.round((originalHeight - cropHeight) / 2));
 
-    if (cropWidth > 320 && cropHeight > 320 && (originalWidth > 720 || originalHeight > 720)) {
+    if (cropWidth > 400 && cropHeight > 400 && (originalWidth > 900 || originalHeight > 900)) {
       wasAutoCropped = true;
       estimatedFaceRatio = targetFaceRatio;
 
@@ -102,7 +99,7 @@ export async function preprocessSkinImage(
         .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
         .toBuffer();
 
-      warnings.push(`Auto-cropped center face region (${cropWidth}x${cropHeight}) to scale face width to ~70% for Perfect Corp S2S requirements.`);
+      warnings.push(`Lightly cropped center frame (${cropWidth}x${cropHeight}) maintaining wide edge margins for Perfect Corp S2S requirements.`);
     }
   }
 

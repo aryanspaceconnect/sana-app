@@ -959,6 +959,34 @@ export const requestFacialScanTool: ToolDefinition = {
   }
 };
 
+export const requestUserInputSchema = z.object({
+  title: z.string().optional().default('Input Needed to Continue').describe('Title or context for asking these questions'),
+  questions: z.array(z.object({
+    q: z.string().describe('The question text'),
+    type: z.enum(['radio', 'check']).optional().default('radio').describe('Single choice (radio) or multiple choice (check)'),
+    options: z.array(z.string()).describe('List of selectable option strings')
+  })).optional().describe('The list of questions to present to the user')
+});
+
+export const requestUserInputTool: ToolDefinition = {
+  name: 'request_user_input',
+  description: 'Requests interactive multi-question input or approval choices from the user before proceeding with a task, routine, or launch. Renders an interactive ApprovalCard questionnaire in chat with choices, paging, and single-choice auto-advance. Returns completed answers back to the agent.',
+  parameters: requestUserInputSchema,
+  execute: async (args: z.infer<typeof requestUserInputSchema>) => {
+    return {
+      success: true,
+      message: 'Interactive questions card presented to user in chat. Awaiting user choices.',
+      actionProposal: {
+        actionId: `user_input_${Date.now()}`,
+        actionType: 'REQUEST_USER_INPUT',
+        title: args.title || 'Input Needed to Continue',
+        description: 'Please answer these questions so SANA can proceed.',
+        questions: args.questions
+      }
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -967,6 +995,7 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   exaAnswerTool,
   fetchAdvancedEnvironmentalDataTool,
   requestFacialScanTool,
+  requestUserInputTool,
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,
