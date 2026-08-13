@@ -1,5 +1,14 @@
 export type NavigationTab = 'home' | 'agent' | 'calendar';
 
+export interface OnboardingProfile {
+  skinType?: 'oily' | 'dry' | 'combination' | 'sensitive' | 'normal';
+  concerns?: string[];
+  climate?: string;
+  ageGroup?: string;
+  waterTarget?: string;
+  routineHabits?: string;
+}
+
 export interface UserSettings {
   temperatureUnit: 'C' | 'F';
   scanNotificationTime: string; // e.g. '00:00', '06:00', '09:00', '12:00'
@@ -11,6 +20,8 @@ export interface UserSettings {
   longitude?: number;
   isPremium?: boolean;
   responseStyle?: 'professional_medical' | 'casual_conversational' | 'cool_friendly';
+  onboardingCompleted?: boolean;
+  onboardingProfile?: OnboardingProfile;
 }
 
 export interface UserProfile {

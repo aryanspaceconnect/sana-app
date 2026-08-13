@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Sparkles, ArrowRight, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../lib/firebase';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail, getUserProfileFromFirestore } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { SanaLogoIcon } from './SanaLogoIcon';
 
 interface AuthScreenProps {
-  onAuthSuccess: (profile: UserProfile) => void;
+  onAuthSuccess: (profile: UserProfile, isNewUser?: boolean) => void;
 }
 
 export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
@@ -25,19 +25,24 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     try {
       const user = await signInWithGoogle();
       if (user) {
+        const dbUserData = await getUserProfileFromFirestore(user.uid);
+        const isNewUser = !dbUserData || dbUserData.settings?.onboardingCompleted === false;
+
         onAuthSuccess({
           uid: user.uid,
-          displayName: user.displayName || 'SANA User',
-          email: user.email || 'user@sana.app',
-          photoURL: user.photoURL || undefined,
+          displayName: dbUserData?.displayName || user.displayName || 'SANA User',
+          email: dbUserData?.email || user.email || 'user@sana.app',
+          photoURL: dbUserData?.photoURL || user.photoURL || undefined,
           isAnonymous: false,
           settings: {
             temperatureUnit: 'C',
             scanNotificationTime: '00:00',
             scanReminderEnabled: true,
-            theme: 'light'
+            theme: 'light',
+            onboardingCompleted: dbUserData ? (dbUserData.settings?.onboardingCompleted ?? true) : false,
+            ...(dbUserData?.settings || {})
           }
-        });
+        }, isNewUser);
       }
     } catch (err: any) {
       console.error("Google sign in error:", err);
@@ -71,19 +76,24 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       if (mode === 'signin') {
         const user = await signInWithEmail(email, password);
         if (user) {
+          const dbUserData = await getUserProfileFromFirestore(user.uid);
+          const isNewUser = dbUserData?.settings?.onboardingCompleted === false;
+
           onAuthSuccess({
             uid: user.uid,
-            displayName: user.displayName || email.split('@')[0],
-            email: user.email || email,
-            photoURL: user.photoURL || undefined,
+            displayName: dbUserData?.displayName || user.displayName || email.split('@')[0],
+            email: dbUserData?.email || user.email || email,
+            photoURL: dbUserData?.photoURL || user.photoURL || undefined,
             isAnonymous: false,
             settings: {
               temperatureUnit: 'C',
               scanNotificationTime: '00:00',
               scanReminderEnabled: true,
-              theme: 'light'
+              theme: 'light',
+              onboardingCompleted: true, // Existing login always defaults onboardingCompleted to true!
+              ...(dbUserData?.settings || {})
             }
-          });
+          }, isNewUser);
         }
       } else {
         const user = await signUpWithEmail(email, password, name || email.split('@')[0]);
@@ -98,9 +108,10 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
               temperatureUnit: 'C',
               scanNotificationTime: '00:00',
               scanReminderEnabled: true,
-              theme: 'light'
+              theme: 'light',
+              onboardingCompleted: false // New user sign up needs onboarding!
             }
-          });
+          }, true);
         }
       }
     } catch (err: any) {

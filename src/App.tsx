@@ -17,6 +17,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SanaVaultModal } from './components/SanaVaultModal';
 import { AuthScreen } from './components/AuthScreen';
+import { OnboardingScreen } from './components/OnboardingScreen';
 import { SanaLogoIcon } from './components/SanaLogoIcon';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
   const [authInitializing, setAuthInitializing] = useState(true);
   const [isNavMinimized, setIsNavMinimized] = useState(false);
   const [isExtendedMenuOpen, setIsExtendedMenuOpen] = useState(false);
+  const [forceOnboarding, setForceOnboarding] = useState<boolean>(false);
 
   // Modals
   const [isScanOpen, setIsScanOpen] = useState(false);
@@ -89,9 +91,18 @@ export default function App() {
           }
         };
         setUserProfile(profile);
+
+        // If onboarding is explicitly false in DB, trigger onboarding
+        if (dbSettings.onboardingCompleted === false) {
+          setForceOnboarding(true);
+        } else {
+          setForceOnboarding(false);
+        }
+
         await syncUserProfile(user, profile.settings);
       } else {
         setUserProfile(null);
+        setForceOnboarding(false);
       }
       setAuthInitializing(false);
     });
@@ -280,7 +291,29 @@ export default function App() {
   if (!userProfile) {
     return (
       <AuthScreen
-        onAuthSuccess={(profile) => setUserProfile(profile)}
+        onAuthSuccess={(profile, isNewUser) => {
+          setUserProfile(profile);
+          if (isNewUser) {
+            setForceOnboarding(true);
+          } else {
+            setForceOnboarding(false);
+            setActiveTab('home');
+          }
+        }}
+      />
+    );
+  }
+
+  if (forceOnboarding || userProfile.settings?.onboardingCompleted === false) {
+    return (
+      <OnboardingScreen
+        userProfile={userProfile}
+        onCompleteOnboarding={(updatedProfile) => {
+          setUserProfile(updatedProfile);
+          setForceOnboarding(false);
+          setActiveTab('home');
+        }}
+        onOpenScan={() => setIsScanOpen(true)}
       />
     );
   }
