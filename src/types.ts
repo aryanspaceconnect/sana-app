@@ -10,6 +10,7 @@ export interface UserSettings {
   latitude?: number;
   longitude?: number;
   isPremium?: boolean;
+  responseStyle?: 'professional_medical' | 'casual_conversational' | 'cool_friendly';
 }
 
 export interface UserProfile {

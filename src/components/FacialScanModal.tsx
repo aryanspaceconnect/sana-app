@@ -180,7 +180,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           pastScans,
           faceBox: faceBox || currentFaceBox || undefined,
           scanType,
-          scanId: formattedScanId
+          scanId: formattedScanId,
+          responseStyle: userProfile?.settings?.responseStyle || 'professional_medical'
         })
       });
 

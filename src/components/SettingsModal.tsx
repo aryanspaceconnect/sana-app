@@ -142,6 +142,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleResponseStyleChange = (style: 'professional_medical' | 'casual_conversational' | 'cool_friendly') => {
+    const updated = { ...currentSettings, responseStyle: style };
+    onUpdateSettings(updated);
+    if (userProfile?.uid && !userProfile.isAnonymous) {
+      syncUserProfile({ uid: userProfile.uid } as any, updated);
+    }
+  };
+
   const handleResetScanStatus = () => {
     const updated = {
       ...currentSettings,
@@ -366,6 +374,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   °F
                 </button>
               </div>
+            </div>
+
+            {/* SANA Agent Response Style Preference */}
+            <div className="p-3.5 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] space-y-2">
+              <div>
+                <p className="text-[13px] font-semibold text-[#121316]">Agent Persona & Response Style</p>
+                <p className="text-[11px] text-[#787f8d]">Tone used during scan reports & chat</p>
+              </div>
+
+              <select
+                value={currentSettings.responseStyle || 'professional_medical'}
+                onChange={(e) => handleResponseStyleChange(e.target.value as any)}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-[#d0d5dd] text-[12px] font-semibold text-[#121316] focus:outline-none"
+              >
+                <option value="professional_medical">Clinical Dermatologist (Highly Professional)</option>
+                <option value="casual_conversational">Conversational Companion (Warm & Approachable)</option>
+                <option value="cool_friendly">Wellness Coach (Cool, Empathetic & Modern)</option>
+              </select>
             </div>
 
             {/* Notification Time & Daily Scan Setting */}
