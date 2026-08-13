@@ -1022,6 +1022,92 @@ export const retrieveSkinScanVaultTool: ToolDefinition = {
   }
 };
 
+export const readUniversalNotepadSchema = z.object({});
+
+export const readUniversalNotepadTool: ToolDefinition = {
+  name: 'read_universal_notepad',
+  description: 'Reads the universal cross-session memory notepad. Use this tool to retrieve long-term user preferences, notes, or cross-session instructions saved across chats.',
+  parameters: readUniversalNotepadSchema,
+  execute: async (_args: any, context: AgentContext) => {
+    const { getUniversalNotepad } = await import('./universalNotepad.js');
+    const content = await getUniversalNotepad(context.userId);
+    return {
+      success: true,
+      notepadContent: content || 'Universal notepad is empty.'
+    };
+  }
+};
+
+export const updateUniversalNotepadSchema = z.object({
+  content: z.string().describe('The note content to save to the universal memory notepad.'),
+  mode: z.enum(['append', 'replace']).optional().default('append').describe('Whether to append to existing notes or replace entire notepad.')
+});
+
+export const updateUniversalNotepadTool: ToolDefinition = {
+  name: 'update_universal_notepad',
+  description: 'Saves important cross-session facts, rules, or user notes to the universal memory notepad so it is remembered in future sessions.',
+  parameters: updateUniversalNotepadSchema,
+  execute: async (args: z.infer<typeof updateUniversalNotepadSchema>, context: AgentContext) => {
+    const { updateUniversalNotepad } = await import('./universalNotepad.js');
+    const updated = await updateUniversalNotepad(context.userId, args.content, args.mode);
+    return {
+      success: true,
+      message: `Universal notepad updated (${args.mode}).`,
+      updatedContent: updated
+    };
+  }
+};
+
+export const retrieveScanMasksSchema = z.object({
+  tags: z.array(z.string()).describe('List of skin concern tags to query (e.g. ["acne", "wrinkles", "pores", "redness", "dark_circles", "texture"])'),
+  scanId: z.string().optional().describe('Optional specific scan ID filter.'),
+  limit: z.number().optional().default(5).describe('Maximum number of mask image records to retrieve.')
+});
+
+export const retrieveScanMasksTool: ToolDefinition = {
+  name: 'retrieve_scan_masks',
+  description: 'Retrieves tagged facial scan mask image URLs and severity score metadata by concern tags (acne, wrinkles, redness, pores, dark circles, etc.) from past scans. Use when user asks to compare or view specific feature images from previous scans.',
+  parameters: retrieveScanMasksSchema,
+  execute: async (args: z.infer<typeof retrieveScanMasksSchema>, context: AgentContext) => {
+    const userId = context.userId || 'guest_user';
+    const vaultRes = await retrieveSkinScanVault(userId, {
+      scanType: 'all',
+      scanId: args.scanId,
+      imageType: 'all_masks',
+      limit: args.limit || 5
+    });
+
+    const matchedMasks: any[] = [];
+    if (vaultRes?.scans && Array.isArray(vaultRes.scans)) {
+      vaultRes.scans.forEach((s: any) => {
+        const concernImages = s.concernImages || {};
+        args.tags.forEach(tag => {
+          const cleanTag = tag.toLowerCase().trim();
+          Object.keys(concernImages).forEach(cKey => {
+            if (cKey.toLowerCase().includes(cleanTag)) {
+              const item = concernImages[cKey];
+              matchedMasks.push({
+                scanId: s.scanId || s.id,
+                scanDate: s.scanDate || s.timestamp,
+                concernTag: cKey,
+                label: item.label,
+                score: item.score,
+                mask_url: item.mask_url
+              });
+            }
+          });
+        });
+      });
+    }
+
+    return {
+      success: true,
+      queryTags: args.tags,
+      matchedMasks: matchedMasks.slice(0, args.limit || 5)
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -1034,6 +1120,9 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   triggerPopUpCardTool,
   updateSessionNotepadTool,
   readSessionNotepadTool,
+  readUniversalNotepadTool,
+  updateUniversalNotepadTool,
+  retrieveScanMasksTool,
   universalSearchTool,
   vaultSearchTool,
   retrieveSkinScanVaultTool,
@@ -1058,3 +1147,4 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   proposeLogIncidentTool,
   proposeGenerateProtocolTool
 ];
+

@@ -74,72 +74,121 @@ export class SkinContextManager {
   }
 
   /**
-   * Assembles the multi-layer context package for SANA Agent, incorporating:
-   * 1. Fresh Perfect Corp raw report & region overlays
-   * 2. Integrity validation log
-   * 3. Last 2 scan reports
-   * 4. 2-week skin profile trend graph & notes
+   * Assembles the text-only context pack for SANA Agent, incorporating:
+   * 1. LATEST_SCAN: Structured JSON, metrics, score snapshot, and region overlays (no images in LLM context)
+   * 2. PAST_TWO_DAYS_SCANS: Day-wise selection (1 scan per day for past 2 distinct calendar days)
+   * 3. 3-WEEK TREND GRAPH SUMMARY: Time-series delta metrics across ~21 days
+   * 4. UNIVERSAL_NOTEPAD: Global cross-session memory notes
+   * 5. USER_PROFILE & PREFERENCES: Response style preference
    */
   public static buildAgentScanContext(
     currentOutput: PerfectCorpRawOutput,
     integrityLog: SkinAnalysisIntegrityLog,
-    past2Scans: FacialScanResult[],
-    twoWeekTrend: SkinTrendGraphPoint[]
+    allPastScans: FacialScanResult[] = [],
+    twoWeekTrend: SkinTrendGraphPoint[] = [],
+    universalNotepad: string = '',
+    userResponseStyle: string = 'professional_medical'
   ): string {
     const metrics = currentOutput.rawMetrics;
+    const todayStr = new Date().toISOString().split('T')[0];
 
-    let pastScansSummary = "No previous scan history available (First baseline onboarding scan).";
-    if (past2Scans && past2Scans.length > 0) {
-      pastScansSummary = past2Scans.map((scan, idx) => {
-        const dateStr = scan.timestamp ? new Date(scan.timestamp).toLocaleDateString() : `Scan -${idx + 1}`;
-        return `[Past Scan #${idx + 1} - ${dateStr}]: Hydration=${scan.hydrationScore}%, Barrier=${scan.barrierScore}%, Clarity=${scan.clarityScore}%. Summary: "${scan.summary}"`;
-      }).join("\n");
+    // Helper: Select up to 1 scan per calendar day for past 2 distinct calendar days prior to today
+    const dayWiseScans: FacialScanResult[] = [];
+    const seenDates = new Set<string>();
+
+    // Sort past scans by date descending
+    const sortedScans = [...allPastScans].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    for (const scan of sortedScans) {
+      if (dayWiseScans.length >= 2) break;
+      let scanDateStr = '';
+      if (scan.timestamp) {
+        scanDateStr = typeof scan.timestamp === 'string'
+          ? scan.timestamp.split('T')[0]
+          : new Date(scan.timestamp).toISOString().split('T')[0];
+      }
+      // Only pick distinct past days (before today)
+      if (scanDateStr && scanDateStr < todayStr && !seenDates.has(scanDateStr)) {
+        seenDates.add(scanDateStr);
+        dayWiseScans.push(scan);
+      }
     }
 
-    let trendSummary = "2-week skin profile graph tracking: Initial baseline establishing.";
+    let pastScansSummary = "No previous scan history available for past 2 calendar days (Baseline onboarding scan).";
+    if (dayWiseScans.length > 0) {
+      pastScansSummary = dayWiseScans.map((scan, idx) => {
+        const dateStr = scan.timestamp
+          ? (typeof scan.timestamp === 'string' ? scan.timestamp.split('T')[0] : new Date(scan.timestamp).toLocaleDateString())
+          : `Day -${idx + 1}`;
+        return `[PAST DAY SCAN #${idx + 1} - Date: ${dateStr}]:
+- Overall Health: Hydration=${scan.hydrationScore}%, Barrier=${scan.barrierScore}%, Clarity=${scan.clarityScore}%
+- Metrics: ${scan.scoreInfo ? JSON.stringify(scan.scoreInfo) : 'Standard 6-point metrics'}
+- Summary: "${scan.summary || 'Recorded baseline scan'}"`;
+      }).join("\n\n");
+    }
+
+    // 3-Week (21-Day) Trend Summary
+    let trendSummary = "3-Week (21-Day) Skin Score Trend: Baseline tracking initiated.";
     if (twoWeekTrend && twoWeekTrend.length > 0) {
       const avgHydration = Math.round(twoWeekTrend.reduce((acc, p) => acc + p.hydrationScore, 0) / twoWeekTrend.length);
       const avgBarrier = Math.round(twoWeekTrend.reduce((acc, p) => acc + p.barrierScore, 0) / twoWeekTrend.length);
       const avgClarity = Math.round(twoWeekTrend.reduce((acc, p) => acc + p.clarityScore, 0) / twoWeekTrend.length);
       const latestNotes = twoWeekTrend[twoWeekTrend.length - 1]?.notes || "Stable barrier progression";
 
-      trendSummary = `14-Day Trend Graph Data (${twoWeekTrend.length} logged data points):
-- Average 14-Day Hydration: ${avgHydration}%
-- Average 14-Day Barrier Integrity: ${avgBarrier}%
-- Average 14-Day Clarity: ${avgClarity}%
-- Recent Incident/Progress Notes: "${latestNotes}"`;
+      trendSummary = `3-Week (21-Day) Skin Score Trend Data (${twoWeekTrend.length} logged data points):
+- Average 21-Day Hydration Retention: ${avgHydration}%
+- Average 21-Day Barrier Health: ${avgBarrier}%
+- Average 21-Day Clarity / Pore Index: ${avgClarity}%
+- Observed Progress Note: "${latestNotes}"`;
     }
 
-    return `=== SANA DERMATOLOGICAL FACIAL SCAN ANALYSIS CONTEXT ===
+    // Style guidance based on user preference
+    let styleGuide = "Style Preference: Highly professional clinical dermatologist persona with precise medical nuance.";
+    if (userResponseStyle === 'casual_conversational') {
+      styleGuide = "Style Preference: Warm, encouraging, approachable conversational persona.";
+    } else if (userResponseStyle === 'cool_friendly') {
+      styleGuide = "Style Preference: Cool, empathetic, modern wellness coach persona.";
+    }
+
+    return `=== SANA DERMATOLOGICAL FACIAL SCAN ANALYSIS CONTEXT PACK ===
+[SYSTEM RULES: TEXT-ONLY CONTEXT WINDOW. DO NOT OUTPUT RAW IMAGE DATA OR URLS IN MODEL CONTEXT. USE RETRIEVAL TOOLS IF USER REQUESTS SPECIFIC IMAGE COMPARISONS.]
+
+${styleGuide}
+
+=== LATEST_SCAN ===
 Scan Identifier: ${currentOutput.scanId}
+Timestamp: ${currentOutput.timestamp}
+Date: ${todayStr}
 S2S Task ID: ${currentOutput.taskId}
 S2S File ID: ${currentOutput.fileId}
-Timestamp: ${currentOutput.timestamp}
-Integrity Validation Status: ${integrityLog.integrityStatus}
-Passed Checks: ${integrityLog.passedChecks.join("; ")}
-${integrityLog.integrityErrors.length > 0 ? `Integrity Warnings: ${integrityLog.integrityErrors.join("; ")}` : ''}
+Integrity Status: ${integrityLog.integrityStatus}
+Passed Integrity Checks: ${integrityLog.passedChecks.join("; ")}
 
-PERFECT CORP S2S V2.0 PROTOCOL TRACE:
-${currentOutput.s2sStepLogs?.map(step => `- ${step}`).join("\n") || 'Direct S2S pipeline'}
-
-FRESH PERFECT CORP METRICS (score_info.json):
-- Overall Health Score (all): ${currentOutput.scoreInfo?.all || metrics.overallScore}/100
-- Pores Score: ${metrics.poresScore}/100
-- Dark Circles Score: ${metrics.darkCirclesScore}/100
-- Barrier Redness Score: ${metrics.barrierRednessScore}/100 (Higher is healthier / less redness)
-- Acne / Blemish Score: ${metrics.acneBlemishScore}/100 (Higher is clearer)
-- Moisture Retention Score: ${metrics.moistureScore}/100
+RAW PERFECT CORP DERMATOLOGICAL METRICS (score_info.json):
+- Overall Skin Health Score: ${currentOutput.scoreInfo?.all || metrics.overallScore}/100
 - Estimated Skin Age: ${metrics.skinAge} years
+- Moisture Retention Score: ${metrics.moistureScore}/100
+- Barrier Redness Score: ${metrics.barrierRednessScore}/100 (Higher = healthier barrier / lower redness)
+- Acne & Blemish Score: ${metrics.acneBlemishScore}/100 (Higher = clearer skin)
+- Pores Refinement Score: ${metrics.poresScore}/100
+- Dark Circles Score: ${metrics.darkCirclesScore}/100
 - Firmness Score: ${metrics.firmnessScore}/100
 
-DETECTED FEATURE OVERLAYS (${currentOutput.annotatedRegions.length} Regions):
+DETECTED FEATURE REGIONS (${currentOutput.annotatedRegions.length} Overlays):
 ${currentOutput.annotatedRegions.map(r => `- [${r.label}] (${r.regionName}): Severity=${r.severityScore}/100 (${r.severityLevel}). Detail: ${r.description}`).join("\n")}
 
-HISTORICAL CONTEXT (LAST 2 SCANS):
+=== PAST_TWO_DAYS_SCANS (DAY-WISE DISTINCT PAST 2 CALENDAR DAYS) ===
 ${pastScansSummary}
 
-14-DAY SKIN PROFILE TREND GRAPH CONTEXT:
+=== 3_WEEK_SKIN_TREND_GRAPH_SUMMARY ===
 ${trendSummary}
+
+=== UNIVERSAL_NOTEPAD_MEMORY ===
+${universalNotepad ? universalNotepad : "No universal notepad notes recorded yet."}
 ============================================================`;
   }
 }

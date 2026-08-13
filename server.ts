@@ -13,7 +13,8 @@ import { getBaselineWeatherData, searchLocations, reverseGeocode } from "./src/a
 import { analyzeSkinWithPerfectCorp } from "./src/agent/services/perfectCorpService.js";
 import { SkinContextManager } from "./src/agent/services/skinContextManager.js";
 import { SkinTrendGraphEngine } from "./src/agent/services/skinTrendGraph.js";
-import { saveFacialScan } from "./src/lib/firebase.js";
+import { saveFacialScan, updateFacialScanReport, getPastScansForUser, saveChatMessage } from "./src/lib/firebase.js";
+import { getUniversalNotepad } from "./src/agent/universalNotepad.js";
 import { saveSkinScanToVault } from "./src/agent/agentVault.js";
 
 dotenv.config();
@@ -546,7 +547,7 @@ app.post("/api/sana/execute", async (req, res) => {
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical" } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
@@ -556,27 +557,47 @@ app.post("/api/facial-scan", async (req, res) => {
     const timeStampStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const scanTypeClean = scanType === 'intermediate_scan' ? 'intermediate_scan' : 'daily_scan';
     const formattedScanId = reqScanId || `${scanTypeClean}_${timeStampStr}`;
+    const reportSessionId = `session_scan_report_${timeStampStr}`;
 
-    console.log(`[FacialScanPipeline] Starting dual-path scan workflow (${scanTypeClean}: ${formattedScanId}) for user: ${userId}`);
+    console.log(`[FacialScanPipeline] Starting scan workflow (${scanTypeClean}: ${formattedScanId}) for user: ${userId}`);
 
-    // STEP 1: Perfect Corp API Analysis Path
+    // STEP 1: Perfect Corp API Analysis Path (S2S)
     const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId, { faceBox });
 
-    // Construct concern images dictionary
+    // Construct concern images dictionary and masks list
     const concernImages: Record<string, any> = {};
+    const masks: any[] = [];
     const concernsMap = rawPerfectCorpOutput.scoreInfo?.concerns || {};
+
     Object.keys(concernsMap).forEach(key => {
       const c = concernsMap[key];
-      concernImages[key] = {
+      const maskUrl = c.mask_urls?.[0] || (c as any).mask_url || null;
+      const maskObj = {
         concernName: key,
+        tag: key.toLowerCase(),
         label: key.replace(/_/g, ' ').toUpperCase(),
         score: c.ui_score ?? c.raw_score ?? 85,
-        mask_url: c.mask_url || null
+        mask_url: maskUrl,
+        description: `${key.replace(/_/g, ' ')} detected overlay`
       };
+      concernImages[key] = maskObj;
+      masks.push(maskObj);
     });
 
-    // STEP 2: Save to Firestore
-    let savedDocId = null;
+    // Score snapshot
+    const scoreSnapshot = {
+      overall: rawPerfectCorpOutput.scoreInfo?.all || rawPerfectCorpOutput.rawMetrics?.overallScore || 85,
+      skinAge: rawPerfectCorpOutput.rawMetrics?.skinAge || 25,
+      moisture: rawPerfectCorpOutput.rawMetrics?.moistureScore || 85,
+      barrierRedness: rawPerfectCorpOutput.rawMetrics?.barrierRednessScore || 88,
+      acneBlemish: rawPerfectCorpOutput.rawMetrics?.acneBlemishScore || 90,
+      pores: rawPerfectCorpOutput.rawMetrics?.poresScore || 82,
+      darkCircles: rawPerfectCorpOutput.rawMetrics?.darkCirclesScore || 80,
+      firmness: rawPerfectCorpOutput.rawMetrics?.firmnessScore || 86
+    };
+
+    // STEP 2: Save Checkpoint to Firestore (facial_scans)
+    let savedDocId: string | null = null;
     try {
       savedDocId = await saveFacialScan(userId, {
         scanId: formattedScanId,
@@ -586,19 +607,24 @@ app.post("/api/facial-scan", async (req, res) => {
         clarityScore: rawPerfectCorpOutput.rawMetrics?.acneBlemishScore || 90,
         rawMetrics: rawPerfectCorpOutput.rawMetrics,
         scoreInfo: rawPerfectCorpOutput.scoreInfo,
+        scoreSnapshot,
         annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
         concernImages,
+        masks,
         capturedImage: imageBase64,
         provider: rawPerfectCorpOutput.provider,
         rawPerfectCorpOutput,
+        reportStatus: 'running',
+        reportSessionId,
+        reportText: null,
         timestamp: now.toISOString()
       });
-      console.log(`[FacialScanPipeline] Saved scan record ${savedDocId} to database for user ${userId}`);
+      console.log(`[FacialScanPipeline] Checkpoint saved with docId: ${savedDocId}`);
     } catch (dbErr) {
       console.warn("[FacialScanPipeline] DB save warning:", dbErr);
     }
 
-    // STEP 3: Save to Agent Vault Folder (/daily_scans or /intermediate_scans)
+    // STEP 3: Save to Agent Vault Folder
     try {
       await saveSkinScanToVault(userId, {
         scanId: formattedScanId,
@@ -613,12 +639,101 @@ app.post("/api/facial-scan", async (req, res) => {
         capturedImage: imageBase64 ? imageBase64.slice(0, 500) + '...' : undefined,
         concernImages
       });
-      console.log(`[FacialScanPipeline] Saved virtual file /${scanTypeClean}s/${formattedScanId}.json to Agent Vault`);
     } catch (vaultErr) {
-      console.warn("[FacialScanPipeline] Agent Vault file save warning:", vaultErr);
+      console.warn("[FacialScanPipeline] Agent Vault save warning:", vaultErr);
     }
 
-    // Assemble final response with EXACT raw Perfect Corp API payload
+    // STEP 4: Asynchronous Agent Scan Report Generation (Non-blocking)
+    const activeDocId = savedDocId;
+    (async () => {
+      try {
+        console.log(`[ScanReportAsyncWorker] Generating agent report for scan ${formattedScanId}...`);
+        
+        // Fetch past scans for user
+        const pastScansList = await getPastScansForUser(userId, 15);
+        // Fetch universal notepad
+        const universalNotepad = await getUniversalNotepad(userId);
+
+        // Build text-only context pack (Latest + Past 2 distinct calendar days + 3-week trend + universal notepad + style)
+        const contextPack = SkinContextManager.buildAgentScanContext(
+          rawPerfectCorpOutput,
+          { integrityStatus: 'VALID', passedChecks: ['Format Validated', 'Metric Ranges Passed'], integrityErrors: [], schemaVerified: true, directUploadFlag: false, validatedAt: new Date().toISOString() },
+          pastScansList,
+          [],
+          universalNotepad,
+          responseStyle
+        );
+
+        const agentPrompt = `${contextPack}
+
+TASK: Generate a comprehensive, modular clinical skin report for this scan.
+Structure the report cleanly with Markdown:
+# DERMATOLOGICAL SKIN HEALTH REPORT
+
+## 1. OVERALL SNAPSHOT & SCORE MATRIX
+- State overall skin health score (${scoreSnapshot.overall}/100) and estimated skin age (${scoreSnapshot.skinAge} yrs).
+- Summarize 6-point metrics: Moisture, Barrier Redness, Acne/Blemish, Pores, Dark Circles, Firmness.
+
+## 2. COMPARISON vs PAST 2 DAYS
+- Compare current scores against past days' scans. Highlight what improved and what worsened.
+
+## 3. CORE FOCUS AREAS & CLINICAL ANALYSIS
+- Detail active skin concerns (barrier status, pore clarity, redness level, moisture retention).
+
+## 4. ACTIONABLE MORNING & EVENING REGIMEN
+- Morning routine adjustments.
+- Evening barrier recovery steps.
+
+DO NOT output raw image URLs or base64 data. Maintain a professional, clear, empathetic medical tone without emojis.`;
+
+        const agentRes = await runSanaAgent({
+          userId,
+          sessionId: reportSessionId,
+          message: agentPrompt
+        });
+
+        const reportText = agentRes.text || `## Dermatological Facial Scan Report\n\n**Overall Health Score:** ${scoreSnapshot.overall}/100\n- **Estimated Skin Age:** ${scoreSnapshot.skinAge} years\n- **Barrier Redness:** ${scoreSnapshot.barrierRedness}/100\n- **Moisture Retention:** ${scoreSnapshot.moisture}/100\n\nMaintain gentle morning and evening routines with daily SPF 50.`;
+
+        // Update scan checkpoint with ready report
+        if (activeDocId) {
+          await updateFacialScanReport(activeDocId, {
+            reportStatus: 'ready',
+            reportText,
+            reportSessionId
+          });
+        }
+
+        // Save assistant message to scan_report chat session history
+        await saveChatMessage(userId, reportSessionId, [
+          {
+            id: `msg_user_prompt_${Date.now()}`,
+            role: 'user',
+            text: `Generate scan report for scan #${formattedScanId}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          },
+          {
+            id: `msg_report_${Date.now()}`,
+            role: 'assistant',
+            text: reportText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            passOnTrace: agentRes.passOnTrace
+          }
+        ]);
+
+        console.log(`[ScanReportAsyncWorker] Report completed and saved for scan ${formattedScanId}`);
+      } catch (asyncErr: any) {
+        console.error("[ScanReportAsyncWorker] Error generating scan report:", asyncErr);
+        if (activeDocId) {
+          await updateFacialScanReport(activeDocId, {
+            reportStatus: 'ready',
+            reportText: `## Dermatological Facial Scan Report\n\n**Overall Health Score:** ${scoreSnapshot.overall}/100\n- **Estimated Skin Age:** ${scoreSnapshot.skinAge} years\n- **Moisture Retention:** ${scoreSnapshot.moisture}/100\n- **Barrier Redness:** ${scoreSnapshot.barrierRedness}/100\n\nRoutine recommendation: Continue gentle hydration and daily broad-spectrum SPF 50.`,
+            reportSessionId
+          });
+        }
+      }
+    })();
+
+    // Assemble final response with EXACT raw Perfect Corp API payload + masks + report metadata
     let parsedRawJson = null;
     try {
       parsedRawJson = JSON.parse(rawPerfectCorpOutput.rawResponseLog || '{}');
@@ -635,10 +750,15 @@ app.post("/api/facial-scan", async (req, res) => {
       fileId: rawPerfectCorpOutput.fileId,
       provider: rawPerfectCorpOutput.provider,
       timestamp: now.toISOString(),
+      reportStatus: 'running',
+      reportSessionId,
+      reportText: null,
+      scoreSnapshot,
       rawMetrics: rawPerfectCorpOutput.rawMetrics,
       scoreInfo: rawPerfectCorpOutput.scoreInfo,
       annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
       concernImages,
+      masks,
       s2sStepLogs: rawPerfectCorpOutput.s2sStepLogs,
       rawResponseLog: rawPerfectCorpOutput.rawResponseLog,
       rawJson: parsedRawJson

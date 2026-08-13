@@ -5,7 +5,7 @@ export interface UserSettings {
   scanNotificationTime: string; // e.g. '00:00', '06:00', '09:00', '12:00'
   scanReminderEnabled?: boolean;
   lastCompletedScanDate?: string; // YYYY-MM-DD
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'auto';
   locationName?: string;
   latitude?: number;
   longitude?: number;
@@ -47,6 +47,7 @@ export interface PerfectCorpConcernDetail {
   raw_score: number;
   ui_score: number;
   mask_urls?: string[];
+  mask_url?: string;
 }
 
 export interface PerfectCorpScoreInfo {
@@ -123,6 +124,10 @@ export interface FacialScanResult {
     twoWeekTrendSummary: string;
     progressNotes: string[];
   };
+  reportStatus?: 'running' | 'ready';
+  reportText?: string;
+  reportSessionId?: string;
+  masks?: any[];
 }
 
 export interface ThinkingMeta {

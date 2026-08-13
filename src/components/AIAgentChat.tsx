@@ -251,12 +251,23 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOpenSession = (e: any) => {
+      if (e.detail?.sessionId) {
+        setActiveChatId(e.detail.sessionId);
+      }
+    };
+    window.addEventListener('sana:open_chat_session', handleOpenSession);
+    return () => window.removeEventListener('sana:open_chat_session', handleOpenSession);
+  }, []);
+
   const userId = userProfile?.uid || 'guest_user';
-  const chatId = userProfile ? `chat_${userProfile.uid}` : 'chat_default';
+  const chatId = activeChatId || (userProfile ? `chat_${userProfile.uid}` : 'chat_default');
 
   // Load chat history from Firestore
   useEffect(() => {
-    if (!userProfile?.uid) return;
     const unsubscribe = subscribeUserChat(chatId, (data) => {
       if (data && data.messages && Array.isArray(data.messages)) {
         setMessages(data.messages);

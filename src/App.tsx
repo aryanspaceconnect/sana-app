@@ -55,8 +55,15 @@ export default function App() {
   // Listen for custom trigger events from agent / approval cards
   useEffect(() => {
     const handleOpenScan = () => setIsScanOpen(true);
+    const handleOpenChatSession = () => setActiveTab('agent');
+
     window.addEventListener('sana:open_facial_scan', handleOpenScan);
-    return () => window.removeEventListener('sana:open_facial_scan', handleOpenScan);
+    window.addEventListener('sana:open_chat_session', handleOpenChatSession);
+
+    return () => {
+      window.removeEventListener('sana:open_facial_scan', handleOpenScan);
+      window.removeEventListener('sana:open_chat_session', handleOpenChatSession);
+    };
   }, []);
 
   // Listen to Firebase Auth - Load Persisted User Profile & Settings from Firestore

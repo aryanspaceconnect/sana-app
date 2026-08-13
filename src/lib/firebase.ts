@@ -23,7 +23,8 @@ import {
   orderBy, 
   onSnapshot, 
   serverTimestamp,
-  updateDoc
+  updateDoc,
+  getDocs
 } from "firebase/firestore";
 import firebaseConfigData from "../../firebase-applet-config.json";
 
@@ -243,6 +244,37 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
   } catch (err) {
     console.error("Failed to save facial scan to Firestore:", err);
     return null;
+  }
+};
+
+// Update Facial Scan Report Text & Status
+export const updateFacialScanReport = async (docId: string, updatePayload: { reportStatus: string; reportText: string; reportSessionId?: string; updatedAt?: string }) => {
+  if (!docId) return;
+  try {
+    const scanRef = doc(db, "facial_scans", docId);
+    const cleanData = sanitizeForFirestore({
+      ...updatePayload,
+      updatedAt: serverTimestamp()
+    });
+    await updateDoc(scanRef, cleanData);
+  } catch (err) {
+    console.warn("Failed to update facial scan report:", err);
+  }
+};
+
+// Get Past Scans for User (Promise)
+export const getPastScansForUser = async (userId: string, limitCount: number = 20): Promise<any[]> => {
+  try {
+    const q = query(
+      collection(db, "facial_scans"),
+      where("userId", "==", userId || 'guest_user'),
+      orderBy("timestamp", "desc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, limitCount);
+  } catch (err) {
+    console.warn("getPastScansForUser error:", err);
+    return [];
   }
 };
 
