@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, syncUserProfile, subscribeFacialScans } from './lib/firebase';
+import { auth, syncUserProfile, subscribeFacialScans, getUserProfileFromFirestore } from './lib/firebase';
 import { NavigationTab, UserProfile, UserSettings, FacialScanResult, DailyBriefing, PopUpNotification } from './types';
 
 // Components
@@ -59,27 +59,31 @@ export default function App() {
     return () => window.removeEventListener('sana:open_facial_scan', handleOpenScan);
   }, []);
 
-  // Listen to Firebase Auth
+  // Listen to Firebase Auth - Load Persisted User Profile & Settings from Firestore
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
+        // Fetch persisted settings directly from Firestore database
+        const dbUserData = await getUserProfileFromFirestore(user.uid);
+        const dbSettings = dbUserData?.settings || {};
+
         const profile: UserProfile = {
           uid: user.uid,
-          displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'SANA User'),
-          email: user.email || 'guest@sana.app',
-          photoURL: user.photoURL || undefined,
+          displayName: dbUserData?.displayName || user.displayName || (user.email ? user.email.split('@')[0] : 'SANA User'),
+          email: dbUserData?.email || user.email || 'guest@sana.app',
+          photoURL: dbUserData?.photoURL || user.photoURL || undefined,
           isAnonymous: user.isAnonymous,
           settings: {
             temperatureUnit: 'C',
             scanNotificationTime: '00:00',
             scanReminderEnabled: true,
-            theme: 'light'
+            theme: 'light',
+            ...dbSettings
           }
         };
         setUserProfile(profile);
-        await syncUserProfile(user);
+        await syncUserProfile(user, profile.settings);
       } else {
-        // User logged out or not authenticated
         setUserProfile(null);
       }
       setAuthInitializing(false);
@@ -119,18 +123,53 @@ export default function App() {
     userProfile?.settings?.locationName
   ]);
 
-  // Subscribe to Facial Scans in Firestore
+  // Subscribe to Facial Scans in Firestore & Auto-Check Today's Scan Completion
   useEffect(() => {
     if (!userProfile?.uid) return;
     const unsub = subscribeFacialScans(userProfile.uid, (scans) => {
       if (scans.length > 0) {
         setLatestScan(scans[0] as FacialScanResult);
+
+        // Check if any scan in Firestore database was completed TODAY
+        const todayStr = new Date().toISOString().split('T')[0];
+        const hasScanToday = scans.some((s: any) => {
+          if (s.scanDate === todayStr) return true;
+          if (s.timestamp) {
+            let scanDateStr = '';
+            if (typeof s.timestamp === 'string') {
+              scanDateStr = s.timestamp.split('T')[0];
+            } else if (s.timestamp.toDate && typeof s.timestamp.toDate === 'function') {
+              scanDateStr = s.timestamp.toDate().toISOString().split('T')[0];
+            } else if (s.timestamp.seconds) {
+              scanDateStr = new Date(s.timestamp.seconds * 1000).toISOString().split('T')[0];
+            }
+            if (scanDateStr === todayStr) return true;
+          }
+          return false;
+        });
+
+        if (hasScanToday) {
+          // Today's scan is verified in Firestore database! Mark scan completed for today.
+          setUserProfile(prev => {
+            if (!prev) return null;
+            if (prev.settings?.lastCompletedScanDate === todayStr) return prev;
+            return {
+              ...prev,
+              settings: {
+                ...prev.settings,
+                lastCompletedScanDate: todayStr
+              }
+            };
+          });
+          // Immediately dismiss any active daily scan notification
+          setNotification(prev => (prev?.type === 'facial_scan' ? null : prev));
+        }
       }
     });
     return () => unsub();
   }, [userProfile?.uid]);
 
-  // Check Daily Facial Scan Pop-Up Trigger Logic
+  // Check Daily Facial Scan Pop-Up Trigger Logic against Firestore Cached State
   useEffect(() => {
     if (!userProfile) return;
 
@@ -144,10 +183,29 @@ export default function App() {
     const reminderEnabled = settings.scanReminderEnabled !== false;
     const lastCompleted = settings.lastCompletedScanDate;
 
+    // 1. If today's scan is already cached as completed in database, NEVER show reminder popup
     if (lastCompleted === todayStr) {
+      setNotification(prev => (prev?.type === 'facial_scan' ? null : prev));
       return;
     }
 
+    // 2. Check if latestScan in state is from today
+    if (latestScan) {
+      let scanDateStr = '';
+      if (typeof latestScan.timestamp === 'string') {
+        scanDateStr = latestScan.timestamp.split('T')[0];
+      } else if ((latestScan as any).timestamp?.toDate) {
+        scanDateStr = (latestScan as any).timestamp.toDate().toISOString().split('T')[0];
+      } else if ((latestScan as any).timestamp?.seconds) {
+        scanDateStr = new Date((latestScan as any).timestamp.seconds * 1000).toISOString().split('T')[0];
+      }
+      if (scanDateStr === todayStr) {
+        setNotification(prev => (prev?.type === 'facial_scan' ? null : prev));
+        return;
+      }
+    }
+
+    // 3. Check session dismissal
     const sessionDismissed = sessionStorage.getItem(`sana_popup_dismissed_${todayStr}`);
     if (sessionDismissed === 'true') {
       return;
@@ -175,19 +233,28 @@ export default function App() {
         });
       }
     }
-  }, [userProfile?.settings?.scanReminderEnabled, userProfile?.settings?.scanNotificationTime, userProfile?.settings?.lastCompletedScanDate, userProfile?.uid]);
+  }, [
+    userProfile?.settings?.scanReminderEnabled,
+    userProfile?.settings?.scanNotificationTime,
+    userProfile?.settings?.lastCompletedScanDate,
+    userProfile?.uid,
+    latestScan
+  ]);
 
-  const handleUpdateSettings = (newSettings: UserSettings) => {
+  const handleUpdateSettings = async (newSettings: UserSettings) => {
     if (userProfile) {
-      setUserProfile({
+      const updatedProfile = {
         ...userProfile,
         settings: newSettings
-      });
+      };
+      setUserProfile(updatedProfile);
       if (newSettings.temperatureUnit === 'F') {
         setDailyBrief(prev => ({ ...prev, temperature: '73°F' }));
       } else {
         setDailyBrief(prev => ({ ...prev, temperature: '23°C' }));
       }
+      // Save directly to Firestore database so refresh preserves this state
+      await syncUserProfile({ uid: userProfile.uid }, newSettings);
     }
   };
 
@@ -257,9 +324,22 @@ export default function App() {
           setActiveTab(tab);
           if (tab === 'home') setIsNavMinimized(false);
         }}
-        onSwipeUpExpand={() => setIsExtendedMenuOpen(true)}
         isMinimized={isNavMinimized}
         onRestorePill={() => setIsNavMinimized(false)}
+        userProfile={userProfile}
+        onOpenScan={() => setIsScanOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenReports={() => setIsReportsOpen(true)}
+        onOpenVault={() => setIsVaultOpen(true)}
+        theme={userProfile?.settings?.theme || 'light'}
+        onThemeChange={(newTheme) => {
+          if (userProfile) {
+            handleUpdateSettings({
+              ...userProfile.settings,
+              theme: newTheme
+            });
+          }
+        }}
       />
 
       {/* Extended Choice Menu Drawer */}

@@ -120,9 +120,24 @@ export const logoutUser = async () => {
   await signOut(auth);
 };
 
+// Get User Profile from Firestore
+export const getUserProfileFromFirestore = async (uid: string) => {
+  if (!uid) return null;
+  try {
+    const userRef = doc(db, "users", uid);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+  } catch (err) {
+    console.warn("getUserProfileFromFirestore error:", err);
+  }
+  return null;
+};
+
 // User Profile Sync
-export const syncUserProfile = async (user: User, customSettings?: Record<string, any>) => {
-  if (!user) return;
+export const syncUserProfile = async (user: User | { uid: string; displayName?: string | null; email?: string | null; photoURL?: string | null }, customSettings?: Record<string, any>) => {
+  if (!user || !user.uid) return;
   try {
     const userRef = doc(db, "users", user.uid);
     const snap = await getDoc(userRef);
@@ -134,15 +149,22 @@ export const syncUserProfile = async (user: User, customSettings?: Record<string
         photoURL: user.photoURL || "",
         settings: {
           temperatureUnit: "C",
-          scanNotificationTime: "06:00",
+          scanNotificationTime: "00:00",
+          scanReminderEnabled: true,
           theme: "light",
           ...customSettings
         },
         createdAt: serverTimestamp()
       });
     } else if (customSettings) {
+      const existingData = snap.data();
+      const existingSettings = existingData.settings || {};
+      const mergedSettings = {
+        ...existingSettings,
+        ...customSettings
+      };
       await updateDoc(userRef, {
-        "settings": customSettings
+        "settings": mergedSettings
       });
     }
   } catch (err) {
@@ -153,6 +175,7 @@ export const syncUserProfile = async (user: User, customSettings?: Record<string
 // Save Facial Scan Result
 export const saveFacialScan = async (userId: string, scanData: any) => {
   try {
+    const todayStr = new Date().toISOString().split('T')[0];
     const ref = collection(db, "facial_scans");
     const rawObj = {
       userId: userId || 'guest_user',
@@ -170,6 +193,7 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
       concernImages: scanData.concernImages || null,
       capturedImage: scanData.capturedImage ? scanData.capturedImage.slice(0, 500) + '...' : null, // keep concise reference for DB
       rawPerfectCorpOutput: scanData.rawPerfectCorpOutput || null,
+      scanDate: todayStr,
       timestamp: serverTimestamp()
     };
     const cleanData = sanitizeForFirestore(rawObj);
@@ -182,6 +206,37 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
       await addDoc(userScanRef, cleanData);
     } catch (subErr) {
       console.warn("Subcollection save warning:", subErr);
+    }
+
+    // MANDATORY DATABASE PERSISTENCE: Automatically record lastCompletedScanDate in Firestore
+    try {
+      const uId = userId || 'guest_user';
+      const userRef = doc(db, "users", uId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const existingSettings = userSnap.data().settings || {};
+        await updateDoc(userRef, {
+          "settings": {
+            ...existingSettings,
+            lastCompletedScanDate: todayStr
+          }
+        });
+      } else {
+        await setDoc(userRef, {
+          displayName: "SANA User",
+          email: "guest@sana.app",
+          settings: {
+            temperatureUnit: "C",
+            scanNotificationTime: "00:00",
+            scanReminderEnabled: true,
+            theme: "light",
+            lastCompletedScanDate: todayStr
+          },
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (userErr) {
+      console.warn("User lastCompletedScanDate Firestore sync warning:", userErr);
     }
 
     return docRef.id;
