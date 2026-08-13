@@ -185,6 +185,17 @@ export interface DailyBriefing {
   primaryReminders: string[];
   locationName?: string;
   dewPoint?: string;
+  airQualityAqi?: number;
+  pm25?: number;
+  pm10?: number;
+  ozone?: number;
+  no2?: number;
+  cloudCover?: number;
+  precipProb?: number;
+  windSpeed?: number;
+  windGusts?: number;
+  vpdKpa?: number;
+  uvIndexClearSky?: number;
 }
 
 export interface PopUpNotification {
