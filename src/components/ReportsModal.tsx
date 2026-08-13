@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
 import { UserProfile, FacialScanResult } from '../types';
 import { subscribeFacialScans } from '../lib/firebase';
+import { parseTimestampToDate } from '../utils/dateUtils';
 
 interface ReportsModalProps {
   isOpen: boolean;
@@ -99,7 +100,8 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
               scanHistory.map((scan, idx) => {
                 const scanId = scan.id || scan.scanId || `scan_${idx}`;
                 const isExpanded = expandedScanId === scanId;
-                const scanDate = scan.timestamp ? new Date(scan.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : `Scan #${scanHistory.length - idx}`;
+                const parsedDate = parseTimestampToDate(scan.timestamp);
+                const scanDate = parsedDate ? parsedDate.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : `Scan #${scanHistory.length - idx}`;
                 
                 // Collect mask images from concernImages
                 const maskImages: any[] = [];

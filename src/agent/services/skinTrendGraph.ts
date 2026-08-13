@@ -1,4 +1,5 @@
 import { SkinTrendGraphPoint, FacialScanResult } from '../../types.js';
+import { safeIsoDateString } from '../../utils/dateUtils.js';
 
 /**
  * Skin Profile Trend Graph Engine
@@ -22,7 +23,7 @@ export class SkinTrendGraphEngine {
       // Find matching scan on this date if present
       const matchingScan = recentScans.find(s => {
         if (!s.timestamp) return false;
-        const scanDate = new Date(s.timestamp).toISOString().split('T')[0];
+        const scanDate = safeIsoDateString(s.timestamp);
         return scanDate === dateStr;
       });
 

@@ -4,6 +4,7 @@ import {
   FacialScanResult,
   SkinTrendGraphPoint
 } from '../../types.js';
+import { safeIsoDateString, safeTimestampTime } from '../../utils/dateUtils.js';
 
 /**
  * Skin Analysis Context Manager & Validation Service
@@ -98,19 +99,14 @@ export class SkinContextManager {
 
     // Sort past scans by date descending
     const sortedScans = [...allPastScans].sort((a, b) => {
-      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      const timeA = safeTimestampTime(a.timestamp);
+      const timeB = safeTimestampTime(b.timestamp);
       return timeB - timeA;
     });
 
     for (const scan of sortedScans) {
       if (dayWiseScans.length >= 2) break;
-      let scanDateStr = '';
-      if (scan.timestamp) {
-        scanDateStr = typeof scan.timestamp === 'string'
-          ? scan.timestamp.split('T')[0]
-          : new Date(scan.timestamp).toISOString().split('T')[0];
-      }
+      const scanDateStr = safeIsoDateString(scan.timestamp);
       // Only pick distinct past days (before today)
       if (scanDateStr && scanDateStr < todayStr && !seenDates.has(scanDateStr)) {
         seenDates.add(scanDateStr);
@@ -121,9 +117,7 @@ export class SkinContextManager {
     let pastScansSummary = "No previous scan history available for past 2 calendar days (Baseline onboarding scan).";
     if (dayWiseScans.length > 0) {
       pastScansSummary = dayWiseScans.map((scan, idx) => {
-        const dateStr = scan.timestamp
-          ? (typeof scan.timestamp === 'string' ? scan.timestamp.split('T')[0] : new Date(scan.timestamp).toLocaleDateString())
-          : `Day -${idx + 1}`;
+        const dateStr = safeIsoDateString(scan.timestamp);
         return `[PAST DAY SCAN #${idx + 1} - Date: ${dateStr}]:
 - Overall Health: Hydration=${scan.hydrationScore}%, Barrier=${scan.barrierScore}%, Clarity=${scan.clarityScore}%
 - Metrics: ${scan.scoreInfo ? JSON.stringify(scan.scoreInfo) : 'Standard 6-point metrics'}
