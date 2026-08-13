@@ -30,7 +30,38 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanUiError, setScanUiError] = useState<ScanUiError | null>(null);
   
-  // Tab states for pure Perfect Corp API testing
+  // Scan Type state
+  const [scanType, setScanType] = useState<'daily_scan' | 'intermediate_scan'>('daily_scan');
+  const [showPremiumNotice, setShowPremiumNotice] = useState(false);
+  
+  // Flashlight state
+  const [isFlashlightOn, setIsFlashlightOn] = useState(false);
+
+  const toggleFlashlight = async () => {
+    if (!stream) {
+      setIsFlashlightOn(!isFlashlightOn);
+      return;
+    }
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      try {
+        const capabilities = (track.getCapabilities && track.getCapabilities()) || {};
+        if ('torch' in capabilities) {
+          const nextState = !isFlashlightOn;
+          await track.applyConstraints({
+            advanced: [{ torch: nextState }] as any
+          });
+          setIsFlashlightOn(nextState);
+        } else {
+          setIsFlashlightOn(!isFlashlightOn);
+        }
+      } catch (e) {
+        setIsFlashlightOn(!isFlashlightOn);
+      }
+    } else {
+      setIsFlashlightOn(!isFlashlightOn);
+    }
+  };
   const [activeTab, setActiveTab] = useState<'raw_json' | 'gallery' | 'raw_scores' | 's2s_logs'>('raw_json');
   const [copiedJson, setCopiedJson] = useState(false);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState<string | null>(null);
@@ -116,6 +147,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     setScanUiError(null);
 
     try {
+      const formattedScanId = `${scanType}_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 15)}`;
       const response = await fetch('/api/facial-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,7 +155,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           imageBase64: base64Image,
           userId: userProfile?.uid || 'guest_user',
           pastScans,
-          faceBox: faceBox || currentFaceBox || undefined
+          faceBox: faceBox || currentFaceBox || undefined,
+          scanType,
+          scanId: formattedScanId
         })
       });
 
@@ -137,8 +171,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       }
 
       const result: FacialScanResult = {
-        id: data.id || data.scanId || `scan_${Date.now()}`,
+        id: data.id || data.scanId || formattedScanId,
         userId: userProfile?.uid || 'guest_user',
+        scanId: data.scanId || formattedScanId,
+        scanType: data.scanType || scanType,
         hydrationScore: data.rawMetrics?.moistureScore || 85,
         barrierScore: data.rawMetrics?.barrierRednessScore || 88,
         clarityScore: data.rawMetrics?.acneBlemishScore || 90,
@@ -147,6 +183,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         rawPerfectCorpOutput: data.rawPerfectCorpOutput,
         integrityLog: data.integrityLog,
         annotatedRegions: data.annotatedRegions || [],
+        concernImages: data.concernImages || {},
+        capturedImage: base64Image,
         s2sStepLogs: data.s2sStepLogs || data.rawPerfectCorpOutput?.s2sStepLogs || [],
         rawResponseLog: data.rawResponseLog || data.rawPerfectCorpOutput?.rawResponseLog || '',
         rawJson: data.rawJson || data.rawPerfectCorpOutput?.rawJson || data,
@@ -247,17 +285,11 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <div className="p-2.5 rounded-2xl bg-slate-800 text-amber-400 border border-slate-700">
                 <Icon icon="solar:code-scan-bold" className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-base font-bold text-white">Perfect Corp S2S API Response</h3>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono border border-emerald-500/30">
-                    NO LLM / DIRECT API
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400">Server-to-Server API v2.1 Verification Suite</p>
+                <h3 className="text-base font-bold text-white tracking-tight">Skin Analysis</h3>
               </div>
             </div>
 
@@ -274,8 +306,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           </div>
 
           {!scanResult ? (
-            /* Camera Viewport */
-            <div className="relative w-full aspect-4/3 rounded-[24px] bg-black overflow-hidden flex items-center justify-center border border-slate-800">
+            <>
+              /* Camera Viewport */
+            <div className="relative w-full aspect-4/3 rounded-[24px] bg-black overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner">
               <video
                 ref={videoRef}
                 autoPlay
@@ -285,33 +318,75 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               />
               <canvas ref={canvasRef} className="hidden" />
 
-              {/* Squircle Facial Frame HUD */}
-              <div
-                className={`absolute inset-10 sm:inset-12 border-2 rounded-[40px] pointer-events-none transition-all duration-300 flex flex-col justify-between p-3 ${
-                  faceAssessment.status === 'ready'
-                    ? 'border-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.3)]'
-                    : 'border-amber-400/80 border-dashed animate-pulse'
-                }`}
-              >
-                <div className="self-center px-3 py-1 rounded-full bg-slate-900/90 backdrop-blur-xs border border-white/20 text-[10.5px] font-medium text-white flex items-center space-x-1.5 shadow-md">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      faceAssessment.status === 'ready'
-                        ? 'bg-emerald-400 animate-pulse'
-                        : 'bg-amber-400 animate-ping'
-                    }`}
+              {/* Fogged / Blurred Region Outside Custom Face Silhouette Viewport */}
+              <div className="absolute inset-0 pointer-events-none z-10">
+                <svg className="w-full h-full absolute inset-0" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <defs>
+                    <mask id="face-silhouette-mask">
+                      {/* White fill keeps the frosted blur outside */}
+                      <rect width="100%" height="100%" fill="white" />
+                      {/* Black path cuts an organic custom human face shape hole */}
+                      <path
+                        d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
+                        fill="black"
+                      />
+                    </mask>
+                  </defs>
+
+                  {/* Frosted / Fogged Outside Layer */}
+                  <foreignObject width="100%" height="100%" mask="url(#face-silhouette-mask)">
+                    <div className="w-full h-full backdrop-blur-md bg-slate-950/60" />
+                  </foreignObject>
+
+                  {/* Custom Face Silhouette Outline Stroke & Glow */}
+                  <path
+                    d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
+                    fill="none"
+                    stroke={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(245, 158, 11, 0.85)'}
+                    strokeWidth="0.8"
+                    strokeDasharray={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'none' : '2 1'}
+                    className="transition-all duration-300"
                   />
-                  <span>{faceAssessment.statusText} • {faceAssessment.hint}</span>
+                </svg>
+
+                {/* Top Bar Controls (Separated to Top-Left and Top-Right to Prevent Overlapping) */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-auto z-20">
+                  {/* Flashlight Pill Button (Top-Left) */}
+                  <button
+                    type="button"
+                    onClick={toggleFlashlight}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
+                      isFlashlightOn
+                        ? 'bg-amber-400 text-slate-950 border-amber-300'
+                        : 'bg-slate-900/80 backdrop-blur-md text-slate-200 border-white/20 hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon icon={isFlashlightOn ? 'solar:flashlight-bold' : 'solar:flashlight-linear'} className="w-3.5 h-3.5" />
+                    <span>Flashlight</span>
+                  </button>
+
+                  {/* Live Face Ratio Indicator (Top-Right) */}
+                  <div className="px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 shadow-md">
+                    FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
+                  </div>
                 </div>
 
-                <div className="text-center px-2 py-1 rounded-xl bg-black/60 backdrop-blur-xs text-[10px] text-emerald-300 font-medium self-center border border-emerald-500/20 max-w-[90%]">
-                  {faceAssessment.hint}
-                </div>
-
-                <div className="self-center flex items-center space-x-2 text-[9.5px] font-mono text-white/80 bg-slate-900/90 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-white/10">
-                  <span>FACE RATIO: {Math.round((faceAssessment.faceRatio || 0) * 100)}%</span>
-                  <span>•</span>
-                  <span>TARGET: 60-78%</span>
+                {/* Bottom Instruction Banner (Centered at Bottom without overlapping top controls) */}
+                <div className="absolute bottom-3 left-3 right-3 flex justify-center pointer-events-auto z-20">
+                  <div className="px-3.5 py-1.5 rounded-full bg-slate-900/90 backdrop-blur-md border border-white/20 text-xs font-semibold text-white shadow-xl flex items-center space-x-2 max-w-full truncate">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        faceAssessment.canShutter || faceAssessment.status === 'ready'
+                          ? 'bg-white animate-pulse'
+                          : 'bg-amber-400 animate-ping'
+                      }`}
+                    />
+                    <span className="truncate">
+                      {faceAssessment.canShutter || faceAssessment.status === 'ready'
+                        ? 'Look in camera'
+                        : faceAssessment.hint || 'Align face inside outline'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -387,12 +462,126 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
               {isAnalyzing && (
                 <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center space-y-3 z-20">
-                  <div className="w-10 h-10 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
                   <p className="text-xs font-semibold text-white">Submitting Image to Perfect Corp S2S Server...</p>
                   <p className="text-[11px] text-slate-400 font-mono">POST /s2s/v2.1/file ➔ PUT Binary ➔ POST Task ➔ Poll</p>
                 </div>
               )}
             </div>
+
+            {/* Scan Mode & Shutter Action Controls Bar */}
+            <div className="flex flex-col space-y-3 pt-1">
+              {/* Scan Type Selector Tabs */}
+              <div className="flex items-center justify-center p-1 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setScanType('daily_scan')}
+                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+                    scanType === 'daily_scan'
+                      ? 'bg-amber-400 text-slate-950 font-bold shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon icon="solar:sun-bold" className="w-4 h-4" />
+                  <span>Daily Ritual Scan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!userProfile?.settings?.isPremium) {
+                      setShowPremiumNotice(true);
+                    } else {
+                      setScanType('intermediate_scan');
+                    }
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+                    scanType === 'intermediate_scan'
+                      ? 'bg-amber-400 text-slate-950 font-bold shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon icon="solar:bolt-bold" className="w-4 h-4 text-amber-500" />
+                  <span>Intermediate Check</span>
+                  {!userProfile?.settings?.isPremium && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono border border-amber-500/30">
+                      PRO
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Shutter Capture Button & Upload Option */}
+              <div className="flex items-center justify-between px-2 pt-1">
+                {/* Upload File Input */}
+                <label className="p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold">
+                  <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-amber-400" />
+                  <span className="hidden sm:inline">Upload Image</span>
+                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                </label>
+
+                {/* Center Shutter Button */}
+                <button
+                  type="button"
+                  onClick={handleCapture}
+                  disabled={isAnalyzing}
+                  className={`w-16 h-16 rounded-full border-4 border-slate-800 bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer ${
+                    isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-full border-2 border-slate-950 flex items-center justify-center">
+                    <Icon icon="solar:camera-bold" className="w-6 h-6" />
+                  </div>
+                </button>
+
+                {/* Reset / Camera Toggle */}
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  className="p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold"
+                >
+                  <Icon icon="solar:restart-bold" className="w-5 h-5 text-amber-400" />
+                  <span className="hidden sm:inline">Reset Camera</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Premium Notice Modal Popup */}
+            {showPremiumNotice && (
+              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 p-6 text-center space-y-4 shadow-2xl">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                    <Icon icon="solar:crown-minimalistic-bold" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white tracking-tight">Intermediate Scans are SANA Premium</h4>
+                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                      Intermediate scans allow instant on-demand skin checks throughout the day. Upgrade to SANA Premium to perform unlimited intermediate scans stored directly in your Agent Vault.
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPremiumNotice(false);
+                        setScanType('intermediate_scan');
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Unlock for Demo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPremiumNotice(false)}
+                      className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer border border-slate-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
           ) : (
             /* Direct API Scan Result Inspector */
             <div className="space-y-3.5 overflow-y-auto max-h-[72vh] pr-1">
@@ -649,8 +838,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   disabled={isAnalyzing || (!faceAssessment.canShutter && faceAssessment.status !== 'ready')}
                   className={`flex-1 py-3 rounded-2xl text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md flex items-center justify-center space-x-2 ${
                     faceAssessment.canShutter || faceAssessment.status === 'ready'
-                      ? 'bg-emerald-500 hover:bg-emerald-400'
-                      : 'bg-amber-500 hover:bg-amber-400'
+                      ? 'bg-white hover:bg-slate-200 text-slate-950 shadow-lg'
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                   }`}
                 >
                   <Icon icon="solar:camera-bold" className="w-4 h-4" />
@@ -661,7 +850,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   </span>
                 </button>
 
-                <label className="p-3 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center">
+                <label className="p-3 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center border border-slate-700">
                   <Icon icon="solar:upload-linear" className="w-5 h-5" />
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
@@ -672,10 +861,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   setScanResult(null);
                   setCapturedImage(null);
                 }}
-                className="w-full py-2.5 rounded-2xl bg-slate-800 text-white text-xs font-semibold hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center space-x-2"
+                className="w-full py-2.5 rounded-2xl bg-slate-800 text-white text-xs font-semibold hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center space-x-2 border border-slate-700"
               >
-                <Icon icon="solar:restart-bold" className="w-4 h-4 text-emerald-400" />
-                <span>Retake Photo & Test S2S API Again</span>
+                <Icon icon="solar:restart-bold" className="w-4 h-4 text-amber-400" />
+                <span>Retake Photo & Scan Again</span>
               </button>
             )}
           </div>

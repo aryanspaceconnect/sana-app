@@ -156,18 +156,34 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
     const ref = collection(db, "facial_scans");
     const rawObj = {
       userId: userId || 'guest_user',
-      hydrationScore: scanData.hydrationScore ?? 85,
-      barrierScore: scanData.barrierScore ?? 88,
-      clarityScore: scanData.clarityScore ?? 90,
+      scanId: scanData.scanId || scanData.id || `scan_${Date.now()}`,
+      scanType: scanData.scanType || 'daily_scan',
+      hydrationScore: scanData.hydrationScore ?? scanData.rawMetrics?.moistureScore ?? 85,
+      barrierScore: scanData.barrierScore ?? scanData.rawMetrics?.barrierRednessScore ?? 88,
+      clarityScore: scanData.clarityScore ?? scanData.rawMetrics?.acneBlemishScore ?? 90,
       summary: scanData.summary || "Skin analysis processed successfully.",
       recommendations: scanData.recommendations || [],
       uvRecommendation: scanData.uvRecommendation || "",
       annotatedRegions: scanData.annotatedRegions || [],
+      rawMetrics: scanData.rawMetrics || null,
+      scoreInfo: scanData.scoreInfo || null,
+      concernImages: scanData.concernImages || null,
+      capturedImage: scanData.capturedImage ? scanData.capturedImage.slice(0, 500) + '...' : null, // keep concise reference for DB
       rawPerfectCorpOutput: scanData.rawPerfectCorpOutput || null,
       timestamp: serverTimestamp()
     };
     const cleanData = sanitizeForFirestore(rawObj);
     const docRef = await addDoc(ref, cleanData);
+
+    // Also store in user-specific subcollection users/{userId}/{scanType}s
+    try {
+      const subFolder = scanData.scanType === 'intermediate_scan' ? 'intermediate_scans' : 'daily_scans';
+      const userScanRef = collection(db, "users", userId || 'guest_user', subFolder);
+      await addDoc(userScanRef, cleanData);
+    } catch (subErr) {
+      console.warn("Subcollection save warning:", subErr);
+    }
+
     return docRef.id;
   } catch (err) {
     console.error("Failed to save facial scan to Firestore:", err);

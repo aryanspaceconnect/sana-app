@@ -9,6 +9,7 @@ export interface UserSettings {
   locationName?: string;
   latitude?: number;
   longitude?: number;
+  isPremium?: boolean;
 }
 
 export interface UserProfile {
@@ -20,9 +21,18 @@ export interface UserProfile {
   settings: UserSettings;
 }
 
+export interface ConcernImageDetail {
+  concernName: string;
+  label: string;
+  score: number;
+  mask_url?: string;
+  description?: string;
+  bbox?: [number, number, number, number];
+}
+
 export interface PerfectCorpRegionOverlay {
   regionId: string;
-  regionName: 'pores' | 'dark_circles' | 'redness_barrier' | 'acne_spots' | 'wrinkles_texture';
+  regionName: 'pores' | 'dark_circles' | 'redness_barrier' | 'acne_spots' | 'wrinkles_texture' | 'spots' | 'moisture' | 'firmness' | string;
   label: string;
   severityScore: number; // 0-100
   severityLevel: 'mild' | 'moderate' | 'elevated' | 'severe';
@@ -88,6 +98,8 @@ export interface SkinTrendGraphPoint {
 export interface FacialScanResult {
   id?: string;
   userId?: string;
+  scanId?: string;
+  scanType?: 'daily_scan' | 'intermediate_scan';
   hydrationScore: number;
   barrierScore: number;
   clarityScore: number;
@@ -95,6 +107,8 @@ export interface FacialScanResult {
   recommendations: string[];
   uvRecommendation?: string;
   timestamp?: any;
+  capturedImage?: string;
+  concernImages?: Record<string, ConcernImageDetail>;
   // Perfect Corp API & Context Manager Extensions
   rawPerfectCorpOutput?: PerfectCorpRawOutput;
   integrityLog?: SkinAnalysisIntegrityLog;

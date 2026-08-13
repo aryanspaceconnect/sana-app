@@ -14,6 +14,7 @@ import { analyzeSkinWithPerfectCorp } from "./src/agent/services/perfectCorpServ
 import { SkinContextManager } from "./src/agent/services/skinContextManager.js";
 import { SkinTrendGraphEngine } from "./src/agent/services/skinTrendGraph.js";
 import { saveFacialScan } from "./src/lib/firebase.js";
+import { saveSkinScanToVault } from "./src/agent/agentVault.js";
 
 dotenv.config();
 
@@ -545,29 +546,76 @@ app.post("/api/sana/execute", async (req, res) => {
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64, userId = "guest_user", pastScans = [], faceBox } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
 
-    console.log(`[FacialScanPipeline] Starting dual-path scan workflow for user: ${userId}`);
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timeStampStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const scanTypeClean = scanType === 'intermediate_scan' ? 'intermediate_scan' : 'daily_scan';
+    const formattedScanId = reqScanId || `${scanTypeClean}_${timeStampStr}`;
+
+    console.log(`[FacialScanPipeline] Starting dual-path scan workflow (${scanTypeClean}: ${formattedScanId}) for user: ${userId}`);
 
     // STEP 1: Perfect Corp API Analysis Path
     const rawPerfectCorpOutput = await analyzeSkinWithPerfectCorp(imageBase64, userId, { faceBox });
 
-    // STEP 2: Return Pure Perfect Corp Raw S2S Response (No LLM calls or image sent to AI)
+    // Construct concern images dictionary
+    const concernImages: Record<string, any> = {};
+    const concernsMap = rawPerfectCorpOutput.scoreInfo?.concerns || {};
+    Object.keys(concernsMap).forEach(key => {
+      const c = concernsMap[key];
+      concernImages[key] = {
+        concernName: key,
+        label: key.replace(/_/g, ' ').toUpperCase(),
+        score: c.ui_score ?? c.raw_score ?? 85,
+        mask_url: c.mask_url || null
+      };
+    });
+
+    // STEP 2: Save to Firestore
     let savedDocId = null;
     try {
       savedDocId = await saveFacialScan(userId, {
+        scanId: formattedScanId,
+        scanType: scanTypeClean,
+        hydrationScore: rawPerfectCorpOutput.rawMetrics?.moistureScore || 85,
+        barrierScore: rawPerfectCorpOutput.rawMetrics?.barrierRednessScore || 88,
+        clarityScore: rawPerfectCorpOutput.rawMetrics?.acneBlemishScore || 90,
         rawMetrics: rawPerfectCorpOutput.rawMetrics,
+        scoreInfo: rawPerfectCorpOutput.scoreInfo,
         annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
-        scanId: rawPerfectCorpOutput.scanId,
+        concernImages,
+        capturedImage: imageBase64,
         provider: rawPerfectCorpOutput.provider,
-        timestamp: new Date()
+        rawPerfectCorpOutput,
+        timestamp: now.toISOString()
       });
       console.log(`[FacialScanPipeline] Saved scan record ${savedDocId} to database for user ${userId}`);
     } catch (dbErr) {
       console.warn("[FacialScanPipeline] DB save warning:", dbErr);
+    }
+
+    // STEP 3: Save to Agent Vault Folder (/daily_scans or /intermediate_scans)
+    try {
+      await saveSkinScanToVault(userId, {
+        scanId: formattedScanId,
+        scanType: scanTypeClean,
+        timestamp: now.toISOString(),
+        rawMetrics: rawPerfectCorpOutput.rawMetrics,
+        scoreInfo: rawPerfectCorpOutput.scoreInfo,
+        annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
+        s2sStepLogs: rawPerfectCorpOutput.s2sStepLogs,
+        rawResponseLog: rawPerfectCorpOutput.rawResponseLog,
+        rawPerfectCorpOutput,
+        capturedImage: imageBase64 ? imageBase64.slice(0, 500) + '...' : undefined,
+        concernImages
+      });
+      console.log(`[FacialScanPipeline] Saved virtual file /${scanTypeClean}s/${formattedScanId}.json to Agent Vault`);
+    } catch (vaultErr) {
+      console.warn("[FacialScanPipeline] Agent Vault file save warning:", vaultErr);
     }
 
     // Assemble final response with EXACT raw Perfect Corp API payload
@@ -579,16 +627,18 @@ app.post("/api/facial-scan", async (req, res) => {
     }
 
     const finalScanResult = {
-      id: savedDocId || rawPerfectCorpOutput.scanId,
+      id: savedDocId || formattedScanId,
       userId,
-      scanId: rawPerfectCorpOutput.scanId,
+      scanId: formattedScanId,
+      scanType: scanTypeClean,
       taskId: rawPerfectCorpOutput.taskId,
       fileId: rawPerfectCorpOutput.fileId,
       provider: rawPerfectCorpOutput.provider,
-      timestamp: rawPerfectCorpOutput.timestamp,
+      timestamp: now.toISOString(),
       rawMetrics: rawPerfectCorpOutput.rawMetrics,
       scoreInfo: rawPerfectCorpOutput.scoreInfo,
       annotatedRegions: rawPerfectCorpOutput.annotatedRegions,
+      concernImages,
       s2sStepLogs: rawPerfectCorpOutput.s2sStepLogs,
       rawResponseLog: rawPerfectCorpOutput.rawResponseLog,
       rawJson: parsedRawJson

@@ -23,7 +23,8 @@ import {
   createVaultHyperlink,
   accessVaultFolder,
   accessVaultFile,
-  getVaultFileSystemIndex
+  getVaultFileSystemIndex,
+  retrieveSkinScanVault
 } from './agentVault.js';
 
 // Universal Search Tool
@@ -987,6 +988,40 @@ export const requestUserInputTool: ToolDefinition = {
   }
 };
 
+export const retrieveSkinScanVaultSchema = z.object({
+  scanType: z.enum(['daily_scan', 'intermediate_scan', 'all']).optional().default('all').describe('Filter scans by type: daily ritual scan vs intermediate quick check scan.'),
+  scanId: z.string().optional().describe('Specific scan ID (e.g., daily_scan_20260812_193000) to retrieve.'),
+  imageType: z.enum([
+    'original',
+    'wrinkles',
+    'acne',
+    'pores',
+    'dark_circles',
+    'redness',
+    'spots',
+    'texture',
+    'moisture',
+    'firmness',
+    'all_masks',
+    'none'
+  ]).optional().default('none').describe('Specific image or visual concern mask overlay to retrieve alongside scan metrics.'),
+  dateFrom: z.string().optional().describe('Start date filter (YYYY-MM-DD)'),
+  dateTo: z.string().optional().describe('End date filter (YYYY-MM-DD)'),
+  limit: z.number().optional().default(5).describe('Maximum number of scan records to return.'),
+  includeRawApiOutput: z.boolean().optional().default(true).describe('Include complete raw Perfect Corp S2S API output log.'),
+  includeTrendGraph: z.boolean().optional().default(true).describe('Include time-series progress trends & improvement percentages comparing scans over time.')
+});
+
+export const retrieveSkinScanVaultTool: ToolDefinition = {
+  name: 'retrieve_skin_scan_vault',
+  description: 'Retrieve skin scan records, raw report data, specific concern images/masks (wrinkles, acne, pores, dark circles, redness, spots, texture, moisture, firmness), and time-series progress trends from the Agent Vault in a SINGLE tool call.',
+  parameters: retrieveSkinScanVaultSchema,
+  execute: async (args: z.infer<typeof retrieveSkinScanVaultSchema>, context: AgentContext) => {
+    const userId = context.profile?.uid || 'guest_user';
+    return await retrieveSkinScanVault(userId, args);
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -1001,6 +1036,7 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   readSessionNotepadTool,
   universalSearchTool,
   vaultSearchTool,
+  retrieveSkinScanVaultTool,
   saveMemoryNoteTool,
   saveVaultIncidentTool,
   saveVaultEventTool,

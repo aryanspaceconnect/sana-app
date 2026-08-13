@@ -1403,3 +1403,175 @@ export async function getVaultFileSystemIndex(userId: string): Promise<string> {
 
   return indexStr.trim();
 }
+
+/**
+ * Saves a facial skin scan report into virtual folders in the Agent Vault (/daily_scans or /intermediate_scans).
+ */
+export async function saveSkinScanToVault(
+  userId: string,
+  scanData: {
+    scanId: string;
+    scanType: 'daily_scan' | 'intermediate_scan';
+    timestamp?: string;
+    rawMetrics?: any;
+    scoreInfo?: any;
+    annotatedRegions?: any[];
+    s2sStepLogs?: string[];
+    rawResponseLog?: string;
+    rawPerfectCorpOutput?: any;
+    capturedImage?: string;
+    concernImages?: Record<string, any>;
+  }
+): Promise<VaultFileRecord> {
+  const folderName = scanData.scanType === 'intermediate_scan' ? 'intermediate_scans' : 'daily_scans';
+  const folderPath = `/${folderName}`;
+  
+  // Ensure virtual folder exists
+  await createVaultFolder(userId, folderName, '/', `Folder for storing ${scanData.scanType} reports and concern images`);
+
+  const fileName = `${scanData.scanId}.json`;
+  const fileContent = JSON.stringify(scanData, null, 2);
+
+  return await createVaultFile(
+    userId,
+    fileName,
+    fileContent,
+    folderPath,
+    'application/json',
+    [scanData.scanType, 'facial_scan', 'skin_report']
+  );
+}
+
+/**
+ * Unified Agent Tool Engine for Skin Scan Retrieval.
+ * Allows retrieving Daily Scans or Intermediate Scans, raw report data, concern images/masks,
+ * and time-series progress trends in ONE SINGLE TOOL CALL.
+ */
+export async function retrieveSkinScanVault(
+  userId: string,
+  params: {
+    scanType?: 'daily_scan' | 'intermediate_scan' | 'all';
+    scanId?: string;
+    imageType?: 'original' | 'wrinkles' | 'acne' | 'pores' | 'dark_circles' | 'redness' | 'spots' | 'texture' | 'moisture' | 'firmness' | 'all_masks' | 'none';
+    dateFrom?: string;
+    dateTo?: string;
+    limit?: number;
+    includeRawApiOutput?: boolean;
+    includeTrendGraph?: boolean;
+  }
+) {
+  const fullVault = await loadFullAgentVault(userId);
+  const scanTypeFilter = params.scanType || 'all';
+  const limitVal = params.limit || 5;
+
+  // Search vault files in /daily_scans and /intermediate_scans
+  let scanFiles = fullVault.files.filter(f => {
+    if (scanTypeFilter === 'daily_scan') return f.folderPath === '/daily_scans' || f.tags.includes('daily_scan');
+    if (scanTypeFilter === 'intermediate_scan') return f.folderPath === '/intermediate_scans' || f.tags.includes('intermediate_scan');
+    return f.folderPath === '/daily_scans' || f.folderPath === '/intermediate_scans' || f.tags.includes('facial_scan');
+  });
+
+  // Filter by scanId if provided
+  if (params.scanId) {
+    scanFiles = scanFiles.filter(f => f.name.includes(params.scanId!) || f.id.includes(params.scanId!));
+  }
+
+  // Parse JSON file contents into scan objects
+  const parsedScans: any[] = [];
+  for (const f of scanFiles) {
+    try {
+      const parsed = JSON.parse(f.content);
+      parsedScans.push(parsed);
+    } catch {
+      parsedScans.push({
+        scanId: f.name.replace('.json', ''),
+        folderPath: f.folderPath,
+        content: f.content
+      });
+    }
+  }
+
+  // Fallback to Firestore if vault files are empty
+  if (parsedScans.length === 0 && db) {
+    try {
+      const dbSnap = await getDocs(query(collection(db, 'facial_scans'), where('userId', '==', userId), orderBy('timestamp', 'desc'), limitQuery(limitVal)));
+      dbSnap.docs.forEach(doc => {
+        const d = doc.data();
+        if (scanTypeFilter === 'all' || d.scanType === scanTypeFilter) {
+          parsedScans.push(d);
+        }
+      });
+    } catch (e) {
+      console.warn("Firestore scan query fallback error:", e);
+    }
+  }
+
+  // Sort scans by timestamp desc and limit
+  parsedScans.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+  const selectedScans = parsedScans.slice(0, limitVal);
+
+  // Extract requested image / mask URLs for selected imageType
+  const imageResults: Record<string, any> = {};
+  if (params.imageType && params.imageType !== 'none') {
+    selectedScans.forEach(scan => {
+      const targetConcern = params.imageType;
+      const scanKey = scan.scanId || scan.id || 'scan';
+      if (targetConcern === 'all_masks') {
+        imageResults[scanKey] = scan.concernImages || scan.scoreInfo?.concerns || scan.annotatedRegions;
+      } else if (targetConcern === 'original') {
+        imageResults[scanKey] = scan.capturedImage || scan.imageRef || 'Original facial scan capture';
+      } else if (scan.concernImages && scan.concernImages[targetConcern!]) {
+        imageResults[scanKey] = scan.concernImages[targetConcern!];
+      } else if (scan.annotatedRegions) {
+        const region = scan.annotatedRegions.find((r: any) => r.regionName?.includes(targetConcern!) || r.label?.toLowerCase().includes(targetConcern!));
+        imageResults[scanKey] = region || scan.annotatedRegions;
+      }
+    });
+  }
+
+  // Compute time-series trend & progress deltas
+  let trendGraph = null;
+  if (params.includeTrendGraph !== false && selectedScans.length > 0) {
+    const recentScores = selectedScans.map(s => ({
+      scanId: s.scanId || s.id,
+      scanType: s.scanType || 'daily_scan',
+      date: s.timestamp ? new Date(s.timestamp).toISOString().split('T')[0] : 'today',
+      hydration: s.rawMetrics?.moistureScore || s.hydrationScore || 85,
+      barrier: s.rawMetrics?.barrierRednessScore || s.barrierScore || 88,
+      clarity: s.rawMetrics?.acneBlemishScore || s.clarityScore || 90,
+      skinAge: s.rawMetrics?.skinAge || 28,
+      overallScore: s.rawMetrics?.overallScore || s.scoreInfo?.all || 87
+    }));
+
+    const latest = recentScores[0];
+    const previous = recentScores.length > 1 ? recentScores[recentScores.length - 1] : null;
+
+    trendGraph = {
+      points: recentScores,
+      improvementDeltas: previous ? {
+        hydrationChange: `${latest.hydration >= previous.hydration ? '+' : ''}${latest.hydration - previous.hydration}%`,
+        barrierChange: `${latest.barrier >= previous.barrier ? '+' : ''}${latest.barrier - previous.barrier}%`,
+        clarityChange: `${latest.clarity >= previous.clarity ? '+' : ''}${latest.clarity - previous.clarity}%`,
+        skinAgeTrend: latest.skinAge <= previous.skinAge ? 'Rejuvenated / Stable' : 'Slight stress elevation'
+      } : { note: 'Initial baseline scan established.' }
+    };
+  }
+
+  return {
+    success: true,
+    filterApplied: {
+      scanType: scanTypeFilter,
+      scanId: params.scanId || 'all',
+      imageType: params.imageType || 'none'
+    },
+    retrievedCount: selectedScans.length,
+    scans: selectedScans.map(s => params.includeRawApiOutput !== false ? s : {
+      scanId: s.scanId,
+      scanType: s.scanType,
+      timestamp: s.timestamp,
+      rawMetrics: s.rawMetrics
+    }),
+    imagesAndMasks: Object.keys(imageResults).length > 0 ? imageResults : undefined,
+    trendGraphProgress: trendGraph
+  };
+}
