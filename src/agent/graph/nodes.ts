@@ -92,7 +92,8 @@ You are SANA operating in an autonomous multi-turn LangGraph loop with native Fu
 
 CRITICAL RULE: NEVER state in text that you have saved, updated, or stored user preferences or profile data into their Agent Memory Vault UNLESS you actually execute the corresponding tool function call!
 
-- When tool results return from function calls, inspect the output in your next turn and synthesize a complete, elegant, user-facing answer.
+- When tool results return from function calls, inspect the output in your next turn and synthesize a complete, detailed, user-facing answer.
+- NEVER output intermediate text commentary like "I will call access_file now", "function call to...", "Let me parse this payload", or "I'll call access_file" as your text response. Always synthesize the actual scan scores, metrics, and findings directly for the user.
 - STRICT NO-EMOJI RULE: Do NOT include any emojis or visual icons in your text responses under any circumstances.
 `;
 }
@@ -217,7 +218,7 @@ export async function reasoningNode(state: AgentState) {
 
       return {
         pendingFunctionCalls: routerResult.functionCalls,
-        passOnTrace: [traceStep],
+        passOnTrace: [...(state.passOnTrace || []), traceStep],
         llmMessages,
         status: 'calling_tools',
         iterations: currentIterations
@@ -225,7 +226,59 @@ export async function reasoningNode(state: AgentState) {
     }
 
     // LLM generated text response directly
-    const responseText = routerResult.text || '';
+    let responseText = routerResult.text || '';
+
+    // Guard: Check if model outputted an intermediate monologue or if scan data query lacks tool execution
+    const isMonologue = /function call to|I'll call access_file|I'll call|Let me access that file|Let me access the full scan|Let's parse the payload|I have successfully located your latest facial scan/i.test(responseText) || (responseText.trim().length < 30 && (state.toolResults?.length || 0) > 0);
+
+    const isScanRequest = /face scan|facial scan|scan data|latest scan|scan record|vault scan/i.test(state.message || '');
+
+    // Case A: Model outputted monologue or user asked for scan data, BUT NO tools have executed yet
+    if ((isMonologue || isScanRequest) && (state.toolResults?.length || 0) === 0) {
+      console.log('[ReasoningNode] Detected monologue or scan query prior to tool execution. Forcing retrieve_skin_scan_vault tool call...');
+      const forcedToolCall: LLMFunctionCall = {
+        name: 'retrieve_skin_scan_vault',
+        args: { scanType: 'all', limit: 5 }
+      };
+
+      return {
+        pendingFunctionCalls: [forcedToolCall],
+        passOnTrace: [...(state.passOnTrace || []), traceStep],
+        llmMessages,
+        status: 'calling_tools',
+        iterations: currentIterations
+      };
+    }
+
+    // Case B: Model outputted monologue AFTER tools have executed -> Trigger synthesis pass
+    if (isMonologue && (state.toolResults?.length || 0) > 0) {
+      console.log('[ReasoningNode] Detected intermediate tool monologue instead of user report. Executing mandatory synthesis pass...');
+      try {
+        const synthesisMessages = [
+          ...llmMessages,
+          {
+            role: 'user',
+            parts: [{
+              text: `You have retrieved all requested data and tool outputs from the Agent Vault / scan records. Present a complete, comprehensive, beautifully structured user-facing report summarizing all scan scores, metrics, skin health findings, and recommended routines. Do NOT output any meta-commentary about function calls or file access.`
+            }]
+          }
+        ];
+
+        const synthesisResult = await generateContentWithRouter({
+          contents: synthesisMessages,
+          systemInstruction: systemPrompt,
+          temperature: 0.3,
+          includeThoughts: true
+        });
+
+        if (synthesisResult.text && synthesisResult.text.trim().length > 0) {
+          responseText = synthesisResult.text.trim();
+        }
+      } catch (synthErr) {
+        console.warn('[ReasoningNode] Synthesis pass error:', synthErr);
+      }
+    }
+
     llmMessages.push({
       role: 'model',
       parts: [{ text: responseText }]
@@ -233,7 +286,7 @@ export async function reasoningNode(state: AgentState) {
 
     return {
       pendingFunctionCalls: [],
-      passOnTrace: [traceStep],
+      passOnTrace: [...(state.passOnTrace || []), traceStep],
       finalText: responseText,
       llmMessages,
       status: 'done',

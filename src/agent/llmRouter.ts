@@ -103,8 +103,8 @@ export class SlidingWindowRateLimiter {
 }
 
 // Global rate limiters configured to user thresholds:
-// Google Gemini API: Max 11 RPM
-export const googleRateLimiter = new SlidingWindowRateLimiter('GoogleGemini', 11, 60000);
+// Google Gemini API: Max 120 RPM to support multi-turn reasoning loops
+export const googleRateLimiter = new SlidingWindowRateLimiter('GoogleGemini', 120, 60000);
 
 // NVIDIA API Endpoint (z-ai/glm-5.2): Max 35 RPM
 export const nvidiaRateLimiter = new SlidingWindowRateLimiter('NvidiaGLM', 35, 60000);
@@ -225,6 +225,29 @@ async function fetchNvidiaCompletion(
       bodyPayload.chat_template_kwargs = { enable_thinking: true };
     }
 
+    // Convert Gemini tools to OpenAI function format for Nvidia endpoints
+    if (options.tools && options.tools.length > 0) {
+      const openAiTools: any[] = [];
+      for (const t of options.tools) {
+        if (t.functionDeclarations && Array.isArray(t.functionDeclarations)) {
+          for (const fd of t.functionDeclarations) {
+            openAiTools.push({
+              type: 'function',
+              function: {
+                name: fd.name,
+                description: fd.description,
+                parameters: fd.parameters
+              }
+            });
+          }
+        }
+      }
+      if (openAiTools.length > 0) {
+        bodyPayload.tools = openAiTools;
+        bodyPayload.tool_choice = 'auto';
+      }
+    }
+
     const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -247,8 +270,45 @@ async function fetchNvidiaCompletion(
     const responseText = choice?.message?.content || "";
     const reasoningContent = choice?.message?.reasoning_content || data.additional_kwargs?.reasoning_content;
 
+    const functionCalls: LLMFunctionCall[] = [];
+
+    // Parse native OpenAI tool calls if present
+    if (choice?.message?.tool_calls && Array.isArray(choice.message.tool_calls)) {
+      for (const tc of choice.message.tool_calls) {
+        if (tc.function?.name) {
+          let parsedArgs: Record<string, any> = {};
+          try {
+            parsedArgs = typeof tc.function.arguments === 'string'
+              ? JSON.parse(tc.function.arguments)
+              : (tc.function.arguments || {});
+          } catch {}
+          functionCalls.push({
+            name: tc.function.name,
+            args: parsedArgs
+          });
+        }
+      }
+    }
+
+    // Monologue Fallback Parser: If text describes tool invocation (e.g. "I'll call access_file with /daily_scans/...")
+    if (functionCalls.length === 0 && responseText) {
+      const accessFileMatch = responseText.match(/(?:access_file|path|read)\s*(?:with\s*)?(?:\/|path\s*:?\s*)?((?:\/daily_scans|\/intermediate_scans|\/)[a-zA-Z0-9_\-\.\/]+)/i);
+      if (accessFileMatch) {
+        functionCalls.push({
+          name: 'access_file',
+          args: { filePathOrId: accessFileMatch[1].trim() }
+        });
+      } else if (/retrieve_skin_scan_vault|facial scan record|latest scan|face scan data/i.test(responseText)) {
+        functionCalls.push({
+          name: 'retrieve_skin_scan_vault',
+          args: { scanType: 'all', limit: 5 }
+        });
+      }
+    }
+
     return {
       text: responseText,
+      functionCalls,
       data,
       reasoningContent
     };
@@ -278,11 +338,11 @@ export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLM
     console.log("[LLMRouter] Attempting fast diffusion model (google/diffusiongemma-26b-a4b-it)...");
     const res = await fetchNvidiaCompletion("google/diffusiongemma-26b-a4b-it", messages, options, 20000, true);
 
-    if (res.text && res.text.trim().length > 0) {
+    if (res.text || res.functionCalls.length > 0) {
       console.log("[LLMRouter] Successfully served via fast model google/diffusiongemma-26b-a4b-it!");
       return {
         text: res.text,
-        functionCalls: [],
+        functionCalls: res.functionCalls,
         modelUsed: "google/diffusiongemma-26b-a4b-it (NVIDIA AI Endpoint)",
         attemptsCount: 1,
         thoughts: res.reasoningContent ? [res.reasoningContent] : ["[Fast Diffusion Model Active] Served via google/diffusiongemma-26b-a4b-it"],
@@ -299,7 +359,7 @@ export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLM
     const res = await fetchNvidiaCompletion("z-ai/glm-5.2", messages, options, 30000, false);
     return {
       text: res.text,
-      functionCalls: [],
+      functionCalls: res.functionCalls,
       modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)",
       attemptsCount: 2,
       thoughts: ["[Deep Thinking GLM Active] Served via z-ai/glm-5.2 model"],
@@ -520,24 +580,19 @@ export async function generateContentWithRouter(
 
             const functionCalls: LLMFunctionCall[] = [];
             const thoughts: string[] = [];
+            const actualTextParts: string[] = [];
 
             if (response.candidates?.[0]?.content?.parts) {
               for (const part of response.candidates[0].content.parts) {
                 if ((part as any).thought) {
-                  thoughts.push((part as any).thought);
+                  const tVal = typeof (part as any).thought === 'string'
+                    ? (part as any).thought
+                    : (part.text || '');
+                  if (tVal) thoughts.push(tVal);
+                } else if (part.text) {
+                  actualTextParts.push(part.text);
                 }
-              }
-            }
 
-            if (response.functionCalls && response.functionCalls.length > 0) {
-              for (const fc of response.functionCalls) {
-                functionCalls.push({
-                  name: fc.name,
-                  args: (fc.args as Record<string, any>) || {}
-                });
-              }
-            } else if (response.candidates?.[0]?.content?.parts) {
-              for (const part of response.candidates[0].content.parts) {
                 if (part.functionCall) {
                   functionCalls.push({
                     name: part.functionCall.name,
@@ -545,9 +600,22 @@ export async function generateContentWithRouter(
                   });
                 }
               }
+            } else if (response.text) {
+              actualTextParts.push(response.text);
             }
 
-            const text = response.text || '';
+            if (response.functionCalls && response.functionCalls.length > 0) {
+              for (const fc of response.functionCalls) {
+                if (!functionCalls.some(f => f.name === fc.name)) {
+                  functionCalls.push({
+                    name: fc.name,
+                    args: (fc.args as Record<string, any>) || {}
+                  });
+                }
+              }
+            }
+
+            const text = actualTextParts.join('').trim();
 
             return {
               text,
@@ -584,9 +652,8 @@ export async function generateContentWithRouter(
         const isTransient = /503|UNAVAILABLE|500|high demand/i.test(errMsg);
 
         if (isQuotaExceeded) {
-          console.warn(`[LLMRouter] Google Gemini project quota/rate limit reached. Instantly short-circuiting to ChatNVIDIA (z-ai/glm-5.2) fallback...`);
-          googleQuotaExhausted = true;
-          break;
+          console.warn(`[LLMRouter] Model '${model}' hit quota/rate-limit. Trying next Gemini model in cascade...`);
+          break; // Move to next model in GEMINI_MODEL_CASCADE
         }
 
         if (isTransient && modelRetries < maxModelRetries) {
