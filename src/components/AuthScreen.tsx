@@ -26,7 +26,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       const user = await signInWithGoogle();
       if (user) {
         const dbUserData = await getUserProfileFromFirestore(user.uid);
-        const isNewUser = !dbUserData || dbUserData.settings?.onboardingCompleted === false;
+        const hasCompletedOnboarding = dbUserData?.settings?.onboardingCompleted === true;
+        const isNewUser = !hasCompletedOnboarding;
 
         onAuthSuccess({
           uid: user.uid,
@@ -39,8 +40,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             scanNotificationTime: '00:00',
             scanReminderEnabled: true,
             theme: 'light',
-            onboardingCompleted: dbUserData ? (dbUserData.settings?.onboardingCompleted ?? true) : false,
-            ...(dbUserData?.settings || {})
+            ...(dbUserData?.settings || {}),
+            onboardingCompleted: hasCompletedOnboarding
           }
         }, isNewUser);
       }
@@ -77,7 +78,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         const user = await signInWithEmail(email, password);
         if (user) {
           const dbUserData = await getUserProfileFromFirestore(user.uid);
-          const isNewUser = dbUserData?.settings?.onboardingCompleted === false;
+          const hasCompletedOnboarding = dbUserData?.settings?.onboardingCompleted === true;
+          const isNewUser = !hasCompletedOnboarding;
 
           onAuthSuccess({
             uid: user.uid,
@@ -90,8 +92,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
               scanNotificationTime: '00:00',
               scanReminderEnabled: true,
               theme: 'light',
-              onboardingCompleted: true, // Existing login always defaults onboardingCompleted to true!
-              ...(dbUserData?.settings || {})
+              ...(dbUserData?.settings || {}),
+              onboardingCompleted: hasCompletedOnboarding
             }
           }, isNewUser);
         }

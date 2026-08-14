@@ -92,8 +92,9 @@ export default function App() {
         };
         setUserProfile(profile);
 
-        // If onboarding is explicitly false in DB, trigger onboarding
-        if (dbSettings.onboardingCompleted === false) {
+        // If onboarding has not been completed, trigger onboarding
+        const hasCompletedOnboarding = dbSettings.onboardingCompleted === true;
+        if (!hasCompletedOnboarding) {
           setForceOnboarding(true);
         } else {
           setForceOnboarding(false);
@@ -304,7 +305,7 @@ export default function App() {
     );
   }
 
-  if (forceOnboarding || userProfile.settings?.onboardingCompleted === false) {
+  if (forceOnboarding || userProfile.settings?.onboardingCompleted !== true) {
     return (
       <OnboardingScreen
         userProfile={userProfile}
@@ -447,6 +448,10 @@ export default function App() {
         userProfile={userProfile}
         onUpdateSettings={handleUpdateSettings}
         onTestTriggerPopup={(popup) => setNotification(popup)}
+        onRerunOnboarding={() => {
+          setIsSettingsOpen(false);
+          setForceOnboarding(true);
+        }}
       />
 
       {/* Reports Modal */}

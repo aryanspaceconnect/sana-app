@@ -153,6 +153,7 @@ export const syncUserProfile = async (user: User | { uid: string; displayName?: 
           scanNotificationTime: "00:00",
           scanReminderEnabled: true,
           theme: "light",
+          onboardingCompleted: false,
           ...customSettings
         },
         createdAt: serverTimestamp()

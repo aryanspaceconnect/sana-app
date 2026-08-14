@@ -10,6 +10,7 @@ interface SettingsModalProps {
   userProfile: UserProfile | null;
   onUpdateSettings: (newSettings: UserSettings) => void;
   onTestTriggerPopup?: (popup: PopUpNotification) => void;
+  onRerunOnboarding?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -17,7 +18,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   userProfile,
   onUpdateSettings,
-  onTestTriggerPopup
+  onTestTriggerPopup,
+  onRerunOnboarding
 }) => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -262,6 +264,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>Sign Out</span>
               </button>
             )}
+          </div>
+
+          {/* Skin Profile Onboarding Questionnaire Card */}
+          <div className="p-3.5 rounded-2xl bg-[#f0f9ff] border border-[#bae6fd] flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-bold text-[#0369a1]">Skin Baseline Onboarding</p>
+              <p className="text-[11px] text-[#0284c7]">
+                {currentSettings.onboardingCompleted ? 'Completed 4-step skin profile setup' : 'Setup incomplete'}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (onRerunOnboarding) {
+                  onRerunOnboarding();
+                  onClose();
+                } else {
+                  const updated: UserSettings = {
+                    ...currentSettings,
+                    onboardingCompleted: false
+                  };
+                  onUpdateSettings(updated);
+                  if (userProfile?.uid) {
+                    syncUserProfile({ uid: userProfile.uid } as any, updated);
+                  }
+                  onClose();
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#0284c7] text-white text-[11.5px] font-semibold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-2xs flex items-center space-x-1"
+            >
+              <Icon icon="solar:restart-bold" className="w-3.5 h-3.5" />
+              <span>{currentSettings.onboardingCompleted ? 'Re-take Onboarding' : 'Start Onboarding'}</span>
+            </button>
           </div>
 
           {/* Preferences & Environmental Location Settings */}
