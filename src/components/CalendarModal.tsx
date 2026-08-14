@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { UserProfile, CalendarEventItem } from '../types';
-import { addCalendarEvent, subscribeCalendarEvents } from '../lib/firebase';
+import { addCalendarEvent, deleteCalendarEvent, subscribeCalendarEvents } from '../lib/firebase';
 
 interface CalendarModalProps {
   userProfile: UserProfile | null;
@@ -13,14 +13,21 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number>(new Date().getDate());
   const [events, setEvents] = useState<CalendarEventItem[]>([]);
+  
+  // New event form states
   const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventCategory, setNewEventCategory] = useState<'routine' | 'scan' | 'treatment' | 'habit' | 'wellness'>('routine');
+  const [newEventTime, setNewEventTime] = useState('20:00');
+  const [newEventNotes, setNewEventNotes] = useState('');
+  const [newEventReminder, setNewEventReminder] = useState(true);
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
 
   const daysOfWeek = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-  // Subscribe to calendar events in Firestore
+  // Subscribe to calendar events in Firestore for logged in user or guest user
   useEffect(() => {
-    if (!userProfile?.uid) return;
-    const unsub = subscribeCalendarEvents(userProfile.uid, (data) => {
+    const uid = userProfile?.uid || 'guest_user';
+    const unsub = subscribeCalendarEvents(uid, (data) => {
       setEvents(data);
     });
     return () => unsub();
@@ -50,23 +57,48 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
 
   const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEventTitle.trim() || !userProfile?.uid) return;
+    if (!newEventTitle.trim()) return;
 
     const formattedMonth = String(month + 1).padStart(2, '0');
     const formattedDay = String(selectedDate).padStart(2, '0');
     const dateStr = `${year}-${formattedMonth}-${formattedDay}`;
 
-    await addCalendarEvent(userProfile.uid, {
+    const uid = userProfile?.uid || 'guest_user';
+    await addCalendarEvent(uid, {
       title: newEventTitle.trim(),
       date: dateStr,
-      category: 'routine'
+      time: newEventTime,
+      category: newEventCategory,
+      notes: newEventNotes.trim() || undefined,
+      reminder: newEventReminder
     });
 
     setNewEventTitle('');
+    setNewEventNotes('');
+    setIsFormExpanded(false);
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    await deleteCalendarEvent(eventId);
   };
 
   const selectedDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
   const todaysEvents = events.filter(e => e.date === selectedDateStr);
+
+  const getCategoryBadgeClass = (category: string) => {
+    switch (category) {
+      case 'scan':
+        return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'treatment':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'habit':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'wellness':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      default:
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+    }
+  };
 
   return (
     <div className="w-full h-full px-5 pt-2 pb-24 overflow-y-auto no-scrollbar space-y-5">
@@ -76,7 +108,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
           <h2 className="text-[22px] font-bold text-[#121316] tracking-tight">
             {monthNames[month]} <span className="text-[#8e95a2] font-normal">{year}</span>
           </h2>
-          <p className="text-[12px] text-[#787f8d]">Regimen Schedule & Scan History</p>
+          <p className="text-[12px] text-[#787f8d]">Regimen Schedule & Health Calendar</p>
         </div>
 
         <div className="flex items-center space-x-1.5">
@@ -95,7 +127,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
         </div>
       </div>
 
-      {/* Calendar Grid Card (Aesthetic styling matching reference image 3) */}
+      {/* Calendar Grid Card */}
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -123,6 +155,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
           {currentMonthDays.map((day) => {
             const isSelected = day === selectedDate;
             const isToday = day === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear();
+            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const hasEvents = events.some(e => e.date === dateKey);
 
             return (
               <button
@@ -138,8 +172,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
               >
                 <span>{day}</span>
                 {/* Indicator dot if events exist */}
-                {events.some(e => e.date === `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`) && (
-                  <span className={`w-1 h-1 rounded-full mt-0.5 ${isSelected ? 'bg-white' : 'bg-[#2563eb]'}`} />
+                {hasEvents && (
+                  <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? 'bg-white' : 'bg-[#2563eb]'}`} />
                 )}
               </button>
             );
@@ -148,56 +182,180 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
       </motion.div>
 
       {/* Scheduled Events & Regimen Logs for Selected Date */}
-      <div className="squircle-card p-5 space-y-3">
+      <div className="squircle-card p-5 space-y-4 bg-white border border-[#eaedf1] shadow-sm">
         <div className="flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-[#121316]">
-            Schedule for {monthNames[month]} {selectedDate}
-          </h3>
+          <div>
+            <h3 className="text-[15px] font-semibold text-[#121316]">
+              Schedule for {monthNames[month]} {selectedDate}
+            </h3>
+            <p className="text-[11.5px] text-[#787f8d]">
+              {todaysEvents.length} {todaysEvents.length === 1 ? 'event' : 'events'} planned
+            </p>
+          </div>
 
           <button
             onClick={onOpenScan}
-            className="px-3 py-1.5 rounded-xl bg-[#1a1c1e] text-white text-[12px] font-medium flex items-center space-x-1 hover:opacity-90 transition-opacity cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-[#1a1c1e] text-white text-[12px] font-medium flex items-center space-x-1 hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
-            <Icon icon="solar:camera-minimalistic-bold" className="w-3.5 h-3.5" />
+            <Icon icon="solar:camera-minimalistic-bold" className="w-3.5 h-3.5 text-blue-400" />
             <span>Scan Skin</span>
           </button>
         </div>
 
         {todaysEvents.length === 0 ? (
           <div className="p-4 rounded-2xl bg-[#f8f9fb] text-center border border-[#eaedf1]">
-            <p className="text-[13px] text-[#787f8d]">No custom events added for this date.</p>
+            <Icon icon="solar:calendar-minimalistic-linear" className="w-6 h-6 text-[#94a3b8] mx-auto mb-1" />
+            <p className="text-[13px] text-[#787f8d]">No events scheduled for this date.</p>
+            <p className="text-[11px] text-[#a0a7b5]">Add a reminder or ask SANA in chat to set up an event!</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {todaysEvents.map(evt => (
-              <div key={evt.id} className="p-3.5 rounded-2xl bg-white border border-[#eaedf1] flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-2 h-2 rounded-full bg-[#2563eb]" />
-                  <span className="text-[13.5px] font-medium text-[#121316]">{evt.title}</span>
+              <div
+                key={evt.id}
+                className="p-3.5 rounded-2xl bg-[#f8fafc] border border-[#eaedf1] hover:border-[#cbd5e1] transition-all flex flex-col space-y-1.5 relative group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[12px] font-semibold text-[#2563eb] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 flex items-center gap-1">
+                      <Icon icon="solar:clock-circle-bold" className="w-3 h-3 text-blue-500" />
+                      {evt.time || '20:00'}
+                    </span>
+                    <span className="text-[13.5px] font-semibold text-[#121316]">{evt.title}</span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full border capitalize ${getCategoryBadgeClass(evt.category)}`}>
+                      {evt.category}
+                    </span>
+
+                    <button
+                      onClick={() => handleDeleteEvent(evt.id)}
+                      className="text-[#94a3b8] hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50 cursor-pointer"
+                      title="Delete event"
+                    >
+                      <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <span className="text-[11px] font-medium text-[#64748b] capitalize">{evt.category}</span>
+
+                {evt.notes && (
+                  <p className="text-[12px] text-[#475569] bg-white p-2 rounded-xl border border-[#e2e8f0] leading-relaxed">
+                    {evt.notes}
+                  </p>
+                )}
+
+                {evt.reminder && (
+                  <div className="flex items-center space-x-1 text-[11px] text-[#10b981] font-medium pt-0.5">
+                    <Icon icon="solar:bell-bing-bold" className="w-3 h-3 text-[#10b981]" />
+                    <span>Active Reminder Alert</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Add Quick Event Form */}
-        <form onSubmit={handleAddEvent} className="flex items-center space-x-2 pt-2">
-          <input
-            type="text"
-            value={newEventTitle}
-            onChange={(e) => setNewEventTitle(e.target.value)}
-            placeholder="Add reminder or skin note..."
-            className="flex-1 px-3.5 py-2.5 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] text-[13px] text-[#121316] focus:outline-none focus:border-[#3b82f6]"
-          />
-          <button
-            type="submit"
-            disabled={!newEventTitle.trim()}
-            className="px-4 py-2.5 rounded-2xl bg-[#2563eb] text-white text-[13px] font-medium disabled:opacity-40 transition-opacity cursor-pointer"
-          >
-            Add
-          </button>
-        </form>
+        {/* Add Event Form */}
+        <div className="pt-2 border-t border-[#f1f5f9]">
+          {!isFormExpanded ? (
+            <button
+              onClick={() => setIsFormExpanded(true)}
+              className="w-full py-2.5 px-3.5 rounded-2xl bg-[#f8f9fb] hover:bg-[#f1f5f9] border border-[#eaedf1] text-[13px] text-[#475569] font-medium flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <span className="flex items-center space-x-2">
+                <Icon icon="solar:add-circle-bold" className="w-4 h-4 text-[#2563eb]" />
+                <span>Add new event, reminder or skin note...</span>
+              </span>
+              <span className="text-[11px] text-[#2563eb] font-semibold">Expand</span>
+            </button>
+          ) : (
+            <motion.form
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={handleAddEvent}
+              className="p-3.5 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0] space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-bold text-[#1e293b]">New Event Details</span>
+                <button
+                  type="button"
+                  onClick={() => setIsFormExpanded(false)}
+                  className="text-[11px] text-[#64748b] hover:text-[#0f172a] cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={newEventTitle}
+                onChange={(e) => setNewEventTitle(e.target.value)}
+                placeholder="Title (e.g., PM Retinoid Routine, Barrier Repair)..."
+                required
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-[13px] text-[#1e293b] focus:outline-none focus:border-[#2563eb]"
+              />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748b] mb-1 block">Time</label>
+                  <input
+                    type="time"
+                    value={newEventTime}
+                    onChange={(e) => setNewEventTime(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl bg-white border border-[#cbd5e1] text-[12.5px] text-[#1e293b] focus:outline-none focus:border-[#2563eb]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748b] mb-1 block">Category</label>
+                  <select
+                    value={newEventCategory}
+                    onChange={(e: any) => setNewEventCategory(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl bg-white border border-[#cbd5e1] text-[12.5px] text-[#1e293b] focus:outline-none focus:border-[#2563eb]"
+                  >
+                    <option value="routine">Routine</option>
+                    <option value="scan">Scan</option>
+                    <option value="treatment">Treatment</option>
+                    <option value="habit">Habit</option>
+                    <option value="wellness">Wellness</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-[#64748b] mb-1 block">Notes / Instructions (Optional)</label>
+                <textarea
+                  value={newEventNotes}
+                  onChange={(e) => setNewEventNotes(e.target.value)}
+                  placeholder="Product order, special instructions..."
+                  rows={2}
+                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#cbd5e1] text-[12.5px] text-[#1e293b] focus:outline-none focus:border-[#2563eb] resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center space-x-2 text-[12px] text-[#475569] font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newEventReminder}
+                    onChange={(e) => setNewEventReminder(e.target.checked)}
+                    className="rounded text-[#2563eb] focus:ring-[#2563eb]"
+                  />
+                  <span>Set Active Reminder</span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={!newEventTitle.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#2563eb] text-white text-[12.5px] font-semibold disabled:opacity-40 hover:bg-[#1d4ed8] transition-colors cursor-pointer shadow-xs"
+                >
+                  Save Event
+                </button>
+              </div>
+            </motion.form>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -183,6 +183,27 @@ export async function executeActionProposal(userId: string, proposal: ActionProp
         id: `evt_${Date.now()}`,
         ...proposal.payload
       });
+
+      // Persist directly to Firestore calendar_events collection so it immediately appears in Calendar UI
+      try {
+        const safeUid = userId || 'guest_user';
+        if (db) {
+          const calendarRef = collection(db, "calendar_events");
+          await addDoc(calendarRef, {
+            userId: safeUid,
+            title: proposal.payload.title,
+            date: proposal.payload.date || new Date().toISOString().split('T')[0],
+            time: proposal.payload.time || '20:00',
+            category: proposal.payload.category || 'routine',
+            notes: proposal.payload.notes || '',
+            reminder: proposal.payload.reminder ?? true,
+            completed: false,
+            createdAt: new Date().toISOString()
+          });
+        }
+      } catch (calErr) {
+        console.warn("Error persisting event to Firestore calendar_events:", calErr);
+      }
       break;
     }
 

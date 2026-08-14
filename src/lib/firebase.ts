@@ -158,6 +158,8 @@ export const syncUserProfile = async (
         photoURL: user.photoURL || "",
         preferredName: customSettings?.preferredName || user.displayName || "",
         locationName: customSettings?.locationName || "",
+        latitude: customSettings?.latitude ?? null,
+        longitude: customSettings?.longitude ?? null,
         userPerceptionText: customSettings?.userPerceptionText || "",
         hormonalFactors: customSettings?.hormonalFactors || "",
         skincareGoals: customSettings?.skincareGoals || "",
@@ -196,14 +198,16 @@ export const syncUserProfile = async (
         payloadToUpdate.displayName = customSettings.preferredName;
         payloadToUpdate.preferredName = customSettings.preferredName;
       }
-      if (customSettings?.locationName) payloadToUpdate.locationName = customSettings.locationName;
-      if (customSettings?.userPerceptionText) payloadToUpdate.userPerceptionText = customSettings.userPerceptionText;
-      if (customSettings?.hormonalFactors) payloadToUpdate.hormonalFactors = customSettings.hormonalFactors;
-      if (customSettings?.skincareGoals) payloadToUpdate.skincareGoals = customSettings.skincareGoals;
-      if (customSettings?.skinPriorities) payloadToUpdate.skinPriorities = customSettings.skinPriorities;
-      if (customSettings?.upcomingEvent) payloadToUpdate.upcomingEvent = customSettings.upcomingEvent;
-      if (customSettings?.height) payloadToUpdate.height = customSettings.height;
-      if (customSettings?.gender) payloadToUpdate.gender = customSettings.gender;
+      if (customSettings?.locationName !== undefined) payloadToUpdate.locationName = customSettings.locationName;
+      if (customSettings?.latitude !== undefined) payloadToUpdate.latitude = customSettings.latitude;
+      if (customSettings?.longitude !== undefined) payloadToUpdate.longitude = customSettings.longitude;
+      if (customSettings?.userPerceptionText !== undefined) payloadToUpdate.userPerceptionText = customSettings.userPerceptionText;
+      if (customSettings?.hormonalFactors !== undefined) payloadToUpdate.hormonalFactors = customSettings.hormonalFactors;
+      if (customSettings?.skincareGoals !== undefined) payloadToUpdate.skincareGoals = customSettings.skincareGoals;
+      if (customSettings?.skinPriorities !== undefined) payloadToUpdate.skinPriorities = customSettings.skinPriorities;
+      if (customSettings?.upcomingEvent !== undefined) payloadToUpdate.upcomingEvent = customSettings.upcomingEvent;
+      if (customSettings?.height !== undefined) payloadToUpdate.height = customSettings.height;
+      if (customSettings?.gender !== undefined) payloadToUpdate.gender = customSettings.gender;
 
       await updateDoc(userRef, payloadToUpdate);
     }
@@ -634,28 +638,57 @@ export const subscribeUserChat = (chatId: string, callback: (chat: any) => void)
 };
 
 // Calendar Event Helpers
-export const addCalendarEvent = async (userId: string, eventData: { title: string; date: string; category: string }) => {
+export const addCalendarEvent = async (userId: string, eventData: {
+  title: string;
+  date: string;
+  time?: string;
+  category?: string;
+  notes?: string;
+  reminder?: boolean;
+}) => {
   try {
+    const safeUid = userId || 'guest_user';
     const ref = collection(db, "calendar_events");
     await addDoc(ref, {
-      userId,
+      userId: safeUid,
       title: eventData.title,
       date: eventData.date,
-      category: eventData.category,
-      completed: false
+      time: eventData.time || '20:00',
+      category: eventData.category || 'routine',
+      notes: eventData.notes || '',
+      reminder: eventData.reminder ?? true,
+      completed: false,
+      createdAt: new Date().toISOString()
     });
   } catch (err) {
     console.error("Error adding calendar event:", err);
   }
 };
 
+export const deleteCalendarEvent = async (eventId: string) => {
+  if (!eventId) return;
+  try {
+    const ref = doc(db, "calendar_events", eventId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.error("Error deleting calendar event:", err);
+  }
+};
+
 export const subscribeCalendarEvents = (userId: string, callback: (events: any[]) => void) => {
+  const safeUid = userId || 'guest_user';
   const q = query(
     collection(db, "calendar_events"),
-    where("userId", "==", userId)
+    where("userId", "==", safeUid)
   );
   return onSnapshot(q, (snapshot) => {
     const events = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Sort chronologically by date and time
+    events.sort((a: any, b: any) => {
+      const dateA = `${a.date || ''} ${a.time || '00:00'}`;
+      const dateB = `${b.date || ''} ${b.time || '00:00'}`;
+      return dateA.localeCompare(dateB);
+    });
     callback(events);
   }, (err) => {
     console.warn("Calendar events snapshot error:", err);

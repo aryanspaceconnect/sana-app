@@ -547,10 +547,31 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
       const cleanEvent = upcomingEvent.trim();
       const cleanPriorities = skinPriorities.trim();
 
+      // Geocode the entered location to obtain precise coordinates
+      let resolvedLat: number | undefined = userProfile.settings?.latitude;
+      let resolvedLon: number | undefined = userProfile.settings?.longitude;
+      let formattedLocName = cleanLocation;
+
+      if (cleanLocation) {
+        try {
+          const geoRes = await fetch(`/api/location/search?q=${encodeURIComponent(cleanLocation)}`);
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            if (geoData.results && geoData.results.length > 0) {
+              resolvedLat = geoData.results[0].latitude;
+              resolvedLon = geoData.results[0].longitude;
+              formattedLocName = geoData.results[0].displayName || cleanLocation;
+            }
+          }
+        } catch (geoErr) {
+          console.warn("Location geocoding warning during onboarding:", geoErr);
+        }
+      }
+
       const onboardingData: OnboardingProfile = {
         userPerceptionText: cleanPerception,
         preferredName: cleanPreferredName,
-        locationName: cleanLocation,
+        locationName: formattedLocName,
         height: cleanHeight,
         gender: cleanGender,
         hormonalFactors: cleanHormonal,
@@ -568,7 +589,9 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
         onboardingProfile: onboardingData,
         userPerceptionText: cleanPerception,
         preferredName: cleanPreferredName,
-        locationName: cleanLocation,
+        locationName: formattedLocName,
+        latitude: resolvedLat,
+        longitude: resolvedLon,
         height: cleanHeight,
         gender: cleanGender,
         hormonalFactors: cleanHormonal,
@@ -580,7 +603,9 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
       const topLevelData = {
         displayName: cleanPreferredName || userProfile.displayName,
         preferredName: cleanPreferredName,
-        locationName: cleanLocation,
+        locationName: formattedLocName,
+        latitude: resolvedLat,
+        longitude: resolvedLon,
         userPerceptionText: cleanPerception,
         hormonalFactors: cleanHormonal,
         skincareGoals: cleanGoals,
@@ -594,7 +619,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
         ...userProfile,
         displayName: cleanPreferredName || userProfile.displayName,
         preferredName: cleanPreferredName,
-        locationName: cleanLocation,
+        locationName: formattedLocName,
         userPerceptionText: cleanPerception,
         hormonalFactors: cleanHormonal,
         skincareGoals: cleanGoals,
@@ -604,6 +629,12 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
         gender: cleanGender,
         settings: updatedSettings
       };
+
+      try {
+        localStorage.setItem('sana_user_settings_cache', JSON.stringify(updatedSettings));
+      } catch (cacheErr) {
+        console.warn("Could not cache settings to localStorage:", cacheErr);
+      }
 
       // Sync every piece of data explicitly into Firestore 'users' document
       await syncUserProfile(

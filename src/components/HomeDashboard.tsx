@@ -220,7 +220,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const handleMetricClick = (e: React.MouseEvent, type: string) => {
     e.stopPropagation();
 
-    const uvVal = Number(dailyBrief.uvIndex) || 4.0;
+    const uvVal = dailyBrief.uvIndex !== undefined && dailyBrief.uvIndex !== null ? Number(dailyBrief.uvIndex) : 0;
     const aqiVal = dailyBrief.airQualityAqi ?? 67;
     const humVal = dailyBrief.humidity || '78%';
     const feelsLikeVal = dailyBrief.feelsLike || dailyBrief.temperature || '29°C';
@@ -254,11 +254,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       uv: {
         label: "Ultraviolet Radiation Index",
         value: `UV ${uvVal.toFixed(1)}`,
-        category: uvVal < 3 ? "Low Risk" : uvVal < 6 ? "Moderate Risk" : uvVal < 8 ? "High Risk" : "Extreme Risk",
-        skinImpact: "Solar UV triggers reactive oxygen species (ROS), breaking down collagen fibrils and stimulating melanocytes.",
-        recommendation: "Apply 2 finger-lengths of broad-spectrum SPF 50+. Reapply every 2 hours if outdoors.",
-        icon: "solar:sun-bold-duotone",
-        colorClass: "bg-amber-500/10 text-amber-600 border-amber-200/60"
+        category: uvVal === 0 ? "Night / Zero UV" : uvVal < 3 ? "Low Risk" : uvVal < 6 ? "Moderate Risk" : uvVal < 8 ? "High Risk" : "Extreme Risk",
+        skinImpact: uvVal === 0
+          ? "No solar UV radiation detected. Ideal window for nocturnal skin regeneration and lipid barrier lock."
+          : "Solar UV triggers reactive oxygen species (ROS), breaking down collagen fibrils and stimulating melanocytes.",
+        recommendation: uvVal === 0
+          ? "Focus on PM hydration, ceramide balms, and night treatments."
+          : "Apply 2 finger-lengths of broad-spectrum SPF 50+. Reapply every 2 hours if outdoors.",
+        icon: uvVal === 0 ? "solar:moon-stars-bold-duotone" : "solar:sun-bold-duotone",
+        colorClass: uvVal === 0 ? "bg-indigo-500/10 text-indigo-600 border-indigo-200/60" : "bg-amber-500/10 text-amber-600 border-amber-200/60"
       },
       aqi: {
         label: "Air Quality Index (AQI)",
@@ -337,9 +341,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     setActiveMetricDetail(metricMap[type] || metricMap.weather);
   };
 
-  const uvVal = Number(dailyBrief.uvIndex) || 4.0;
+  const uvVal = dailyBrief.uvIndex !== undefined && dailyBrief.uvIndex !== null ? Number(dailyBrief.uvIndex) : 0;
   const aqiVal = dailyBrief.airQualityAqi ?? 67;
-  const locationText = dailyBrief.locationName || userProfile?.settings?.locationName || 'Local Atmosphere';
+  const locationText = userProfile?.settings?.locationName || dailyBrief.locationName || 'Local Atmosphere';
 
   return (
     <div className="w-full h-full px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">

@@ -211,8 +211,12 @@ export interface CalendarEventItem {
   userId: string;
   title: string;
   date: string; // YYYY-MM-DD
-  category: 'scan' | 'routine' | 'wellness';
+  time?: string; // e.g. "20:30"
+  category: 'scan' | 'routine' | 'wellness' | 'treatment' | 'habit';
+  notes?: string;
+  reminder?: boolean;
   completed?: boolean;
+  createdAt?: string;
 }
 
 export interface DailyBriefing {

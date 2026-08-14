@@ -365,12 +365,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
-  // Minimize pill navigation when typing / reading chat
+  // Keep pill navigation restored in normal mode
   useEffect(() => {
-    onMinimizeNavToggle(true);
-    return () => {
-      onMinimizeNavToggle(false);
-    };
+    onMinimizeNavToggle(false);
   }, [onMinimizeNavToggle]);
 
   useEffect(() => {
@@ -617,61 +614,37 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
-      {/* Minimal Top Header Bar: Clean Squaricle History & New Chat Actions */}
+      {/* Minimal Top Header Bar: Side Panel Toggle & New Chat Action */}
       <div className="flex items-center justify-between py-2 px-1 border-b border-slate-200/60 shrink-0 mb-1">
-        {/* Clean Consultation Sessions Button */}
+        {/* Toggle Sessions Side Panel Button */}
         <button
-          onClick={() => setShowSessionsDrawer(true)}
-          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 text-slate-800 transition-all cursor-pointer text-xs font-medium border border-slate-200/50 group"
-          title="View past chat sessions and reports"
+          onClick={() => setShowSessionsDrawer(!showSessionsDrawer)}
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 text-slate-800 transition-all cursor-pointer text-xs font-semibold border border-slate-200/60 group"
+          title="Toggle history side panel"
         >
-          <Icon icon="solar:history-bold" className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-900 shrink-0" />
-          <span className="font-semibold text-slate-900">Consultations</span>
+          <Icon icon="solar:sidebar-minimalistic-bold" className="w-4 h-4 text-slate-700 group-hover:text-slate-900 shrink-0" />
+          <span className="font-semibold text-slate-900">History</span>
           {sessions.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-md bg-slate-200 text-[10px] font-bold text-slate-700">
               {sessions.length}
             </span>
           )}
-          <Icon icon="solar:alt-arrow-down-linear" className="w-3 h-3 text-slate-400 shrink-0 group-hover:translate-y-0.5 transition-transform" />
         </button>
 
-        {/* Minimal Squaricle Actions: New Chat & Memory Vault */}
+        {/* Minimal Actions: Clean New Chat Icon Button */}
         <div className="flex items-center space-x-1.5">
           <button
             onClick={handleStartNewChat}
-            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-[#121316] text-white hover:bg-black transition-all cursor-pointer text-xs font-medium shadow-xs active:scale-95"
+            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/50"
             title="Start fresh new chat session"
           >
-            <Icon icon="solar:pen-new-square-linear" className="w-3.5 h-3.5" />
-            <span>New Chat</span>
-          </button>
-
-          <button
-            onClick={() => setShowVaultModal(true)}
-            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/50"
-            title="Agent Memory Vault & Notepad"
-          >
-            <Icon icon="solar:vault-bold" className="w-4 h-4" />
+            <Icon icon="solar:pen-new-square-linear" className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
-        {/* Zero messages state: Clean minimalist text slate without icon */}
-        {messages.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="h-full flex flex-col items-center justify-center text-center px-4 py-8 space-y-2 max-w-md mx-auto"
-          >
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">How can SANA guide your skin today?</h3>
-            <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
-              Start a fresh consultation. Ask about active ingredient safety, clinical routines, or upload a skin document.
-            </p>
-          </motion.div>
-        )}
-
         {/* Active Messages List */}
         {messages.map((msg) => (
           <ChatMessageBubble
@@ -775,111 +748,130 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         </form>
       </div>
 
-      {/* Sessions History Drawer / Modal */}
+      {/* Sessions Side Panel Drawer */}
       <AnimatePresence>
         {showSessionsDrawer && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="fixed inset-0 z-50 flex">
+            {/* Backdrop */}
             <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="bg-white rounded-t-[32px] sm:rounded-[32px] max-w-lg w-full p-5 space-y-4 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSessionsDrawer(false)}
+              className="absolute inset-0 bg-black/30 backdrop-blur-xs"
+            />
+
+            {/* Slide-out Side Panel Container */}
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 32 }}
+              className="relative w-72 sm:w-80 h-full bg-white shadow-2xl border-r border-slate-200/90 p-4 flex flex-col justify-between z-10"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-2 rounded-xl bg-slate-900 text-white">
-                    <Icon icon="solar:history-bold" className="w-5 h-5" />
+              <div className="flex flex-col h-full overflow-hidden">
+                {/* Side Panel Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0 mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1.5 rounded-xl bg-slate-900 text-white">
+                      <Icon icon="solar:sidebar-minimalistic-bold" className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Chat Sessions</h3>
+                      <p className="text-[11px] text-slate-500">{sessions.length} saved consultations</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Chat Sessions</h3>
-                    <p className="text-xs text-slate-500">{sessions.length} persistent consultations stored</p>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => {
+                        handleStartNewChat();
+                        setShowSessionsDrawer(false);
+                      }}
+                      className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/50"
+                      title="New Chat"
+                    >
+                      <Icon icon="solar:pen-new-square-linear" className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setShowSessionsDrawer(false)}
+                      className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer"
+                      title="Close side panel"
+                    >
+                      <Icon icon="solar:close-circle-bold" className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleStartNewChat}
-                    className="px-3 py-1.5 rounded-full bg-[#1a1c1e] text-white text-xs font-semibold flex items-center space-x-1 hover:bg-black cursor-pointer shadow-2xs"
-                  >
-                    <Icon icon="solar:add-circle-bold" className="w-3.5 h-3.5" />
-                    <span>New Chat</span>
-                  </button>
-                  <button
-                    onClick={() => setShowSessionsDrawer(false)}
-                    className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer"
-                  >
-                    <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
 
-              {/* Sessions List */}
-              <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pr-1">
-                {sessions.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 text-xs">
-                    No past sessions found. Start a new consultation anytime.
-                  </div>
-                ) : (
-                  sessions.map((sess) => {
-                    const isSelected = sess.id === activeSessionId;
-                    const dateFormatted = sess.updatedAt || sess.createdAt
-                      ? new Date(sess.updatedAt || sess.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : 'Recent';
+                {/* Sessions List */}
+                <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pr-1">
+                  {sessions.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      No past sessions found. Start a new consultation anytime.
+                    </div>
+                  ) : (
+                    sessions.map((sess) => {
+                      const isSelected = sess.id === activeSessionId;
+                      const dateFormatted = sess.updatedAt || sess.createdAt
+                        ? new Date(sess.updatedAt || sess.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'Recent';
 
-                    return (
-                      <div
-                        key={sess.id}
-                        onClick={() => handleSelectSession(sess.id)}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group ${
-                          isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-md'
-                            : 'bg-slate-50 hover:bg-slate-100/90 text-slate-800 border-slate-200/80'
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0 pr-3">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                              {sess.title || 'Skin Consultation'}
-                            </span>
+                      return (
+                        <div
+                          key={sess.id}
+                          onClick={() => {
+                            handleSelectSession(sess.id);
+                            setShowSessionsDrawer(false);
+                          }}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group ${
+                            isSelected
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                              : 'bg-slate-50 hover:bg-slate-100/90 text-slate-800 border-slate-200/80'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex items-center space-x-1.5 mb-1">
+                              <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                {sess.title || 'Skin Consultation'}
+                              </span>
+                            </div>
                             {sess.sessionType === 'onboarding_report' && (
-                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold uppercase ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-800'}`}>
+                              <span className={`inline-block text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase mb-1 ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-800'}`}>
                                 Baseline Scan
                               </span>
                             )}
                             {sess.sessionType === 'scan_report' && (
-                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold uppercase ${isSelected ? 'bg-blue-400 text-slate-900' : 'bg-blue-100 text-blue-800'}`}>
+                              <span className={`inline-block text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase mb-1 ${isSelected ? 'bg-blue-400 text-slate-900' : 'bg-blue-100 text-blue-800'}`}>
                                 Scan Report
                               </span>
                             )}
+                            {sess.lastMessage && (
+                              <p className={`text-[11px] truncate ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                                {sess.lastMessage}
+                              </p>
+                            )}
+                            <div className={`text-[9.5px] mt-1 flex items-center space-x-1.5 ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
+                              <span>{dateFormatted}</span>
+                              <span>•</span>
+                              <span>{sess.messageCount || sess.messages?.length || 0} msgs</span>
+                            </div>
                           </div>
-                          {sess.lastMessage && (
-                            <p className={`text-[11.5px] truncate ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-                              {sess.lastMessage}
-                            </p>
-                          )}
-                          <div className={`text-[10px] mt-1.5 flex items-center space-x-2 ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
-                            <span>{dateFormatted}</span>
-                            <span>•</span>
-                            <span>{sess.messageCount || sess.messages?.length || 0} messages</span>
-                          </div>
-                        </div>
 
-                        <button
-                          onClick={(e) => handleDeleteSession(sess.id, e)}
-                          title="Delete session"
-                          className={`p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 shrink-0 ${
-                            isSelected
-                              ? 'text-rose-300 hover:text-rose-100 hover:bg-white/10'
-                              : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
-                          }`}
-                        >
-                          <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
+                          <button
+                            onClick={(e) => handleDeleteSession(sess.id, e)}
+                            title="Delete session"
+                            className={`p-1.5 rounded-xl transition-colors opacity-0 group-hover:opacity-100 shrink-0 ${
+                              isSelected
+                                ? 'text-rose-300 hover:text-rose-100 hover:bg-white/10'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                            }`}
+                          >
+                            <Icon icon="solar:trash-bin-trash-linear" className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

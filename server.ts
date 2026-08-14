@@ -851,8 +851,9 @@ app.post("/api/daily-brief", async (req, res) => {
       ? `${Math.round((weather.feelsLikeC * 9/5) + 32)}°F`
       : `${Math.round(weather.feelsLikeC)}°C`;
       
-    let uvLevel = "Moderate";
-    if (weather.uvIndex < 3) uvLevel = "Low";
+    let uvLevel = "None";
+    if (weather.uvIndex === 0) uvLevel = "Zero (Night)";
+    else if (weather.uvIndex < 3) uvLevel = "Low";
     else if (weather.uvIndex < 6) uvLevel = "Moderate";
     else if (weather.uvIndex < 8) uvLevel = "High";
     else if (weather.uvIndex < 11) uvLevel = "Very High";
@@ -861,10 +862,10 @@ app.post("/api/daily-brief", async (req, res) => {
     const displayLocation = locationName || weather.locationName || "Local Area";
 
     res.json({
-      greeting: "Morning, sunshine",
+      greeting: weather.uvIndex > 0 ? "Morning, sunshine" : "Evening, serene skin",
       temperature: displayTemp,
       feelsLike: displayFeelsLike,
-      weatherCondition: (weather as any).weatherCondition || "Partly Sunny",
+      weatherCondition: (weather as any).weatherCondition || (weather.uvIndex > 0 ? "Partly Sunny" : "Clear Night Sky"),
       uvIndex: weather.uvIndex,
       uvLevel: uvLevel,
       humidity: `${weather.humidity}%`,
@@ -883,7 +884,9 @@ app.post("/api/daily-brief", async (req, res) => {
       vpdKpa: weather.vpdKpa,
       uvIndexClearSky: weather.uvIndexClearSky,
       primaryReminders: [
-        `Apply broad-spectrum sunscreen before going outdoors (UV: ${weather.uvIndex} ${uvLevel})`,
+        weather.uvIndex > 0
+          ? `Apply broad-spectrum sunscreen before going outdoors (UV: ${weather.uvIndex} ${uvLevel})`
+          : `Nighttime: Zero solar UV radiation detected. Focus on PM barrier restoration & hydration.`,
         "Hydration target: 2.4L throughout the day",
         "Scheduled evening facial barrier check at 9:00 PM"
       ]

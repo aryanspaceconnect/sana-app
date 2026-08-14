@@ -89,25 +89,45 @@ export default function App() {
           }
           const dbSettings = dbUserData?.settings || {};
 
+          let localCacheSettings: any = {};
+          try {
+            const rawCache = localStorage.getItem('sana_user_settings_cache');
+            if (rawCache) localCacheSettings = JSON.parse(rawCache);
+          } catch (cacheErr) {
+            console.warn("Could not read local settings cache:", cacheErr);
+          }
+
+          const resolvedLocationName = dbSettings.locationName || dbUserData?.locationName || localCacheSettings.locationName || '';
+          const resolvedLat = dbSettings.latitude ?? dbUserData?.latitude ?? localCacheSettings.latitude;
+          const resolvedLon = dbSettings.longitude ?? dbUserData?.longitude ?? localCacheSettings.longitude;
+
+          const mergedSettings: UserSettings = {
+            temperatureUnit: 'C',
+            scanNotificationTime: '00:00',
+            scanReminderEnabled: true,
+            theme: 'light',
+            ...localCacheSettings,
+            ...dbSettings,
+            locationName: resolvedLocationName,
+            latitude: resolvedLat,
+            longitude: resolvedLon
+          };
+
           const profile: UserProfile = {
             uid: user.uid,
             displayName: dbUserData?.displayName || user.displayName || (user.email ? user.email.split('@')[0] : 'SANA User'),
             email: dbUserData?.email || user.email || 'guest@sana.app',
             photoURL: dbUserData?.photoURL || user.photoURL || undefined,
             isAnonymous: user.isAnonymous,
-            settings: {
-              temperatureUnit: 'C',
-              scanNotificationTime: '00:00',
-              scanReminderEnabled: true,
-              theme: 'light',
-              ...dbSettings
-            }
+            locationName: resolvedLocationName,
+            preferredName: dbUserData?.preferredName || mergedSettings.preferredName,
+            settings: mergedSettings
           };
           if (isMounted) {
             setUserProfile(profile);
 
             // If onboarding has not been completed, trigger onboarding
-            const hasCompletedOnboarding = dbSettings.onboardingCompleted === true;
+            const hasCompletedOnboarding = mergedSettings.onboardingCompleted === true;
             if (!hasCompletedOnboarding) {
               setForceOnboarding(true);
             } else {
@@ -316,16 +336,18 @@ export default function App() {
 
   const handleUpdateSettings = async (newSettings: UserSettings) => {
     if (userProfile) {
+      try {
+        localStorage.setItem('sana_user_settings_cache', JSON.stringify(newSettings));
+      } catch (cacheErr) {
+        console.warn("Could not cache settings to localStorage:", cacheErr);
+      }
+
       const updatedProfile = {
         ...userProfile,
+        locationName: newSettings.locationName || userProfile.locationName,
         settings: newSettings
       };
       setUserProfile(updatedProfile);
-      if (newSettings.temperatureUnit === 'F') {
-        setDailyBrief(prev => ({ ...prev, temperature: '73°F' }));
-      } else {
-        setDailyBrief(prev => ({ ...prev, temperature: '23°C' }));
-      }
       // Save directly to Firestore database so refresh preserves this state
       await syncUserProfile({ uid: userProfile.uid }, newSettings);
     }

@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  addDoc,
   collection,
   getDocs,
   query,
@@ -779,6 +780,28 @@ export async function saveVaultEvent(
   const saved = await saveVaultRecordWithVersion(userId, 'events', evtId, evt, changedBy, `Created event: ${payload.title}`);
   const cache = getOrCreateVaultCache(userId);
   cache.events.unshift(saved);
+
+  // Sync to primary calendar_events collection
+  try {
+    const safeUid = (userId && typeof userId === 'string' && userId.trim().length > 0) ? userId.trim() : 'guest_user';
+    if (db) {
+      const calendarRef = collection(db, "calendar_events");
+      await addDoc(calendarRef, {
+        userId: safeUid,
+        title: payload.title,
+        date: timeInfo.occurredAtDate,
+        time: timeInfo.occurredAt ? timeInfo.occurredAt.split('T')[1]?.slice(0, 5) || '20:00' : '20:00',
+        category: payload.category || 'routine',
+        notes: payload.outcomeNotes || '',
+        reminder: true,
+        completed: status === 'completed',
+        createdAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.warn('[saveVaultEvent] Error syncing to calendar_events:', err);
+  }
+
   return saved;
 }
 

@@ -249,13 +249,14 @@ function getAqiCategory(aqi: number): AirQualityMetrics['aqiCategory'] {
  * Fetches baseline current weather & exposome from Open-Meteo with 20-min caching.
  */
 export async function getBaselineWeatherData(lat?: number, lon?: number, locationNameOverride?: string) {
-  let targetLat = lat;
-  let targetLon = lon;
-  let displayLocName = locationNameOverride;
+  let targetLat = typeof lat === 'number' && !isNaN(lat) ? lat : undefined;
+  let targetLon = typeof lon === 'number' && !isNaN(lon) ? lon : undefined;
+  let displayLocName = locationNameOverride?.trim();
 
-  if ((targetLat == null || targetLon == null) && displayLocName && displayLocName.trim().length > 0 && displayLocName !== 'Local Atmosphere' && displayLocName !== 'Local Area') {
+  // If user specified a location name, prioritize geocoding it to match their configured city
+  if (displayLocName && displayLocName.length > 0 && displayLocName !== 'Local Atmosphere' && displayLocName !== 'Local Area') {
     try {
-      const geoResults = await searchLocations(displayLocName.trim());
+      const geoResults = await searchLocations(displayLocName);
       if (geoResults && geoResults.length > 0) {
         targetLat = geoResults[0].latitude;
         targetLon = geoResults[0].longitude;
@@ -278,7 +279,9 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     const params = [
       `latitude=${finalLat}`,
       `longitude=${finalLon}`,
-      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index,uv_index_clear_sky,vapour_pressure_deficit',
+      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit',
+      'hourly=uv_index,uv_index_clear_sky,is_day',
+      'forecast_days=1',
       'timezone=auto'
     ].join('&');
 
@@ -288,10 +291,33 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     const json = await res.json();
 
     const current = json.current || {};
+    const hourly = json.hourly || {};
     const condName = getWmoConditionName(current.weather_code ?? 2);
 
     if (!displayLocName) {
       displayLocName = await reverseGeocode(finalLat, finalLon);
+    }
+
+    const isDay = current.is_day === 1;
+
+    // Find current hour UV from hourly data
+    let currentUvIndex = 0.0;
+    let currentUvIndexClearSky = 0.0;
+
+    if (isDay && hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
+      const nowIsoHour = new Date().toISOString().slice(0, 13); // 'YYYY-MM-DDTHH'
+      const matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(nowIsoHour));
+      const idxToUse = matchedIdx >= 0 ? matchedIdx : (new Date().getHours() % hourly.uv_index.length);
+      
+      currentUvIndex = Number((hourly.uv_index[idxToUse] ?? 0).toFixed(1));
+      currentUvIndexClearSky = Number((hourly.uv_index_clear_sky?.[idxToUse] ?? currentUvIndex).toFixed(1));
+      
+      // If it's daytime but UV was calculated as 0, or negative, ensure non-negative
+      if (currentUvIndex < 0) currentUvIndex = 0.0;
+    } else {
+      // Nighttime: UV is strictly 0.0
+      currentUvIndex = 0.0;
+      currentUvIndexClearSky = 0.0;
     }
 
     // Quick AQI fetch for baseline prompt
@@ -302,7 +328,7 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     let no2Val: number | undefined;
 
     try {
-      const aqRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide`);
+      const aqRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${finalLat}&longitude=${finalLon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide`);
       if (aqRes.ok) {
         const aqJson = await aqRes.json();
         const aqCurr = aqJson.current || {};
@@ -317,53 +343,59 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     }
 
     const data = {
-      tempC: current.temperature_2m ?? 28,
-      feelsLikeC: current.apparent_temperature ?? 30,
-      humidity: current.relative_humidity_2m ?? 65,
-      dewPointC: current.dew_point_2m ?? 21,
+      tempC: current.temperature_2m ?? 24,
+      feelsLikeC: current.apparent_temperature ?? (current.temperature_2m ?? 24),
+      humidity: current.relative_humidity_2m ?? 60,
+      dewPointC: current.dew_point_2m ?? 16,
       vpdKpa: current.vapour_pressure_deficit ?? 0.85,
-      uvIndex: current.uv_index ?? 6.5,
-      uvIndexClearSky: current.uv_index_clear_sky ?? 7.8,
-      cloudCoverPercent: current.cloud_cover ?? 40,
+      uvIndex: currentUvIndex,
+      uvIndexClearSky: currentUvIndexClearSky,
+      isDay: isDay ? 1 : 0,
+      cloudCoverPercent: current.cloud_cover ?? 30,
       precipMm: current.precipitation ?? 0,
-      precipProbPercent: current.precipitation_probability ?? 20,
+      precipProbPercent: current.precipitation_probability ?? 10,
       weatherCode: current.weather_code ?? 2,
       weatherCondition: condName,
-      windSpeedKmH: current.wind_speed_10m ?? 12,
-      windGustsKmH: current.wind_gusts_10m ?? 22,
+      windSpeedKmH: current.wind_speed_10m ?? 10,
+      windGustsKmH: current.wind_gusts_10m ?? 18,
       locationName: displayLocName,
-      airQualityAqi: aqiVal ?? 65,
-      pm25: pm25Val ?? 18.5,
-      pm10: pm10Val ?? 32.0,
-      ozone: o3Val ?? 35.0,
-      no2: no2Val ?? 14.2
+      airQualityAqi: aqiVal ?? 45,
+      pm25: pm25Val ?? 12.0,
+      pm10: pm10Val ?? 22.0,
+      ozone: o3Val ?? 30.0,
+      no2: no2Val ?? 10.0
     };
 
     baselineCache = { timestamp: now, cacheKey, data };
     return data;
   } catch (err) {
     console.warn('[WeatherAwarenessEngine] Failed to fetch live Open-Meteo baseline weather, using fallback:', err);
+    // Realist fallback: calculate night/day based on local time
+    const currentHour = new Date().getHours();
+    const isNight = currentHour < 6 || currentHour >= 20;
+
     return {
-      tempC: 28,
-      feelsLikeC: 30,
-      humidity: 65,
-      dewPointC: 21,
-      vpdKpa: 0.85,
-      uvIndex: 6.5,
-      uvIndexClearSky: 7.8,
-      cloudCoverPercent: 40,
+      tempC: isNight ? 19 : 23,
+      feelsLikeC: isNight ? 19 : 24,
+      humidity: isNight ? 70 : 55,
+      dewPointC: 15,
+      vpdKpa: 0.80,
+      uvIndex: isNight ? 0.0 : 3.5,
+      uvIndexClearSky: isNight ? 0.0 : 4.2,
+      isDay: isNight ? 0 : 1,
+      cloudCoverPercent: 25,
       precipMm: 0,
-      precipProbPercent: 20,
+      precipProbPercent: 10,
       weatherCode: 2,
-      weatherCondition: 'Partly Sunny',
-      windSpeedKmH: 12,
-      windGustsKmH: 22,
-      locationName: locationNameOverride || `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`,
-      airQualityAqi: 65,
-      pm25: 18.5,
-      pm10: 32.0,
-      ozone: 35.0,
-      no2: 14.2
+      weatherCondition: isNight ? 'Clear Night' : 'Partly Sunny',
+      windSpeedKmH: 8,
+      windGustsKmH: 14,
+      locationName: displayLocName || `${finalLat.toFixed(2)}°N, ${finalLon.toFixed(2)}°E`,
+      airQualityAqi: 45,
+      pm25: 12.0,
+      pm10: 22.0,
+      ozone: 30.0,
+      no2: 10.0
     };
   }
 }
@@ -393,14 +425,14 @@ export async function getBaselineWeatherPromptHeader(lat: number = DEFAULT_LAT, 
  * Deep multi-variable environmental, air quality & exposome data fetch tool
  */
 export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironmentalDataArgs): Promise<AdvancedEnvironmentalResponse> {
-  let lat = args.latitude;
-  let lon = args.longitude;
-  let cityLabel = args.locationName;
+  let lat = typeof args.latitude === 'number' && !isNaN(args.latitude) ? args.latitude : undefined;
+  let lon = typeof args.longitude === 'number' && !isNaN(args.longitude) ? args.longitude : undefined;
+  let cityLabel = args.locationName?.trim();
 
-  // If coordinates are missing but city name is provided, dynamically resolve via Open-Meteo Geocoding
-  if ((lat == null || lon == null) && cityLabel && cityLabel.trim().length > 0 && cityLabel !== 'Local Atmosphere' && cityLabel !== 'Local Area') {
+  // If city name is provided, dynamically resolve via Open-Meteo Geocoding to guarantee exact coordinates for that city
+  if (cityLabel && cityLabel.length > 0 && cityLabel !== 'Local Atmosphere' && cityLabel !== 'Local Area') {
     try {
-      const geoResults = await searchLocations(cityLabel.trim());
+      const geoResults = await searchLocations(cityLabel);
       if (geoResults && geoResults.length > 0) {
         lat = geoResults[0].latitude;
         lon = geoResults[0].longitude;
@@ -420,24 +452,27 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
     cityLabel = await reverseGeocode(finalLat, finalLon);
   }
 
+  const currentLocalHour = new Date().getHours();
+  const isNightInitial = currentLocalHour < 6 || currentLocalHour >= 20;
+
   const response: AdvancedEnvironmentalResponse = {
     location: { latitude: finalLat, longitude: finalLon, cityLabel },
     currentExposome: {
-      tempC: 28,
-      feelsLikeC: 30,
-      humidityPercent: 65,
-      dewPointC: 21,
+      tempC: isNightInitial ? 19 : 24,
+      feelsLikeC: isNightInitial ? 19 : 24,
+      humidityPercent: isNightInitial ? 70 : 60,
+      dewPointC: 16,
       vpdKpa: 0.85,
       vpdCategory: 'Balanced / Optimal',
-      cloudCoverPercent: 40,
+      cloudCoverPercent: 30,
       precipitationMm: 0,
-      precipitationProbability12hMaxPercent: 20,
-      windSpeedKmH: 12,
-      windGustsKmH: 22,
-      uvIndex: 6.5,
-      uvIndexClearSky: 7.8,
+      precipitationProbability12hMaxPercent: 10,
+      windSpeedKmH: 10,
+      windGustsKmH: 18,
+      uvIndex: isNightInitial ? 0.0 : 3.5,
+      uvIndexClearSky: isNightInitial ? 0.0 : 4.0,
       weatherCode: 2,
-      weatherCondition: 'Partly Sunny'
+      weatherCondition: isNightInitial ? 'Clear Night' : 'Partly Sunny'
     },
     skinExposomeCopyTriggers: {
       cleansingEmphasis: false,
@@ -457,8 +492,8 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
     if (args.includeAirQuality !== false) {
       try {
         const aqParams = [
-          `latitude=${lat}`,
-          `longitude=${lon}`,
+          `latitude=${finalLat}`,
+          `longitude=${finalLon}`,
           'current=us_aqi,pm2_5,pm10,nitrogen_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen'
         ].join('&');
 
@@ -513,9 +548,9 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
 
     // 2. Fetch Forecast Weather (past_days=1, forecast_days=2, hourly next 24h)
     const forecastParams = [
-      `latitude=${lat}`,
-      `longitude=${lon}`,
-      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index,uv_index_clear_sky,vapour_pressure_deficit',
+      `latitude=${finalLat}`,
+      `longitude=${finalLon}`,
+      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit',
       'hourly=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation_probability,uv_index,uv_index_clear_sky,vapour_pressure_deficit,cloud_cover,wind_speed_10m,wind_gusts_10m,soil_temperature_0_to_7cm,soil_moisture_0_to_7cm',
       'daily=temperature_2m_max,temperature_2m_min,uv_index_max,uv_index_clear_sky_max,precipitation_sum,precipitation_probability_max,weather_code',
       'past_days=1',
@@ -534,15 +569,29 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
       response.location.elevation = fJson.elevation;
       response.location.timezone = fJson.timezone;
 
-      const tempC = current.temperature_2m ?? 28;
-      const humidityPercent = current.relative_humidity_2m ?? 65;
-      const dewPointC = current.dew_point_2m ?? 21;
+      const isDay = current.is_day === 1;
+      const tempC = current.temperature_2m ?? 24;
+      const humidityPercent = current.relative_humidity_2m ?? 60;
+      const dewPointC = current.dew_point_2m ?? 16;
       const vpdKpa = current.vapour_pressure_deficit ?? 0.85;
-      const cloudCoverPercent = current.cloud_cover ?? 40;
-      const windSpeedKmH = current.wind_speed_10m ?? 12;
-      const windGustsKmH = current.wind_gusts_10m ?? 22;
-      const uvIndex = current.uv_index ?? 6.5;
-      const uvIndexClearSky = current.uv_index_clear_sky ?? 7.8;
+      const cloudCoverPercent = current.cloud_cover ?? 30;
+      const windSpeedKmH = current.wind_speed_10m ?? 10;
+      const windGustsKmH = current.wind_gusts_10m ?? 18;
+
+      let uvIndex = 0.0;
+      let uvIndexClearSky = 0.0;
+
+      if (isDay && hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
+        const nowIsoHour = new Date().toISOString().slice(0, 13);
+        const matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(nowIsoHour));
+        const idxToUse = matchedIdx >= 0 ? matchedIdx : (new Date().getHours() % hourly.uv_index.length);
+        uvIndex = Number((hourly.uv_index[idxToUse] ?? 0).toFixed(1));
+        uvIndexClearSky = Number((hourly.uv_index_clear_sky?.[idxToUse] ?? uvIndex).toFixed(1));
+        if (uvIndex < 0) uvIndex = 0.0;
+      } else {
+        uvIndex = 0.0;
+        uvIndexClearSky = 0.0;
+      }
 
       let vpdCategory: AdvancedEnvironmentalResponse['currentExposome']['vpdCategory'] = 'Balanced / Optimal';
       if (vpdKpa < 0.5) vpdCategory = 'Low / Muggy';
@@ -551,14 +600,14 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
 
       response.currentExposome = {
         tempC,
-        feelsLikeC: current.apparent_temperature ?? (tempC + 2),
+        feelsLikeC: current.apparent_temperature ?? (tempC + 1),
         humidityPercent,
         dewPointC,
         vpdKpa,
         vpdCategory,
         cloudCoverPercent,
         precipitationMm: current.precipitation ?? 0,
-        precipitationProbability12hMaxPercent: current.precipitation_probability ?? 20,
+        precipitationProbability12hMaxPercent: current.precipitation_probability ?? 10,
         windSpeedKmH,
         windGustsKmH,
         uvIndex,

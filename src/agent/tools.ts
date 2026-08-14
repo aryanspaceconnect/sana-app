@@ -207,16 +207,42 @@ export const proposeUpdateSettingTool: ToolDefinition = {
 
 // Propose Create Event Tool
 export const proposeCreateEventSchema = z.object({
-  title: z.string(),
-  date: z.string(),
-  time: z.string().optional(),
-  category: z.enum(['routine', 'scan', 'treatment', 'habit']),
-  notes: z.string().optional()
+  title: z.string().describe('Title of the event e.g. "PM Barrier Restoration Routine" or "Post-Peel Check"'),
+  date: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      const now = new Date();
+      if (trimmed.toLowerCase() === 'today') return now.toISOString().split('T')[0];
+      if (trimmed.toLowerCase() === 'tomorrow') {
+        const tmrw = new Date(now.getTime() + 86400000);
+        return tmrw.toISOString().split('T')[0];
+      }
+      const parsed = new Date(trimmed);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+    }
+    return new Date().toISOString().split('T')[0];
+  }, z.string().describe('Target date YYYY-MM-DD (e.g. 2026-08-15) or relative terms like "today" or "tomorrow"')),
+  time: z.preprocess((val) => {
+    if (typeof val === 'string' && val.trim()) return val.trim();
+    return '20:00';
+  }, z.string().optional().default('20:00')).describe('Scheduled time e.g. "20:30" or "08:00 AM"'),
+  category: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const clean = val.toLowerCase().trim();
+      if (['routine', 'scan', 'treatment', 'habit', 'wellness'].includes(clean)) return clean;
+    }
+    return 'routine';
+  }, z.enum(['routine', 'scan', 'treatment', 'habit', 'wellness']).optional().default('routine')).describe('Category classification for the calendar event'),
+  notes: z.preprocess((val) => typeof val === 'string' ? val : undefined, z.string().optional()).describe('Detailed instructions, active products, reminders, or protocol steps'),
+  reminder: z.preprocess((val) => val === true || val === 'true' || val === undefined, z.boolean().optional().default(true)).describe('Whether an active reminder alert should be set')
 });
 
 export const proposeCreateEventTool: ToolDefinition = {
   name: 'propose_create_event',
-  description: 'Propose scheduling a skincare routine, facial scan, or barrier check event in the Regimen Calendar. Returns an actionProposal requiring user approval.',
+  description: 'Propose scheduling a skincare routine, facial scan, treatment session, or reminder in the Regimen Calendar. Supports picking dates, custom times, notes, reminders, and categories.',
   parameters: proposeCreateEventSchema,
   execute: async (args: z.infer<typeof proposeCreateEventSchema>): Promise<{ proposal: ActionProposal }> => {
     const actionId = `prop_evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -224,7 +250,7 @@ export const proposeCreateEventTool: ToolDefinition = {
       proposal: {
         actionId,
         title: `Schedule Calendar Event: ${args.title}`,
-        description: `Schedule '${args.title}' (${args.category.toUpperCase()}) on ${args.date}${args.time ? ` at ${args.time}` : ''}.`,
+        description: `Schedule '${args.title}' (${args.category.toUpperCase()}) on ${args.date} at ${args.time || '20:00'}. ${args.notes ? `Notes: ${args.notes}` : ''}`,
         actionType: 'CREATE_EVENT',
         payload: {
           title: args.title,
@@ -232,6 +258,7 @@ export const proposeCreateEventTool: ToolDefinition = {
           time: args.time || '20:00',
           category: args.category,
           notes: args.notes || '',
+          reminder: args.reminder ?? true,
           completed: false
         },
         riskLevel: 'low'

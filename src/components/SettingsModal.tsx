@@ -60,17 +60,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const persistSettings = (updated: UserSettings) => {
+    try {
+      localStorage.setItem('sana_user_settings_cache', JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Could not save settings to localStorage:", e);
+    }
+    onUpdateSettings(updated);
+    if (userProfile?.uid) {
+      syncUserProfile({ uid: userProfile.uid } as any, updated);
+    }
+  };
+
   const handleSelectLocation = (loc: any) => {
+    const locName = loc.displayName || `${loc.name}, ${loc.country || ''}`;
     const updated: UserSettings = {
       ...currentSettings,
-      locationName: loc.displayName || `${loc.name}, ${loc.country}`,
+      locationName: locName,
       latitude: loc.latitude,
       longitude: loc.longitude
     };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
+    persistSettings(updated);
+    setShowLocationSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const handleCustomLocationSubmit = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearchingLocation(true);
+    try {
+      const res = await fetch(`/api/location/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          handleSelectLocation(data.results[0]);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Custom location resolve error:", e);
+    } finally {
+      setIsSearchingLocation(false);
     }
+
+    // Fallback if no geocoding match found: store the custom city name directly
+    const updated: UserSettings = {
+      ...currentSettings,
+      locationName: searchQuery.trim()
+    };
+    persistSettings(updated);
     setShowLocationSearch(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -102,10 +141,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           latitude: lat,
           longitude: lon
         };
-        onUpdateSettings(updated);
-        if (userProfile?.uid && !userProfile.isAnonymous) {
-          syncUserProfile({ uid: userProfile.uid } as any, updated);
-        }
+        persistSettings(updated);
         setIsDetectingGps(false);
       },
       (err) => {
@@ -119,18 +155,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleToggleTemp = (unit: 'C' | 'F') => {
     const updated = { ...currentSettings, temperatureUnit: unit };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
   };
 
   const handleScanTimeChange = (time: string) => {
     const updated = { ...currentSettings, scanNotificationTime: time };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
   };
 
   const handleToggleReminderEnabled = () => {
@@ -138,10 +168,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...currentSettings,
       scanReminderEnabled: currentSettings.scanReminderEnabled === false ? true : false
     };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
   };
 
   const handleToggleCompanionSignals = () => {
@@ -149,18 +176,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...currentSettings,
       companionSignalsEnabled: currentSettings.companionSignalsEnabled === false ? true : false
     };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
   };
 
   const handleResponseStyleChange = (style: 'professional_medical' | 'casual_conversational' | 'cool_friendly') => {
     const updated = { ...currentSettings, responseStyle: style };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
   };
 
   const handleResetScanStatus = () => {
@@ -168,10 +189,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...currentSettings,
       lastCompletedScanDate: ''
     };
-    onUpdateSettings(updated);
-    if (userProfile?.uid && !userProfile.isAnonymous) {
-      syncUserProfile({ uid: userProfile.uid } as any, updated);
-    }
+    persistSettings(updated);
     alert("Daily scan completion status reset for testing. Re-open app or test trigger pop-up!");
   };
 
@@ -362,20 +380,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Location Search Dropdown */}
               {showLocationSearch && (
-                <div className="p-2.5 rounded-xl bg-white border border-[#cbd5e1] space-y-2 mt-2">
-                  <div className="relative flex items-center">
-                    <Icon icon="solar:magnifer-linear" className="w-4 h-4 text-[#94a3b8] absolute left-2.5" />
-                    <input
-                      type="text"
-                      placeholder="Search city e.g. London, Tokyo, New York..."
-                      value={searchQuery}
-                      onChange={(e) => handleSearchLocation(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[12px] text-[#121316] focus:outline-none focus:border-[#0284c7]"
-                    />
+                <div className="p-2.5 rounded-xl bg-white border border-[#cbd5e1] space-y-2 mt-2 shadow-xs">
+                  <div className="relative flex items-center space-x-1.5">
+                    <div className="relative flex-1 flex items-center">
+                      <Icon icon="solar:magnifer-linear" className="w-4 h-4 text-[#94a3b8] absolute left-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Search city e.g. London, Tokyo, Mumbai..."
+                        value={searchQuery}
+                        onChange={(e) => handleSearchLocation(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleCustomLocationSubmit();
+                          }
+                        }}
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[12px] text-[#121316] focus:outline-none focus:border-[#0284c7]"
+                      />
+                    </div>
+                    {searchQuery.trim().length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleCustomLocationSubmit}
+                        disabled={isSearchingLocation}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#0284c7] text-white text-[11px] font-semibold hover:bg-[#0369a1] transition-colors cursor-pointer shrink-0"
+                      >
+                        Set
+                      </button>
+                    )}
                   </div>
 
                   {isSearchingLocation && (
-                    <p className="text-[11px] text-[#94a3b8] px-1 py-1">Searching cities...</p>
+                    <p className="text-[11px] text-[#94a3b8] px-1 py-1">Locating city coordinates...</p>
                   )}
 
                   {searchResults.length > 0 && (
