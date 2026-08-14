@@ -111,6 +111,26 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Dynamic browser coords fallback
+  const [appBrowserCoords, setAppBrowserCoords] = useState<{ lat?: number; lon?: number }>({});
+
+  useEffect(() => {
+    if (userProfile?.settings?.latitude == null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setAppBrowserCoords({
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude
+          });
+        },
+        () => {
+          // Graceful fallback
+        },
+        { timeout: 6000, maximumAge: 300000 }
+      );
+    }
+  }, [userProfile?.settings?.latitude]);
+
   // Fetch Daily Brief from Server Endpoint
   useEffect(() => {
     const fetchDailyBrief = async () => {
@@ -120,8 +140,8 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             temperatureUnit: userProfile?.settings?.temperatureUnit || 'C',
-            latitude: userProfile?.settings?.latitude,
-            longitude: userProfile?.settings?.longitude,
+            latitude: userProfile?.settings?.latitude ?? appBrowserCoords.lat,
+            longitude: userProfile?.settings?.longitude ?? appBrowserCoords.lon,
             locationName: userProfile?.settings?.locationName || ''
           })
         });
@@ -139,7 +159,9 @@ export default function App() {
     userProfile?.settings?.temperatureUnit,
     userProfile?.settings?.latitude,
     userProfile?.settings?.longitude,
-    userProfile?.settings?.locationName
+    userProfile?.settings?.locationName,
+    appBrowserCoords.lat,
+    appBrowserCoords.lon
   ]);
 
   // Subscribe to Facial Scans in Firestore & Auto-Check Today's Scan Completion

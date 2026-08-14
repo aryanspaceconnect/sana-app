@@ -833,11 +833,11 @@ app.get("/api/location/reverse", async (req, res) => {
 // Daily Briefing Endpoint
 app.post("/api/daily-brief", async (req, res) => {
   try {
-    const { temperatureUnit = "C", latitude = 21.12, longitude = 73.11, locationName } = req.body;
+    const { temperatureUnit = "C", latitude, longitude, locationName } = req.body;
     
     const weather = await getBaselineWeatherData(
-      typeof latitude === 'number' ? latitude : 21.12,
-      typeof longitude === 'number' ? longitude : 73.11,
+      typeof latitude === 'number' && !isNaN(latitude) ? latitude : undefined,
+      typeof longitude === 'number' && !isNaN(longitude) ? longitude : undefined,
       locationName
     );
 

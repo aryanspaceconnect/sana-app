@@ -125,7 +125,48 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     setVariantOffset(prev => prev + 1);
   };
 
-  // Companion Signals state with silent diurnal auto-refresh
+  // Helper to compute 4:00 AM diurnal cycle date (00:00 - 03:59 belongs to previous day's ongoing cycle)
+  const getDiurnalCycleDate = (d: Date = new Date()) => {
+    const cycleTime = new Date(d.getTime() - 4 * 60 * 60 * 1000);
+    const y = cycleTime.getFullYear();
+    const m = String(cycleTime.getMonth() + 1).padStart(2, '0');
+    const day = String(cycleTime.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const getDiurnalWindowKey = (localHour: number) => {
+    const norm = ((localHour % 24) + 24) % 24;
+    if (norm >= 4 && norm < 6) return 'window_04_06';
+    if (norm >= 6 && norm < 11) return 'window_06_11';
+    if (norm >= 11 && norm < 14) return 'window_11_14';
+    if (norm >= 14 && norm < 17) return 'window_14_17';
+    if (norm >= 17 && norm < 19) return 'window_17_19';
+    if (norm >= 19 && norm < 22) return 'window_19_22';
+    if (norm >= 22 && norm < 24) return 'window_22_24';
+    return 'window_00_04';
+  };
+
+  // Dynamic browser geolocation state
+  const [browserCoords, setBrowserCoords] = useState<{ lat?: number; lon?: number }>({});
+
+  useEffect(() => {
+    if (userProfile?.settings?.latitude == null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setBrowserCoords({
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude
+          });
+        },
+        () => {
+          // Gracefully continue with profile location or neutral coordinates
+        },
+        { timeout: 6000, maximumAge: 300000 }
+      );
+    }
+  }, [userProfile?.settings?.latitude]);
+
+  // Companion Signals state with instant local storage restoration & silent diurnal auto-refresh
   const [companionSignal, setCompanionSignal] = useState<{
     lines: string[];
     windowId?: string;
@@ -133,35 +174,61 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     timestamp?: string;
     enabled?: boolean;
     contextMeta?: any;
-  } | null>(null);
+  } | null>(() => {
+    try {
+      const now = new Date();
+      const cycleDate = getDiurnalCycleDate(now);
+      const winKey = getDiurnalWindowKey(now.getHours());
+      const uid = userProfile?.uid || 'guest_user';
+      const cached = localStorage.getItem(`sana_companion_signal_${uid}_${cycleDate}_${winKey}`);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
   const [isLoadingSignal, setIsLoadingSignal] = useState(false);
 
   const fetchCompanionSignal = async (forceRefresh = false) => {
+    const uid = userProfile?.uid || 'guest_user';
     setIsLoadingSignal(true);
     try {
       const now = new Date();
       const clientHour = now.getHours();
-      const clientDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const clientDateStr = getDiurnalCycleDate(now);
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const windowKey = getDiurnalWindowKey(clientHour);
+
+      const lat = userProfile?.settings?.latitude ?? browserCoords.lat;
+      const lon = userProfile?.settings?.longitude ?? browserCoords.lon;
+      const locationName = userProfile?.settings?.locationName;
 
       const res = await fetch('/api/companion-signals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: userProfile?.uid || 'guest_user',
+          userId: uid,
           userProfile,
           forceRefresh,
           clientLocalTime: now.toISOString(),
           clientHour,
           clientDateStr,
           timezone,
-          latitude: userProfile?.settings?.latitude,
-          longitude: userProfile?.settings?.longitude
+          latitude: lat,
+          longitude: lon,
+          locationName
         })
       });
       if (res.ok) {
         const data = await res.json();
         setCompanionSignal(data);
+        try {
+          localStorage.setItem(`sana_companion_signal_${uid}_${clientDateStr}_${windowKey}`, JSON.stringify(data));
+        } catch {
+          // ignore
+        }
       }
     } catch (err) {
       console.warn("Companion signals fetch warning:", err);
@@ -179,7 +246,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     }, 5 * 60 * 1000);
 
     return () => clearInterval(autoRefreshInterval);
-  }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled, userProfile?.settings?.locationName]);
+  }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled, userProfile?.settings?.locationName, browserCoords.lat, browserCoords.lon]);
 
   // Metric info definitions for popups
   const handleMetricClick = (e: React.MouseEvent, type: string) => {

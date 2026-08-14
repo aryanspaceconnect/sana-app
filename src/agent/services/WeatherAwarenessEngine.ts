@@ -167,8 +167,9 @@ interface WeatherCache {
 let baselineCache: WeatherCache | null = null;
 const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes in-memory cache
 
-const DEFAULT_LAT = 21.12;
-const DEFAULT_LON = 73.11;
+// Global neutral coordinate reference (used only if location and GPS are completely undefined)
+const DEFAULT_LAT = 37.7749;
+const DEFAULT_LON = -122.4194;
 
 /**
  * Search locations via Open-Meteo Geocoding API
@@ -247,8 +248,27 @@ function getAqiCategory(aqi: number): AirQualityMetrics['aqiCategory'] {
 /**
  * Fetches baseline current weather & exposome from Open-Meteo with 20-min caching.
  */
-export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: number = DEFAULT_LON, locationNameOverride?: string) {
-  const cacheKey = `${lat.toFixed(2)}_${lon.toFixed(2)}`;
+export async function getBaselineWeatherData(lat?: number, lon?: number, locationNameOverride?: string) {
+  let targetLat = lat;
+  let targetLon = lon;
+  let displayLocName = locationNameOverride;
+
+  if ((targetLat == null || targetLon == null) && displayLocName && displayLocName.trim().length > 0 && displayLocName !== 'Local Atmosphere' && displayLocName !== 'Local Area') {
+    try {
+      const geoResults = await searchLocations(displayLocName.trim());
+      if (geoResults && geoResults.length > 0) {
+        targetLat = geoResults[0].latitude;
+        targetLon = geoResults[0].longitude;
+        displayLocName = geoResults[0].displayName || geoResults[0].name || displayLocName;
+      }
+    } catch (e) {
+      console.warn('[WeatherAwarenessEngine] Dynamic lookup warning:', e);
+    }
+  }
+
+  const finalLat = targetLat ?? DEFAULT_LAT;
+  const finalLon = targetLon ?? DEFAULT_LON;
+  const cacheKey = `${finalLat.toFixed(2)}_${finalLon.toFixed(2)}`;
   const now = Date.now();
   if (baselineCache && (now - baselineCache.timestamp) < CACHE_TTL_MS && baselineCache.cacheKey === cacheKey) {
     return baselineCache.data;
@@ -256,8 +276,8 @@ export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: num
 
   try {
     const params = [
-      `latitude=${lat}`,
-      `longitude=${lon}`,
+      `latitude=${finalLat}`,
+      `longitude=${finalLon}`,
       'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index,uv_index_clear_sky,vapour_pressure_deficit',
       'timezone=auto'
     ].join('&');
@@ -270,9 +290,8 @@ export async function getBaselineWeatherData(lat: number = DEFAULT_LAT, lon: num
     const current = json.current || {};
     const condName = getWmoConditionName(current.weather_code ?? 2);
 
-    let displayLocName = locationNameOverride;
     if (!displayLocName) {
-      displayLocName = await reverseGeocode(lat, lon);
+      displayLocName = await reverseGeocode(finalLat, finalLon);
     }
 
     // Quick AQI fetch for baseline prompt
@@ -374,17 +393,35 @@ export async function getBaselineWeatherPromptHeader(lat: number = DEFAULT_LAT, 
  * Deep multi-variable environmental, air quality & exposome data fetch tool
  */
 export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironmentalDataArgs): Promise<AdvancedEnvironmentalResponse> {
-  const lat = args.latitude ?? DEFAULT_LAT;
-  const lon = args.longitude ?? DEFAULT_LON;
+  let lat = args.latitude;
+  let lon = args.longitude;
+  let cityLabel = args.locationName;
+
+  // If coordinates are missing but city name is provided, dynamically resolve via Open-Meteo Geocoding
+  if ((lat == null || lon == null) && cityLabel && cityLabel.trim().length > 0 && cityLabel !== 'Local Atmosphere' && cityLabel !== 'Local Area') {
+    try {
+      const geoResults = await searchLocations(cityLabel.trim());
+      if (geoResults && geoResults.length > 0) {
+        lat = geoResults[0].latitude;
+        lon = geoResults[0].longitude;
+        cityLabel = geoResults[0].displayName || geoResults[0].name || cityLabel;
+      }
+    } catch (geoErr) {
+      console.warn('[WeatherAwarenessEngine] Dynamic geocode lookup warning:', geoErr);
+    }
+  }
+
+  // Fallback coordinates if still null
+  const finalLat = lat ?? DEFAULT_LAT;
+  const finalLon = lon ?? DEFAULT_LON;
   const fetchedAtIso = new Date().toISOString();
 
-  let cityLabel = args.locationName;
   if (!cityLabel) {
-    cityLabel = await reverseGeocode(lat, lon);
+    cityLabel = await reverseGeocode(finalLat, finalLon);
   }
 
   const response: AdvancedEnvironmentalResponse = {
-    location: { latitude: lat, longitude: lon, cityLabel },
+    location: { latitude: finalLat, longitude: finalLon, cityLabel },
     currentExposome: {
       tempC: 28,
       feelsLikeC: 30,

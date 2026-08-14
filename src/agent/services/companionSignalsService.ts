@@ -118,15 +118,28 @@ export const DIURNAL_WINDOW_SCHEDULE: DiurnalWindowInfo[] = [
 ];
 
 export const ORDERED_WINDOW_KEYS: DiurnalWindowKey[] = [
-  'window_00_04',
   'window_04_06',
   'window_06_11',
   'window_11_14',
   'window_14_17',
   'window_17_19',
   'window_19_22',
-  'window_22_24'
+  'window_22_24',
+  'window_00_04'
 ];
+
+/**
+ * Calculates the diurnal cycle date string anchored to 4:00 AM.
+ * Hours 00:00 - 03:59 belong to the previous calendar day's ongoing cycle.
+ * At 4:00 AM, a brand new daily series commences.
+ */
+export function getDiurnalCycleDate(localDate: Date = new Date()): string {
+  const cycleTime = new Date(localDate.getTime() - 4 * 60 * 60 * 1000);
+  const y = cycleTime.getFullYear();
+  const m = String(cycleTime.getMonth() + 1).padStart(2, '0');
+  const d = String(cycleTime.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 /**
  * Determine diurnal window from local hour (0-23)
@@ -348,24 +361,13 @@ export async function getOrGenerateCompanionSignals(
   const settings = userProfile?.settings || {};
   const enabled = settings.companionSignalsEnabled !== false; // default true
 
-  // Derive local date & hour accurately
+  // Derive local hour accurately from client payload (strictly avoiding UTC overwrite)
   let localHour = typeof options.clientHour === 'number' && !isNaN(options.clientHour)
-    ? options.clientHour
+    ? ((options.clientHour % 24) + 24) % 24
     : new Date().getHours();
 
-  if (options.clientLocalTime) {
-    try {
-      const clientDate = new Date(options.clientLocalTime);
-      if (!isNaN(clientDate.getTime())) {
-        localHour = clientDate.getHours();
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const now = new Date();
-  const dateStr = options.clientDateStr || now.toISOString().split('T')[0];
+  // Anchor the diurnal day cycle to 4:00 AM (00:00 - 03:59 belongs to previous day's ongoing cycle)
+  const dateStr = options.clientDateStr || getDiurnalCycleDate(new Date());
   const windowInfo = getDiurnalWindowInfo(localHour);
   const isNight = windowInfo.isNight;
 
@@ -399,7 +401,14 @@ export async function getOrGenerateCompanionSignals(
       const snap = await getDoc(dayDocRef);
       if (snap.exists()) {
         const dayData = snap.data() as any;
-        const storedWindows = dayData.windows || {};
+        const storedWindows: Partial<Record<DiurnalWindowKey, CompanionSignalResponse>> = { ...(dayData.windows || {}) };
+
+        // Support both nested map format and legacy flat dot-notation keys
+        for (const wKey of ORDERED_WINDOW_KEYS) {
+          if (!storedWindows[wKey] && dayData[`windows.${wKey}`]) {
+            storedWindows[wKey] = dayData[`windows.${wKey}`];
+          }
+        }
 
         // Collect all previous windows from earlier in the day
         for (const wKey of ORDERED_WINDOW_KEYS) {
@@ -418,7 +427,7 @@ export async function getOrGenerateCompanionSignals(
           const resObj = storedWindows[windowInfo.key] as CompanionSignalResponse;
           // Populate in-memory cache to save even Firestore reads on subsequent client refreshes
           if (!DIURNAL_MEMORY_CACHE[safeUid] || DIURNAL_MEMORY_CACHE[safeUid].dateStr !== dateStr) {
-            DIURNAL_MEMORY_CACHE[safeUid] = { dateStr, windows: storedWindows, lastUpdated: Date.now() };
+            DIURNAL_MEMORY_CACHE[safeUid] = { dateStr, windows: { ...storedWindows, [windowInfo.key]: resObj }, lastUpdated: Date.now() };
           } else {
             DIURNAL_MEMORY_CACHE[safeUid].windows[windowInfo.key] = resObj;
           }
@@ -649,12 +658,14 @@ Generate 2 to 4 concise lines (each under 64 chars, absolute max 72). JSON array
   // Persist to Firestore
   try {
     if (db) {
-      // 1. Update diurnal document
+      // 1. Update diurnal document with proper nested structure
       const dayDocRef = doc(db, 'users', safeUid, 'diurnal_signals', dateStr);
       await setDoc(dayDocRef, sanitizeForFirestore({
         dateStr,
         userId: safeUid,
-        [`windows.${windowInfo.key}`]: resultObj,
+        windows: {
+          [windowInfo.key]: resultObj
+        },
         lastUpdatedWindow: windowInfo.key,
         updatedAt: serverTimestamp()
       }), { merge: true });
