@@ -575,10 +575,10 @@ export const updateSessionNotepadSchema = z.object({
 
 export const updateSessionNotepadTool: ToolDefinition = {
   name: 'update_session_notepad',
-  description: "Saves or updates working notes in SANA's private session scratchpad. Use this to record user constraints, skin observations, calculated metrics, working hypotheses, or sub-task progress for the current session.",
+  description: "Saves or updates working notes in SANA's private session scratchpad. This notepad is strictly isolated and private to this specific chat session.",
   parameters: updateSessionNotepadSchema,
   execute: async (args: z.infer<typeof updateSessionNotepadSchema>, context: AgentContext) => {
-    const updated = updateSessionNotepad(context.sessionId, args.content, args.mode);
+    const updated = await updateSessionNotepad(context.sessionId, args.content, args.mode, context.userId);
     return {
       success: true,
       message: 'Session notepad updated successfully.',
@@ -591,10 +591,10 @@ export const readSessionNotepadSchema = z.object({});
 
 export const readSessionNotepadTool: ToolDefinition = {
   name: 'read_session_notepad',
-  description: "Reads SANA's private working notes from the current session scratchpad.",
+  description: "Reads SANA's private working notes from the current session scratchpad (isolated to this chat session).",
   parameters: readSessionNotepadSchema,
   execute: async (_args: any, context: AgentContext) => {
-    const content = getSessionNotepad(context.sessionId);
+    const content = await getSessionNotepad(context.sessionId, context.userId);
     return {
       success: true,
       notepadContent: content || '(Empty session notepad)'

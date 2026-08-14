@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { UserProfile, OnboardingProfile, UserSettings } from '../types';
-import { syncUserProfile, saveFacialScan } from '../lib/firebase';
+import { syncUserProfile, saveFacialScan, createChatSession } from '../lib/firebase';
 import { SanaLogoIcon } from './SanaLogoIcon';
 
 interface OnboardingScreenProps {
@@ -601,6 +601,29 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
         updatedSettings,
         topLevelData
       );
+
+      // Create initial diagnostic session containing the onboarding scan report as its first message
+      try {
+        const initialSessionId = `session_onboarding_${userProfile.uid}`;
+        const hyd = scanResultData?.hydrationScore || 85;
+        const bar = scanResultData?.barrierScore || 88;
+        const cla = scanResultData?.clarityScore || 84;
+        const initialReportMessage = {
+          id: `rep_${Date.now()}`,
+          role: 'model',
+          text: `**Welcome to SANA, ${cleanPreferredName || (userProfile.displayName ? userProfile.displayName.split(' ')[0] : 'friend')}!**\n\nHere is your baseline diagnostic report from your onboarding facial discovery scan:\n\n- **Stratum Corneum Hydration**: ${hyd}%\n- **Lipid Barrier Health**: ${bar}%\n- **Skin Clarity Score**: ${cla}%\n\n*${companionReadText || 'Your baseline profile has been initialized with customized climate and barrier recommendations.'}*\n\nYour profile, concerns (${selectedChips.join(', ')}), and climate (${cleanLocation}) are indexed in your private workspace. Ask me anything about your routine, active ingredient pairings, or barrier protection anytime.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        await createChatSession(userProfile.uid, {
+          id: initialSessionId,
+          title: 'Onboarding Scan & Barrier Report',
+          sessionType: 'onboarding_report',
+          initialMessages: [initialReportMessage]
+        });
+      } catch (sessErr) {
+        console.warn("Failed to create initial onboarding session doc:", sessErr);
+      }
 
       // Finish Onboarding
       onCompleteOnboarding(updatedProfile);

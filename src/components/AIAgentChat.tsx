@@ -2,10 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
-import { UserProfile, ChatMessage } from '../types';
-import { saveChatMessage, subscribeUserChat } from '../lib/firebase';
+import { UserProfile, ChatMessage, ChatSession } from '../types';
+import { 
+  createChatSession, 
+  saveChatSessionData, 
+  subscribeUserSessions, 
+  subscribeChatSession,
+  deleteChatSession
+} from '../lib/firebase';
 import { loadAgentVault, VaultNote, VaultDocument } from '../agent/agentVault';
-import { AgentMemoryService } from '../services/AgentMemoryService';
+import { getSessionNotepad } from '../agent/sessionNotepad';
 import { ApprovalCard } from './ApprovalCard';
 import { ThinkingReasoning, TraceRow } from './ThinkingReasoning';
 import { LoadingState } from './LoadingState';
@@ -15,12 +21,14 @@ interface AIAgentChatProps {
   userProfile: UserProfile | null;
   onMinimizeNavToggle: (minimize: boolean) => void;
   onTriggerPopup?: (popup: any) => void;
+  activeSessionIdProp?: string | null;
+  onSessionChange?: (sessionId: string) => void;
 }
 
 interface ChatMessageBubbleProps {
   msg: ChatMessage;
   userProfile: UserProfile | null;
-  chatId: string;
+  sessionId: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   onSendMessage?: (text: string) => void;
 }
@@ -64,7 +72,7 @@ const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: numbe
 };
 
 const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
-  ({ msg, userProfile, chatId, setMessages, onSendMessage }) => {
+  ({ msg, userProfile, sessionId, setMessages, onSendMessage }) => {
     const isUser = msg.role === 'user';
 
     // Extract search query if present in msg.searchQuery or embedded text
@@ -111,7 +119,7 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
               </div>
             )}
 
-            {/* Proper Markdown Rendering Engine for LLM Assistant Response */}
+            {/* Markdown Rendering for LLM Assistant Response */}
             <div className="text-[14px] leading-relaxed text-[#1e2229] space-y-2">
               <Markdown
                 components={{
@@ -121,91 +129,95 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
                     </h1>
                   ),
                   h2: ({ children }) => (
-                    <h2 className="text-[15px] font-bold text-[#121316] mt-2.5 mb-1 tracking-tight">
+                    <h2 className="text-[14.5px] font-bold text-[#1a1c1e] mt-2.5 mb-1 tracking-tight">
                       {children}
                     </h2>
                   ),
                   h3: ({ children }) => (
-                    <h3 className="text-[14px] font-bold text-[#121316] mt-2 mb-1 tracking-tight">
+                    <h3 className="text-[13.5px] font-bold text-[#2d3139] mt-2 mb-0.5">
                       {children}
                     </h3>
                   ),
-                  h4: ({ children }) => (
-                    <h4 className="text-[13.5px] font-bold text-[#121316] mt-1.5 mb-1">
-                      {children}
-                    </h4>
-                  ),
                   p: ({ children }) => (
-                    <p className="mb-2.5 last:mb-0 leading-relaxed text-[#1e2229] text-[14px]">
+                    <p className="text-[13.5px] leading-[1.6] text-[#2c3038] mb-1.5 last:mb-0">
                       {children}
                     </p>
                   ),
                   ul: ({ children }) => (
-                    <ul className="list-disc list-outside ml-4 space-y-1.5 my-2 text-[14px] text-[#1e2229]">
+                    <ul className="list-disc list-outside pl-4 space-y-1 my-1.5 text-[13.5px] text-[#2c3038]">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="list-decimal list-outside ml-4 space-y-1.5 my-2 text-[14px] text-[#1e2229]">
+                    <ol className="list-decimal list-outside pl-4 space-y-1 my-1.5 text-[13.5px] text-[#2c3038]">
                       {children}
                     </ol>
                   ),
                   li: ({ children }) => (
-                    <li className="leading-relaxed pl-1">{children}</li>
+                    <li className="leading-[1.5] pl-0.5">
+                      {children}
+                    </li>
                   ),
                   strong: ({ children }) => (
-                    <strong className="font-bold text-[#121316]">{children}</strong>
+                    <strong className="font-semibold text-[#121316]">
+                      {children}
+                    </strong>
                   ),
                   em: ({ children }) => (
-                    <em className="italic text-[#2c3038]">{children}</em>
+                    <em className="italic text-[#4a5568]">
+                      {children}
+                    </em>
                   ),
                   blockquote: ({ children }) => (
-                    <blockquote className="border-l-2 border-emerald-500/80 pl-3 my-2 italic text-slate-600 bg-slate-50/50 py-1 rounded-r-md">
+                    <blockquote className="border-l-2 border-[#1a1c1e]/30 pl-3 py-1 my-2 text-[13px] text-[#4a5568] bg-[#f8fafc] rounded-r-lg">
                       {children}
                     </blockquote>
                   ),
                   code: ({ children }) => (
-                    <code className="bg-slate-100 text-[#121316] text-[12.5px] px-1.5 py-0.5 rounded-md font-mono border border-slate-200/80">
+                    <code className="text-[12px] font-mono px-1.5 py-0.5 rounded-md bg-[#f1f5f9] text-[#0f172a] border border-[#e2e8f0]">
                       {children}
                     </code>
                   ),
-                  hr: () => <hr className="border-t border-slate-200/80 my-3" />
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline decoration-blue-300 hover:decoration-blue-800 transition-colors inline-flex items-center space-x-0.5"
+                    >
+                      <span>{children}</span>
+                      <Icon icon="solar:arrow-right-up-linear" className="w-3 h-3 ml-0.5 inline" />
+                    </a>
+                  )
                 }}
               >
                 {displayText}
               </Markdown>
             </div>
 
-            {/* Render Approval Card if message carries an Action Proposal */}
+            {/* Action Proposal Interactive Card */}
             {msg.actionProposal && (
               <div className="mt-3">
                 <ApprovalCard
                   proposal={msg.actionProposal}
                   userId={userProfile?.uid || 'guest_user'}
-                  onAnswersSubmitted={(answersText) => {
-                    if (onSendMessage) {
-                      onSendMessage(answersText);
-                    }
-                  }}
                   onExecuted={(res) => {
-                    setMessages((prevMsgs) => {
-                      const nextMsgs = prevMsgs.map((m) => {
+                    setMessages((prev) => {
+                      const nextMsgs = prev.map((m) => {
                         if (m.id === msg.id && m.actionProposal) {
                           return {
                             ...m,
                             actionProposal: {
                               ...m.actionProposal,
-                              status: res.success ? 'approved' : 'denied',
-                              executed: res.success,
+                              executed: true,
                               executedMessage: res.message
                             }
                           };
                         }
                         return m;
                       });
-                      if (userProfile?.uid) {
-                        saveChatMessage(userProfile.uid, chatId, nextMsgs);
-                        AgentMemoryService.saveChatSession(userProfile.uid, chatId, nextMsgs);
+                      if (userProfile?.uid && sessionId) {
+                        saveChatSessionData(userProfile.uid, sessionId, { messages: nextMsgs });
                       }
                       return nextMsgs;
                     });
@@ -228,19 +240,31 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
     prev.msg.actionProposal === next.msg.actionProposal &&
     prev.msg.searchQuery === next.msg.searchQuery &&
     prev.userProfile?.uid === next.userProfile?.uid &&
-    prev.chatId === next.chatId
+    prev.sessionId === next.sessionId
 );
 
 export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   userProfile,
   onMinimizeNavToggle,
-  onTriggerPopup
+  onTriggerPopup,
+  activeSessionIdProp,
+  onSessionChange
 }) => {
+  const userId = userProfile?.uid || 'guest_user';
+
+  // Multi-session State
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    return activeSessionIdProp || `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [showSessionsDrawer, setShowSessionsDrawer] = useState(false);
+  const [sessionNotepadText, setSessionNotepadText] = useState<string>('');
+
+  // Input & Stream state
   const [inputText, setInputText] = useState('');
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'loading' | 'working'>('idle');
   const [liveTraceRows, setLiveTraceRows] = useState<TraceRow[]>([]);
-  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const requestStartTimeRef = useRef<number>(0);
 
   // Agent Vault state
@@ -251,40 +275,56 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
+  // Synchronize session ID with external props if given
   useEffect(() => {
-    const handleOpenSession = (e: any) => {
-      if (e.detail?.sessionId) {
-        setActiveChatId(e.detail.sessionId);
-      }
-    };
-    window.addEventListener('sana:open_chat_session', handleOpenSession);
-    return () => window.removeEventListener('sana:open_chat_session', handleOpenSession);
-  }, []);
+    if (activeSessionIdProp && activeSessionIdProp !== activeSessionId) {
+      setActiveSessionId(activeSessionIdProp);
+    }
+  }, [activeSessionIdProp]);
 
-  const userId = userProfile?.uid || 'guest_user';
-  const chatId = activeChatId || (userProfile ? `chat_${userProfile.uid}` : 'chat_default');
-
-  // Load chat history from Firestore
+  // Subscribe to all sessions list
   useEffect(() => {
-    const unsubscribe = subscribeUserChat(chatId, (data) => {
-      if (data && data.messages && Array.isArray(data.messages)) {
-        setMessages(data.messages);
-      } else if (messages.length === 0) {
-        // Welcome message if fresh chat
-        const initialMsg: ChatMessage = {
-          id: 'welcome',
-          role: 'model',
-          text: `Welcome, ${userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'friend'}. I am SANA, your multi-step skin health & wellness agent equipped with an **Isolated Agent Memory Vault**. Ask me to analyze ingredients, schedule routines, store skin memories, or index uploaded documents.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages([initialMsg]);
+    const unsubscribe = subscribeUserSessions(userId, (sessionList) => {
+      setSessions(sessionList);
+      // If we don't have an active session yet and there is at least one session, set it if not initiating new
+      if (sessionList.length > 0 && !activeSessionId) {
+        setActiveSessionId(sessionList[0].id);
       }
     });
 
     return () => unsubscribe();
-  }, [userProfile?.uid, chatId]);
+  }, [userId]);
+
+  // Subscribe to the active session document
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const unsubscribe = subscribeChatSession(userId, activeSessionId, (sessionData) => {
+      if (sessionData && Array.isArray(sessionData.messages)) {
+        setMessages(sessionData.messages);
+        setSessionNotepadText(sessionData.sessionNotepad || '');
+      } else {
+        // If session document does not exist yet (brand new session), start with zero messages
+        setMessages([]);
+        setSessionNotepadText('');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId, activeSessionId]);
+
+  // Listen to open session events (e.g. from facial scan reports or notifications)
+  useEffect(() => {
+    const handleOpenSession = (e: any) => {
+      if (e.detail?.sessionId) {
+        setActiveSessionId(e.detail.sessionId);
+        if (onSessionChange) onSessionChange(e.detail.sessionId);
+      }
+    };
+    window.addEventListener('sana:open_chat_session', handleOpenSession);
+    return () => window.removeEventListener('sana:open_chat_session', handleOpenSession);
+  }, [onSessionChange]);
 
   // Load user's Agent Vault data
   const refreshVault = async () => {
@@ -333,6 +373,35 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     setProcessingStatus('idle');
   };
 
+  // Start a fresh, blank new chat session
+  const handleStartNewChat = () => {
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setActiveSessionId(newSessionId);
+    setMessages([]);
+    setSessionNotepadText('');
+    setShowSessionsDrawer(false);
+    if (onSessionChange) onSessionChange(newSessionId);
+  };
+
+  // Switch to a previous session
+  const handleSelectSession = (sessId: string) => {
+    setActiveSessionId(sessId);
+    setShowSessionsDrawer(false);
+    if (onSessionChange) onSessionChange(sessId);
+  };
+
+  // Delete a previous session
+  const handleDeleteSession = async (sessId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await deleteChatSession(userId, sessId);
+    if (activeSessionId === sessId) {
+      handleStartNewChat();
+    }
+  };
+
+  const currentSession = sessions.find(s => s.id === activeSessionId);
+  const currentTitle = currentSession?.title || (messages.length > 0 ? (messages[0]?.text?.slice(0, 30) || 'Active Consultation') : 'New Consultation');
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
     if (!text.trim() || processingStatus !== 'idle') return;
@@ -353,8 +422,27 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     setLiveTraceRows([]);
     requestStartTimeRef.current = Date.now();
 
-    if (userProfile?.uid) {
-      saveChatMessage(userProfile.uid, chatId, updatedMessages);
+    // Auto-derive title if this is the first user message in a new session
+    const isFirstTurn = messages.length === 0;
+    const sessionTitle = isFirstTurn
+      ? text.trim().length > 35
+        ? `${text.trim().slice(0, 35)}...`
+        : text.trim()
+      : currentSession?.title || 'Skin Consultation';
+
+    // Persist immediately to Firestore
+    if (isFirstTurn) {
+      await createChatSession(userId, {
+        id: activeSessionId,
+        title: sessionTitle,
+        sessionType: 'chat',
+        initialMessages: updatedMessages
+      });
+    } else {
+      await saveChatSessionData(userId, activeSessionId, {
+        messages: updatedMessages,
+        title: sessionTitle
+      });
     }
 
     const controller = new AbortController();
@@ -366,9 +454,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          userId: userProfile?.uid || 'guest_user',
+          userId,
           message: text.trim(),
-          sessionId,
+          sessionId: activeSessionId,
           history: updatedMessages.map(m => ({ role: m.role, text: m.text }))
         })
       });
@@ -378,9 +466,6 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       }
 
       const data = await response.json();
-      if (data.sessionId) {
-        setSessionId(data.sessionId);
-      }
 
       // Transition to working state as soon as LLM response payload arrives
       setProcessingStatus('working');
@@ -455,7 +540,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         actionProposal: data.actionProposal,
         passOnTrace: data.passOnTrace,
-        sessionId: data.sessionId,
+        sessionId: activeSessionId,
         searchQuery: detectedSearchQuery,
         searchSites: detectedSearchSites,
         thinkingMeta: {
@@ -471,10 +556,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       const finalMessages = [...updatedMessages, modelMsg];
       setMessages(finalMessages);
 
-      if (userProfile?.uid) {
-        saveChatMessage(userProfile.uid, chatId, finalMessages);
-        AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
-      }
+      await saveChatSessionData(userId, activeSessionId, {
+        messages: finalMessages,
+        title: sessionTitle
+      });
+
       refreshVault();
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -487,9 +573,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         };
         const finalMessages = [...updatedMessages, cancelMsg];
         setMessages(finalMessages);
-        if (userProfile?.uid) {
-          saveChatMessage(userProfile.uid, chatId, finalMessages);
-        }
+        await saveChatSessionData(userId, activeSessionId, { messages: finalMessages });
         return;
       }
       console.error('SanaAgent Chat error:', err);
@@ -504,11 +588,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
       const finalMessages = [...updatedMessages, errorMsg];
       setMessages(finalMessages);
-
-      if (userProfile?.uid) {
-        saveChatMessage(userProfile.uid, chatId, finalMessages);
-        AgentMemoryService.saveChatSession(userProfile.uid, chatId, finalMessages);
-      }
+      await saveChatSessionData(userId, activeSessionId, { messages: finalMessages });
     } finally {
       setProcessingStatus('idle');
     }
@@ -518,19 +598,75 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     "Retinol + Vitamin C safe combination?",
     "How to repair damaged skin barrier?",
     "Evening double-cleansing AM/PM steps",
-    "SPF 50 recommendation for sensitive skin"
+    "SPF 50 recommendation for sensitive skin",
+    "Niacinamide with Salicylic Acid routine",
+    "Climate humidity barrier protection"
   ];
 
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
+      {/* Minimal Top Header Bar: Clean Squaricle History & New Chat Actions */}
+      <div className="flex items-center justify-between py-2 px-1 border-b border-slate-200/60 shrink-0 mb-1">
+        {/* Clean Consultation Sessions Button */}
+        <button
+          onClick={() => setShowSessionsDrawer(true)}
+          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 text-slate-800 transition-all cursor-pointer text-xs font-medium border border-slate-200/50 group"
+          title="View past chat sessions and reports"
+        >
+          <Icon icon="solar:history-bold" className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-900 shrink-0" />
+          <span className="font-semibold text-slate-900">Consultations</span>
+          {sessions.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-md bg-slate-200 text-[10px] font-bold text-slate-700">
+              {sessions.length}
+            </span>
+          )}
+          <Icon icon="solar:alt-arrow-down-linear" className="w-3 h-3 text-slate-400 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+        </button>
+
+        {/* Minimal Squaricle Actions: New Chat & Memory Vault */}
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={handleStartNewChat}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-[#121316] text-white hover:bg-black transition-all cursor-pointer text-xs font-medium shadow-xs active:scale-95"
+            title="Start fresh new chat session"
+          >
+            <Icon icon="solar:pen-new-square-linear" className="w-3.5 h-3.5" />
+            <span>New Chat</span>
+          </button>
+
+          <button
+            onClick={() => setShowVaultModal(true)}
+            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/50"
+            title="Agent Memory Vault & Notepad"
+          >
+            <Icon icon="solar:vault-bold" className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
+        {/* Zero messages state: Clean minimalist text slate without icon */}
+        {messages.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="h-full flex flex-col items-center justify-center text-center px-4 py-8 space-y-2 max-w-md mx-auto"
+          >
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">How can SANA guide your skin today?</h3>
+            <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
+              Start a fresh consultation. Ask about active ingredient safety, clinical routines, or upload a skin document.
+            </p>
+          </motion.div>
+        )}
+
+        {/* Active Messages List */}
         {messages.map((msg) => (
           <ChatMessageBubble
             key={msg.id}
             msg={msg}
             userProfile={userProfile}
-            chatId={chatId}
+            sessionId={activeSessionId}
             setMessages={setMessages}
             onSendMessage={handleSendMessage}
           />
@@ -553,14 +689,14 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         <div ref={chatEndRef} />
       </div>
 
-      {/* Quick Suggestion Chips */}
-      {messages.length < 5 && (
-        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1.5 px-1 shrink-0">
+      {/* Quick Suggestion Chips - Minimal Squaricle Options */}
+      {messages.length < 3 && (
+        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1 px-1 shrink-0 opacity-90 hover:opacity-100 transition-opacity">
           {suggestionChips.map((chip, i) => (
             <button
               key={i}
               onClick={() => handleSendMessage(chip)}
-              className="px-3 py-1.5 rounded-full bg-white border border-[#e2e8f0] text-[11.5px] text-[#475569] font-medium whitespace-nowrap hover:bg-[#1a1c1e] hover:text-white transition-colors cursor-pointer shrink-0 shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-slate-100/60 hover:bg-slate-100 text-[11.5px] text-slate-600 hover:text-slate-900 font-medium whitespace-nowrap border border-slate-200/40 transition-colors cursor-pointer shrink-0 shadow-none"
             >
               {chip}
             </button>
@@ -577,20 +713,20 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         className="hidden"
       />
 
-      {/* Chat Input Bar with File Upload — Ergonomically reduced length with psychological UX affordance */}
+      {/* Chat Input Bar - Squaricle Design */}
       <div className="pt-2 px-1 shrink-0 flex justify-center w-full">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="w-full max-w-[82%] sm:max-w-[360px] flex items-center space-x-1.5 p-1.5 pl-2.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-xl"
+          className="w-full max-w-[84%] sm:max-w-[380px] flex items-center space-x-1.5 p-1.5 pl-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-md transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-lg"
         >
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             title="Upload Document to Agent Memory Vault"
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-100/80 transition-all duration-200 cursor-pointer shrink-0 flex items-center justify-center active:scale-95"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100/80 transition-all duration-200 cursor-pointer shrink-0 flex items-center justify-center active:scale-95"
           >
             <Icon icon="solar:add-circle-linear" className="w-5 h-5" />
           </button>
@@ -606,7 +742,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
               type="submit"
               disabled={!inputText.trim()}
               title="Send message"
-              className="w-8.5 h-8.5 rounded-[12px] bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
+              className="w-8.5 h-8.5 rounded-xl bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
             >
               <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
             </button>
@@ -615,13 +751,124 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
               type="button"
               onClick={handleAbortRequest}
               title="Terminate response request"
-              className="w-8.5 h-8.5 rounded-[12px] bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xs shrink-0 active:scale-95 animate-pulse"
+              className="w-8.5 h-8.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xs shrink-0 active:scale-95 animate-pulse"
             >
               <Icon icon="solar:stop-bold" className="w-3.5 h-3.5" />
             </button>
           )}
         </form>
       </div>
+
+      {/* Sessions History Drawer / Modal */}
+      <AnimatePresence>
+        {showSessionsDrawer && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="bg-white rounded-t-[32px] sm:rounded-[32px] max-w-lg w-full p-5 space-y-4 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-xl bg-slate-900 text-white">
+                    <Icon icon="solar:history-bold" className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Chat Sessions</h3>
+                    <p className="text-xs text-slate-500">{sessions.length} persistent consultations stored</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleStartNewChat}
+                    className="px-3 py-1.5 rounded-full bg-[#1a1c1e] text-white text-xs font-semibold flex items-center space-x-1 hover:bg-black cursor-pointer shadow-2xs"
+                  >
+                    <Icon icon="solar:add-circle-bold" className="w-3.5 h-3.5" />
+                    <span>New Chat</span>
+                  </button>
+                  <button
+                    onClick={() => setShowSessionsDrawer(false)}
+                    className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer"
+                  >
+                    <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Sessions List */}
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pr-1">
+                {sessions.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    No past sessions found. Start a new consultation anytime.
+                  </div>
+                ) : (
+                  sessions.map((sess) => {
+                    const isSelected = sess.id === activeSessionId;
+                    const dateFormatted = sess.updatedAt || sess.createdAt
+                      ? new Date(sess.updatedAt || sess.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'Recent';
+
+                    return (
+                      <div
+                        key={sess.id}
+                        onClick={() => handleSelectSession(sess.id)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between group ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-md'
+                            : 'bg-slate-50 hover:bg-slate-100/90 text-slate-800 border-slate-200/80'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 pr-3">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                              {sess.title || 'Skin Consultation'}
+                            </span>
+                            {sess.sessionType === 'onboarding_report' && (
+                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold uppercase ${isSelected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-800'}`}>
+                                Baseline Scan
+                              </span>
+                            )}
+                            {sess.sessionType === 'scan_report' && (
+                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold uppercase ${isSelected ? 'bg-blue-400 text-slate-900' : 'bg-blue-100 text-blue-800'}`}>
+                                Scan Report
+                              </span>
+                            )}
+                          </div>
+                          {sess.lastMessage && (
+                            <p className={`text-[11.5px] truncate ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                              {sess.lastMessage}
+                            </p>
+                          )}
+                          <div className={`text-[10px] mt-1.5 flex items-center space-x-2 ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
+                            <span>{dateFormatted}</span>
+                            <span>•</span>
+                            <span>{sess.messageCount || sess.messages?.length || 0} messages</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleDeleteSession(sess.id, e)}
+                          title="Delete session"
+                          className={`p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 shrink-0 ${
+                            isSelected
+                              ? 'text-rose-300 hover:text-rose-100 hover:bg-white/10'
+                              : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                          }`}
+                        >
+                          <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Vault Inspector Modal */}
       <AnimatePresence>
@@ -631,16 +878,16 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-[28px] max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200"
+              className="bg-white rounded-[28px] max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
                 <div className="flex items-center space-x-2">
                   <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
                     <Icon icon="solar:vault-bold" className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-slate-900">Agent Memory Vault</h3>
-                    <p className="text-xs text-slate-500">Isolated namespace: <span className="font-mono text-emerald-700">{userId}</span></p>
+                    <p className="text-xs text-slate-500">Namespace: <span className="font-mono text-emerald-700">{userId}</span></p>
                   </div>
                 </div>
                 <button
@@ -651,7 +898,22 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                 </button>
               </div>
 
-              <div className="space-y-4 max-h-[350px] overflow-y-auto no-scrollbar pr-1">
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pr-1">
+                {/* Session Isolated Notepad Section */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                    <Icon icon="solar:pen-new-square-bold-duotone" className="w-4 h-4 text-purple-600" />
+                    <span>Session Notepad (Private to this Chat)</span>
+                  </h4>
+                  <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-100 text-xs">
+                    {sessionNotepadText ? (
+                      <p className="text-slate-700 whitespace-pre-wrap">{sessionNotepadText}</p>
+                    ) : (
+                      <p className="text-slate-400 italic">Empty. SANA logs working hypotheses and calculated indices here during this consultation.</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Notes Section */}
                 <div>
                   <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
@@ -699,9 +961,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100 text-center">
+              <div className="pt-2 border-t border-slate-100 text-center shrink-0">
                 <p className="text-[11px] text-slate-400">
-                  🔒 Data in this vault is strictly segregated by user ID in Firestore (<code className="bg-slate-100 px-1 py-0.5 rounded">agent_vaults/{"{userId}"}</code>).
+                  🔒 Data in this vault is strictly segregated by user ID in Firestore (<code className="bg-slate-100 px-1 py-0.5 rounded">users/{"{userId}"}/agent_sessions</code>).
                 </p>
               </div>
             </motion.div>

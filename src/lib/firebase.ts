@@ -24,7 +24,8 @@ import {
   onSnapshot, 
   serverTimestamp,
   updateDoc,
-  getDocs
+  getDocs,
+  deleteDoc
 } from "firebase/firestore";
 import firebaseConfigData from "../../firebase-applet-config.json";
 
@@ -332,16 +333,287 @@ export const subscribeFacialScans = (userId: string, callback: (scans: any[]) =>
   });
 };
 
-// Chat Persistence Helpers
-export const saveChatMessage = async (userId: string, chatId: string, messages: any[]) => {
+// Chat & Multi-Session Persistence Helpers
+export const createChatSession = async (
+  userId: string,
+  sessionData?: {
+    id?: string;
+    title?: string;
+    sessionType?: 'onboarding_report' | 'scan_report' | 'chat' | 'consultation';
+    initialMessages?: any[];
+    sessionNotepad?: string;
+  }
+) => {
+  const safeUid = userId || 'guest_user';
+  const sessionId = sessionData?.id || `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const nowIso = new Date().toISOString();
+
+  const newSessionDoc = {
+    id: sessionId,
+    userId: safeUid,
+    title: sessionData?.title || 'New Skin Consultation',
+    sessionType: sessionData?.sessionType || 'chat',
+    sessionNotepad: sessionData?.sessionNotepad || '',
+    messages: sanitizeForFirestore(sessionData?.initialMessages || []),
+    messageCount: sessionData?.initialMessages?.length || 0,
+    lastMessage: sessionData?.initialMessages && sessionData.initialMessages.length > 0
+      ? String(sessionData.initialMessages[sessionData.initialMessages.length - 1].text || '').slice(0, 120)
+      : '',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    lastActiveAt: nowIso,
+    serverTimestamp: serverTimestamp()
+  };
+
   try {
-    const chatRef = doc(db, "chats", chatId);
-    const sanitizedMessages = sanitizeForFirestore(messages);
+    const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+    await setDoc(sessionRef, newSessionDoc, { merge: true });
+
+    // Also mirror to chats collection for backward compatibility
+    const chatRef = doc(db, "chats", sessionId);
     await setDoc(chatRef, {
-      userId,
-      messages: sanitizedMessages,
+      userId: safeUid,
+      sessionId,
+      title: newSessionDoc.title,
+      messages: newSessionDoc.messages,
+      sessionNotepad: newSessionDoc.sessionNotepad,
       updatedAt: serverTimestamp()
     }, { merge: true });
+
+    return {
+      id: sessionId,
+      userId: safeUid,
+      title: newSessionDoc.title,
+      sessionType: newSessionDoc.sessionType,
+      sessionNotepad: newSessionDoc.sessionNotepad,
+      messages: newSessionDoc.messages,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastActiveAt: nowIso,
+      messageCount: newSessionDoc.messageCount,
+      lastMessage: newSessionDoc.lastMessage
+    };
+  } catch (err) {
+    console.error("Failed to create chat session in Firestore:", err);
+    return {
+      id: sessionId,
+      userId: safeUid,
+      title: sessionData?.title || 'New Skin Consultation',
+      sessionType: sessionData?.sessionType || 'chat',
+      sessionNotepad: sessionData?.sessionNotepad || '',
+      messages: sessionData?.initialMessages || [],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastActiveAt: nowIso,
+      messageCount: 0,
+      lastMessage: ''
+    };
+  }
+};
+
+export const saveChatSessionData = async (
+  userId: string,
+  sessionId: string,
+  updates: {
+    messages?: any[];
+    title?: string;
+    sessionNotepad?: string;
+    sessionType?: 'onboarding_report' | 'scan_report' | 'chat' | 'consultation';
+  }
+) => {
+  if (!sessionId) return;
+  const safeUid = userId || 'guest_user';
+  const nowIso = new Date().toISOString();
+
+  const payload: Record<string, any> = {
+    updatedAt: nowIso,
+    lastActiveAt: nowIso,
+    serverTimestamp: serverTimestamp()
+  };
+
+  if (updates.messages !== undefined) {
+    payload.messages = sanitizeForFirestore(updates.messages);
+    payload.messageCount = updates.messages.length;
+    if (updates.messages.length > 0) {
+      const last = updates.messages[updates.messages.length - 1];
+      payload.lastMessage = String(last.text || '').slice(0, 120);
+    }
+  }
+
+  if (updates.title) {
+    payload.title = updates.title;
+  }
+  if (updates.sessionNotepad !== undefined) {
+    payload.sessionNotepad = updates.sessionNotepad;
+  }
+  if (updates.sessionType) {
+    payload.sessionType = updates.sessionType;
+  }
+
+  try {
+    const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+    await setDoc(sessionRef, payload, { merge: true });
+
+    // Also mirror to chats collection for backward compatibility
+    const chatRef = doc(db, "chats", sessionId);
+    await setDoc(chatRef, {
+      userId: safeUid,
+      ...payload
+    }, { merge: true });
+  } catch (err) {
+    console.error("Failed to save chat session data:", err);
+  }
+};
+
+export const updateSessionNotepadInDb = async (
+  userId: string,
+  sessionId: string,
+  notepadContent: string
+) => {
+  if (!sessionId) return;
+  const safeUid = userId || 'guest_user';
+  try {
+    const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+    await setDoc(sessionRef, {
+      sessionNotepad: notepadContent,
+      updatedAt: new Date().toISOString(),
+      serverTimestamp: serverTimestamp()
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Failed to update session notepad in Firestore:", err);
+  }
+};
+
+export const getChatSession = async (userId: string, sessionId: string) => {
+  if (!sessionId) return null;
+  const safeUid = userId || 'guest_user';
+  try {
+    const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+    const snap = await getDoc(sessionRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as any;
+    }
+    // Fallback to chats collection
+    const chatRef = doc(db, "chats", sessionId);
+    const chatSnap = await getDoc(chatRef);
+    if (chatSnap.exists()) {
+      return { id: chatSnap.id, ...chatSnap.data() } as any;
+    }
+  } catch (err) {
+    console.warn("Failed to get chat session:", err);
+  }
+  return null;
+};
+
+export const deleteChatSession = async (userId: string, sessionId: string) => {
+  if (!sessionId) return;
+  const safeUid = userId || 'guest_user';
+  try {
+    const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+    await deleteDoc(sessionRef);
+    const chatRef = doc(db, "chats", sessionId);
+    await deleteDoc(chatRef);
+  } catch (err) {
+    console.warn("Failed to delete chat session:", err);
+  }
+};
+
+export const subscribeUserSessions = (
+  userId: string,
+  callback: (sessions: any[]) => void
+) => {
+  const safeUid = userId || 'guest_user';
+  const sessionsCol = collection(db, "users", safeUid, "agent_sessions");
+
+  return onSnapshot(sessionsCol, async (snapshot) => {
+    if (!snapshot.empty) {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort descending by lastActiveAt or updatedAt
+      list.sort((a: any, b: any) => {
+        const timeA = new Date(a.lastActiveAt || a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.lastActiveAt || b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      callback(list);
+    } else {
+      // Check if user has legacy chat in chats/chat_${safeUid} or chats/${safeUid} to auto-migrate into a unified session!
+      try {
+        let legacySnap = await getDoc(doc(db, "chats", `chat_${safeUid}`));
+        if (!legacySnap.exists()) {
+          legacySnap = await getDoc(doc(db, "chats", safeUid));
+        }
+
+        if (legacySnap.exists() && legacySnap.data()?.messages?.length > 0) {
+          const legacyData = legacySnap.data();
+          const legacySessionId = `session_initial_${safeUid}`;
+          const migratedSession = {
+            id: legacySessionId,
+            userId: safeUid,
+            title: legacyData.title || 'Initial Skin Consultation',
+            sessionType: 'chat',
+            sessionNotepad: legacyData.sessionNotepad || '',
+            messages: legacyData.messages || [],
+            messageCount: legacyData.messages?.length || 0,
+            lastMessage: legacyData.messages?.[legacyData.messages.length - 1]?.text || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            serverTimestamp: serverTimestamp()
+          };
+
+          const newDocRef = doc(db, "users", safeUid, "agent_sessions", legacySessionId);
+          await setDoc(newDocRef, migratedSession, { merge: true });
+          callback([migratedSession]);
+          return;
+        }
+      } catch (migErr) {
+        console.warn("Legacy chat migration check error:", migErr);
+      }
+      callback([]);
+    }
+  }, (err) => {
+    console.warn("Firestore subscribeUserSessions error:", err);
+    callback([]);
+  });
+};
+
+export const subscribeChatSession = (
+  userId: string,
+  sessionId: string,
+  callback: (session: any) => void
+) => {
+  if (!sessionId) {
+    callback(null);
+    return () => {};
+  }
+  const safeUid = userId || 'guest_user';
+  const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+
+  return onSnapshot(sessionRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback({ id: docSnap.id, ...docSnap.data() });
+    } else {
+      // Fallback check to chats collection
+      const chatRef = doc(db, "chats", sessionId);
+      getDoc(chatRef).then(cSnap => {
+        if (cSnap.exists()) {
+          callback({ id: cSnap.id, ...cSnap.data() });
+        } else {
+          callback(null);
+        }
+      }).catch(() => callback(null));
+    }
+  }, (err) => {
+    console.warn("Firestore subscribeChatSession error:", err);
+    callback(null);
+  });
+};
+
+// Legacy Chat Persistence Helpers (mirrored with session architecture)
+export const saveChatMessage = async (userId: string, chatId: string, messages: any[]) => {
+  try {
+    const safeUid = userId || 'guest_user';
+    await saveChatSessionData(safeUid, chatId, { messages });
   } catch (err) {
     console.error("Failed to save chat message:", err);
   }

@@ -111,7 +111,7 @@ export async function initializeNode(state: AgentState) {
   });
 
   // Get session scratchpad
-  const sessionNotepad = getSessionNotepad(state.sessionId);
+  const sessionNotepad = await getSessionNotepad(state.sessionId, state.userId);
 
   // Construct initial Gemini conversation messages if not already present
   let llmMessages = state.llmMessages || [];
@@ -158,7 +158,7 @@ export async function reasoningNode(state: AgentState) {
   }
 
   const currentIterations = state.iterations + 1;
-  const currentNotepad = getSessionNotepad(state.sessionId) || state.sessionNotepad || '';
+  const currentNotepad = (await getSessionNotepad(state.sessionId, state.userId)) || state.sessionNotepad || '';
   const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad);
   
   // Refresh active MCP tools before generating declarations

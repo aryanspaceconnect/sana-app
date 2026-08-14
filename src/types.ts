@@ -192,6 +192,20 @@ export interface ChatMessage {
   searchSites?: Array<{ title: string; url: string; discover: number; finish: number }>;
 }
 
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActiveAt?: string;
+  sessionType?: 'onboarding_report' | 'scan_report' | 'chat' | 'consultation';
+  sessionNotepad?: string; // Per-session scratchpad / working memory
+  messages: ChatMessage[];
+  messageCount?: number;
+  lastMessage?: string;
+}
+
 export interface CalendarEventItem {
   id: string;
   userId: string;
