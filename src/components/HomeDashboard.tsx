@@ -575,18 +575,18 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-4/5" />
           </div>
         ) : companionSignal?.lines && companionSignal.lines.length > 0 ? (
-          <div className="space-y-4 py-1">
+          <div className="space-y-3.5 py-1">
             {companionSignal.lines.map((sentence, idx) => (
               <p
                 key={idx}
-                className="text-[16px] text-[#2c3038] leading-[1.7] font-normal tracking-normal font-['Newsreader',serif]"
+                className="text-[14.5px] text-[#2c3038] leading-[1.65] font-medium tracking-[-0.01em] font-sans"
               >
                 {sentence}
               </p>
             ))}
           </div>
         ) : (
-          <p className="text-[16px] text-[#2c3038] leading-[1.7] font-normal tracking-normal font-['Newsreader',serif]">
+          <p className="text-[14.5px] text-[#2c3038] leading-[1.65] font-medium tracking-[-0.01em] font-sans">
             {userName}, with today&apos;s UV and humidity conditions, giving your skin barrier gentle hydration and broad-spectrum SPF 50 will keep your skin glowing and balanced.
           </p>
         )}
