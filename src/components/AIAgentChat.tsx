@@ -16,6 +16,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { ThinkingReasoning, TraceRow } from './ThinkingReasoning';
 import { LoadingState } from './LoadingState';
 import { WebSearch } from './WebSearch';
+import { PlusMenu } from './PlusMenu';
 
 interface AIAgentChatProps {
   userProfile: UserProfile | null;
@@ -272,6 +273,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const [vaultNotes, setVaultNotes] = useState<VaultNote[]>([]);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -345,12 +347,22 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     const reader = new FileReader();
     reader.onload = async (event) => {
       const textContent = event.target?.result as string || '';
-      const promptText = `I am uploading a document for my Agent Memory Vault: "${file.name}". Please ingest this into my vault:\n\n${textContent.substring(0, 3000)}`;
+      const promptText = `I am uploading a clinical document for my Agent Memory Vault: "${file.name}". Please analyze and ingest this:\n\n${textContent.substring(0, 3000)}`;
 
       handleSendMessage(promptText);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
+  };
+
+  // Handle skin photo uploads for visual diagnosis/notes
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const promptText = `I am attaching a skin photo / product snapshot: "${file.name}". Please analyze the skin condition or formulation details.`;
+    handleSendMessage(promptText);
+    if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
   // Minimize pill navigation when typing / reading chat
@@ -704,12 +716,19 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         </div>
       )}
 
-      {/* Hidden File Input for Vault Attachment Ingestion */}
+      {/* Hidden File Inputs for Document and Image Ingestion */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
         accept=".txt,.md,.pdf,.json,.csv"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={imageInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
         className="hidden"
       />
 
@@ -722,14 +741,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           }}
           className="w-full max-w-[84%] sm:max-w-[380px] flex items-center space-x-1.5 p-1.5 pl-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-md transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-lg"
         >
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            title="Upload Document to Agent Memory Vault"
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100/80 transition-all duration-200 cursor-pointer shrink-0 flex items-center justify-center active:scale-95"
-          >
-            <Icon icon="solar:add-circle-linear" className="w-5 h-5" />
-          </button>
+          <PlusMenu
+            onUploadDocument={() => fileInputRef.current?.click()}
+            onUploadImage={() => imageInputRef.current?.click()}
+            onOpenVault={() => setShowVaultModal(true)}
+          />
           <input
             type="text"
             value={inputText}
