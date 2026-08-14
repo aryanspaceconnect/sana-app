@@ -361,7 +361,18 @@ export async function toolsNode(state: AgentState) {
 
     try {
       console.log(`[ToolsNode] Executing tool '${call.name}' with args:`, call.args);
-      const validatedArgs = toolDef.parameters.parse(call.args);
+      let validatedArgs: any = call.args || {};
+      if (toolDef.parameters && typeof toolDef.parameters.safeParse === 'function') {
+        const parseResult = toolDef.parameters.safeParse(call.args || {});
+        if (parseResult.success) {
+          validatedArgs = parseResult.data;
+        } else {
+          console.warn(`[ToolsNode] Schema warning for '${call.name}', continuing with raw/coerced args:`, parseResult.error.message);
+          // If parse fails, pass raw args to execute so the tool handler's internal fallbacks can resolve it
+          validatedArgs = call.args || {};
+        }
+      }
+
       const output = await toolDef.execute(validatedArgs, execContext);
 
       // Check if tool produced an action proposal card

@@ -372,10 +372,12 @@ export interface VaultFileRecord {
   content: string;
   fileType: string;
   tags: string[];
-  hyperlinks: VaultHyperlink[];
+  hyperlinks?: VaultHyperlink[];
   createdAt: string;
   updatedAt: string;
   version: number;
+  localTime?: string;
+  recordedAt?: string;
 }
 
 export interface AgentVaultData {
@@ -1343,14 +1345,139 @@ export async function accessVaultFile(
   file: VaultFileRecord | null;
   found: boolean;
 }> {
+  if (!filePathOrId || typeof filePathOrId !== 'string' || filePathOrId.trim() === '') {
+    return { file: null, found: false };
+  }
+
   const normPath = normalizeVaultPath(filePathOrId);
+  const cleanKey = filePathOrId.trim().toLowerCase();
+  const baseName = normPath.split('/').pop()?.toLowerCase() || '';
   const vault = await loadFullAgentVault(userId);
 
-  const file = vault.files.find(f => f.id === filePathOrId || f.path === normPath || f.name === filePathOrId) || null;
+  // 1. Direct match in virtual files
+  let file = vault.files.find(f =>
+    f.id === filePathOrId ||
+    f.path === normPath ||
+    f.name === filePathOrId ||
+    f.name.toLowerCase() === baseName ||
+    f.path.toLowerCase() === normPath.toLowerCase() ||
+    f.id.toLowerCase() === cleanKey
+  ) || null;
+
+  if (file) {
+    return { file, found: true };
+  }
+
+  // 2. Lookup in Scans (daily_scans or intermediate_scans)
+  if (cleanKey.includes('scan') || normPath.includes('/daily_scans') || normPath.includes('/intermediate_scans')) {
+    const scanIdTarget = baseName.replace('.json', '');
+    try {
+      const scanVaultRes = await retrieveSkinScanVault(userId, {
+        scanType: normPath.includes('intermediate') ? 'intermediate_scan' : (normPath.includes('daily') ? 'daily_scan' : 'all'),
+        scanId: scanIdTarget,
+        limit: 5
+      });
+      if (scanVaultRes?.scans && scanVaultRes.scans.length > 0) {
+        const targetScan = scanVaultRes.scans.find((s: any) =>
+          (s.scanId && s.scanId.toLowerCase().includes(scanIdTarget)) ||
+          (s.id && s.id.toLowerCase().includes(scanIdTarget))
+        ) || scanVaultRes.scans[0];
+
+        const synthesizedFile: VaultFileRecord = {
+          id: targetScan.scanId || targetScan.id || `scan_${Date.now()}`,
+          name: normPath.split('/').pop() || `${targetScan.scanId || 'scan'}.json`,
+          folderPath: normPath.includes('intermediate') ? '/intermediate_scans' : '/daily_scans',
+          path: normPath,
+          content: JSON.stringify(targetScan, null, 2),
+          fileType: 'application/json',
+          tags: ['facial_scan', targetScan.scanType || 'daily_scan'],
+          createdAt: targetScan.timestamp || new Date().toISOString(),
+          updatedAt: targetScan.timestamp || new Date().toISOString(),
+          version: 1,
+          recordedAt: targetScan.timestamp || new Date().toISOString(),
+          localTime: new Date().toLocaleTimeString()
+        };
+        return { file: synthesizedFile, found: true };
+      }
+    } catch (e) {
+      console.warn('[accessVaultFile] Scan lookup fallback error:', e);
+    }
+  }
+
+  // 3. Lookup in Documents
+  const matchedDoc = vault.documents.find(d =>
+    d.id === filePathOrId ||
+    d.title.toLowerCase() === baseName.replace(/\.[^.]+$/, '') ||
+    normPath.toLowerCase().includes(d.title.toLowerCase())
+  );
+  if (matchedDoc) {
+    const docFile: VaultFileRecord = {
+      id: matchedDoc.id,
+      name: `${matchedDoc.title}.md`,
+      folderPath: '/documents',
+      path: normPath.startsWith('/') ? normPath : `/${normPath}`,
+      content: matchedDoc.content || matchedDoc.summary || '',
+      fileType: 'text/markdown',
+      tags: ['document', 'vault_doc'],
+      createdAt: matchedDoc.date || new Date().toISOString(),
+      updatedAt: matchedDoc.date || new Date().toISOString(),
+      version: 1,
+      recordedAt: matchedDoc.date || new Date().toISOString(),
+      localTime: new Date().toLocaleTimeString()
+    };
+    return { file: docFile, found: true };
+  }
+
+  // 4. Lookup in Notes
+  const matchedNote = vault.notes.find(n =>
+    n.id === filePathOrId ||
+    n.title.toLowerCase() === baseName.replace(/\.[^.]+$/, '') ||
+    normPath.toLowerCase().includes(n.title.toLowerCase())
+  );
+  if (matchedNote) {
+    const noteFile: VaultFileRecord = {
+      id: matchedNote.id,
+      name: `${matchedNote.title}.txt`,
+      folderPath: '/notes',
+      path: normPath.startsWith('/') ? normPath : `/${normPath}`,
+      content: `# ${matchedNote.title}\n\nCategory: ${matchedNote.category}\nDate: ${matchedNote.date}\nTags: ${matchedNote.tags?.join(', ') || 'none'}\n\n${matchedNote.description}`,
+      fileType: 'text/plain',
+      tags: matchedNote.tags || ['note'],
+      createdAt: matchedNote.date || new Date().toISOString(),
+      updatedAt: matchedNote.date || new Date().toISOString(),
+      version: 1,
+      recordedAt: matchedNote.date || new Date().toISOString(),
+      localTime: new Date().toLocaleTimeString()
+    };
+    return { file: noteFile, found: true };
+  }
+
+  // 5. Lookup in Goals (e.g. Skin_Goals_Log.txt)
+  if (cleanKey.includes('goal') && vault.goals && vault.goals.length > 0) {
+    const goalsSummary = vault.goals.map((g, idx) =>
+      `Goal #${idx + 1}: ${g.title}\nStatus: ${g.status}\nTarget Date: ${g.targetDate || 'Ongoing'}\nDescription: ${g.description || ''}\nMetrics:\n${(g.metrics || []).map(m => `  - ${m.name}: Baseline ${m.baseline ?? '-'}, Current ${m.current ?? '-'}, Target ${m.target ?? '-'}`).join('\n')}`
+    ).join('\n\n---\n\n');
+
+    const goalsFile: VaultFileRecord = {
+      id: 'skin_goals_log',
+      name: normPath.split('/').pop() || 'Skin_Goals_Log.txt',
+      folderPath: '/Skin_Health_Archive',
+      path: normPath,
+      content: `# Skin Health Goals Log\n\n${goalsSummary}`,
+      fileType: 'text/plain',
+      tags: ['goals', 'skin_health_archive'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1,
+      recordedAt: new Date().toISOString(),
+      localTime: new Date().toLocaleTimeString()
+    };
+    return { file: goalsFile, found: true };
+  }
 
   return {
-    file,
-    found: !!file
+    file: null,
+    found: false
   };
 }
 

@@ -760,11 +760,20 @@ export const exaAnswerTool: ToolDefinition = {
   }
 };
 
-export const createFolderSchema = z.object({
+export const createFolderSchema = z.preprocess((val: any) => {
+  if (typeof val === 'object' && val !== null) {
+    return {
+      name: String(val.name || val.folderName || val.title || val.folder_name || 'New_Folder'),
+      parentPath: String(val.parentPath || val.parent || val.folderPath || val.parent_path || '/'),
+      description: val.description ? String(val.description) : undefined
+    };
+  }
+  return val;
+}, z.object({
   name: z.string().describe('Name of the folder to create (e.g. PM_Routines, Skin_Scans, Clinical_Notes).'),
   parentPath: z.string().optional().default('/').describe('Parent directory path (default "/").'),
   description: z.string().optional().describe('Optional description of the folder purpose.')
-});
+}));
 
 export const createFolderTool: ToolDefinition = {
   name: 'create_folder',
@@ -780,13 +789,24 @@ export const createFolderTool: ToolDefinition = {
   }
 };
 
-export const createFileSchema = z.object({
+export const createFileSchema = z.preprocess((val: any) => {
+  if (typeof val === 'object' && val !== null) {
+    return {
+      name: String(val.name || val.fileName || val.filename || val.title || val.file_name || 'untitled.md'),
+      content: String(val.content ?? val.text ?? val.body ?? ''),
+      folderPath: String(val.folderPath || val.folder || val.parentPath || val.folder_path || '/'),
+      fileType: String(val.fileType || val.type || val.file_type || 'text/markdown'),
+      tags: val.tags || []
+    };
+  }
+  return val;
+}, z.object({
   name: z.string().describe('File name with extension (e.g. barrier_protocol.md, tretinoin_guide.txt).'),
   content: z.string().describe('Complete text, markdown, or JSON content of the file.'),
   folderPath: z.string().optional().default('/').describe('Folder path where file should be placed.'),
   fileType: z.string().optional().default('text/markdown').describe('MIME type or file type identifier.'),
   tags: flexArray([])
-});
+}));
 
 export const createFileTool: ToolDefinition = {
   name: 'create_file',
@@ -802,10 +822,19 @@ export const createFileTool: ToolDefinition = {
   }
 };
 
-export const arrangeFilesSchema = z.object({
+export const arrangeFilesSchema = z.preprocess((val: any) => {
+  if (typeof val === 'object' && val !== null) {
+    const rawFiles = val.fileIdsOrPaths || val.fileIds || val.files || val.filePaths || val.file_ids || [];
+    return {
+      fileIdsOrPaths: Array.isArray(rawFiles) ? rawFiles.map(String) : (typeof rawFiles === 'string' ? [rawFiles] : []),
+      targetFolderPath: String(val.targetFolderPath || val.targetFolder || val.folderPath || val.folder || val.target_folder_path || '/')
+    };
+  }
+  return val;
+}, z.object({
   fileIdsOrPaths: z.array(z.string()).describe('List of file IDs, file names, or file paths to move/re-arrange.'),
   targetFolderPath: z.string().describe('Target folder path to move the files into.')
-});
+}));
 
 export const arrangeFilesTool: ToolDefinition = {
   name: 'arrange_files',
@@ -822,14 +851,26 @@ export const arrangeFilesTool: ToolDefinition = {
   }
 };
 
-export const createHyperlinkSchema = z.object({
+export const createHyperlinkSchema = z.preprocess((val: any) => {
+  if (typeof val === 'object' && val !== null) {
+    return {
+      sourceType: val.sourceType || val.source_type || 'file',
+      sourceIdOrPath: String(val.sourceIdOrPath || val.sourceId || val.sourcePath || val.source || ''),
+      title: String(val.title || val.label || val.name || 'Hyperlink'),
+      targetType: val.targetType || val.target_type || 'file',
+      targetIdOrUrl: String(val.targetIdOrUrl || val.targetId || val.targetUrl || val.targetPath || val.target || ''),
+      notes: val.notes ? String(val.notes) : undefined
+    };
+  }
+  return val;
+}, z.object({
   sourceType: z.enum(['file', 'folder']).describe('Source item type to attach hyperlink to.'),
   sourceIdOrPath: z.string().describe('Source file ID, folder ID, or path.'),
   title: z.string().describe('Title / label for the hyperlink.'),
   targetType: z.enum(['file', 'folder', 'external']).describe('Target type being linked to.'),
   targetIdOrUrl: z.string().describe('Target file path/ID, folder path/ID, or external URL.'),
   notes: z.string().optional().describe('Optional context notes explaining the connection.')
-});
+}));
 
 export const createHyperlinkTool: ToolDefinition = {
   name: 'create_hyperlink',
@@ -853,16 +894,30 @@ export const createHyperlinkTool: ToolDefinition = {
   }
 };
 
-export const accessFolderSchema = z.object({
-  folderPathOrId: z.string().describe('Path or ID of the folder to open and inspect (e.g. "/PM_Routines", "/").')
-});
+export const accessFolderSchema = z.preprocess((val: any) => {
+  if (typeof val === 'string') return { folderPathOrId: val, folderPath: val, folderId: val };
+  if (typeof val === 'object' && val !== null) {
+    const raw = val.folderPathOrId || val.folderPath || val.folderId || val.path || val.id || val.folder || val.folder_path || val.folder_id || '/';
+    return {
+      folderPathOrId: String(raw || '/'),
+      folderPath: String(raw || '/'),
+      folderId: String(raw || '/')
+    };
+  }
+  return { folderPathOrId: '/', folderPath: '/', folderId: '/' };
+}, z.object({
+  folderPathOrId: z.string().describe('Path or ID of the folder to open and inspect (e.g. "/PM_Routines", "/").'),
+  folderPath: z.string().optional().describe('Alias for folderPathOrId.'),
+  folderId: z.string().optional().describe('Alias for folderPathOrId.')
+}));
 
 export const accessFolderTool: ToolDefinition = {
   name: 'access_folder',
   description: 'Opens a specific folder and retrieves its full directory map, nested subfolders, files, and connected hyperlinks. Call this whenever you state "I have decided to open this folder".',
   parameters: accessFolderSchema,
-  execute: async (args: z.infer<typeof accessFolderSchema>, context: AgentContext) => {
-    const contents = await accessVaultFolder(context.userId, args.folderPathOrId);
+  execute: async (args: any, context: AgentContext) => {
+    const target = args.folderPathOrId || args.folderPath || args.folderId || args.path || args.id || '/';
+    const contents = await accessVaultFolder(context.userId, target);
     return {
       success: true,
       message: `Opened folder '${contents.folderName}' (${contents.folderPath}).`,
@@ -871,20 +926,34 @@ export const accessFolderTool: ToolDefinition = {
   }
 };
 
-export const accessFileSchema = z.object({
-  filePathOrId: z.string().describe('Path or ID of the file to open and read.')
-});
+export const accessFileSchema = z.preprocess((val: any) => {
+  if (typeof val === 'string') return { filePathOrId: val, filePath: val, fileId: val };
+  if (typeof val === 'object' && val !== null) {
+    const raw = val.filePathOrId || val.filePath || val.fileId || val.path || val.id || val.fileName || val.filename || val.file_path || val.file_id || '';
+    return {
+      filePathOrId: String(raw || ''),
+      filePath: String(raw || ''),
+      fileId: String(raw || '')
+    };
+  }
+  return { filePathOrId: '', filePath: '', fileId: '' };
+}, z.object({
+  filePathOrId: z.string().describe('Path or ID of the file to open and read (e.g. "/Skin_Health_Archive/Skin_Goals_Log.txt").'),
+  filePath: z.string().optional().describe('Alias for filePathOrId.'),
+  fileId: z.string().optional().describe('Alias for filePathOrId.')
+}));
 
 export const accessFileTool: ToolDefinition = {
   name: 'access_file',
   description: 'Opens and reads the full text content, metadata, and connected hyperlinks of a specific file in Agent Vault.',
   parameters: accessFileSchema,
-  execute: async (args: z.infer<typeof accessFileSchema>, context: AgentContext) => {
-    const res = await accessVaultFile(context.userId, args.filePathOrId);
+  execute: async (args: any, context: AgentContext) => {
+    const target = args.filePathOrId || args.filePath || args.fileId || args.path || args.id || '';
+    const res = await accessVaultFile(context.userId, target);
     if (!res.found || !res.file) {
       return {
         success: false,
-        message: `File '${args.filePathOrId}' was not found in Agent Vault.`
+        message: `File '${target}' was not found in Agent Vault.`
       };
     }
     return {
