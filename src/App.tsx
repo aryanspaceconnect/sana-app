@@ -70,45 +70,77 @@ export default function App() {
 
   // Listen to Firebase Auth - Load Persisted User Profile & Settings from Firestore
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
-      if (user) {
-        // Fetch persisted settings directly from Firestore database
-        const dbUserData = await getUserProfileFromFirestore(user.uid);
-        const dbSettings = dbUserData?.settings || {};
-
-        const profile: UserProfile = {
-          uid: user.uid,
-          displayName: dbUserData?.displayName || user.displayName || (user.email ? user.email.split('@')[0] : 'SANA User'),
-          email: dbUserData?.email || user.email || 'guest@sana.app',
-          photoURL: dbUserData?.photoURL || user.photoURL || undefined,
-          isAnonymous: user.isAnonymous,
-          settings: {
-            temperatureUnit: 'C',
-            scanNotificationTime: '00:00',
-            scanReminderEnabled: true,
-            theme: 'light',
-            ...dbSettings
-          }
-        };
-        setUserProfile(profile);
-
-        // If onboarding has not been completed, trigger onboarding
-        const hasCompletedOnboarding = dbSettings.onboardingCompleted === true;
-        if (!hasCompletedOnboarding) {
-          setForceOnboarding(true);
-        } else {
-          setForceOnboarding(false);
-        }
-
-        await syncUserProfile(user, profile.settings);
-      } else {
-        setUserProfile(null);
-        setForceOnboarding(false);
+    let isMounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        setAuthInitializing(false);
       }
-      setAuthInitializing(false);
+    }, 2500);
+
+    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
+      try {
+        if (user) {
+          // Fetch persisted settings directly from Firestore database
+          let dbUserData: any = null;
+          try {
+            dbUserData = await getUserProfileFromFirestore(user.uid);
+          } catch (e) {
+            console.warn("Could not fetch user profile from firestore:", e);
+          }
+          const dbSettings = dbUserData?.settings || {};
+
+          const profile: UserProfile = {
+            uid: user.uid,
+            displayName: dbUserData?.displayName || user.displayName || (user.email ? user.email.split('@')[0] : 'SANA User'),
+            email: dbUserData?.email || user.email || 'guest@sana.app',
+            photoURL: dbUserData?.photoURL || user.photoURL || undefined,
+            isAnonymous: user.isAnonymous,
+            settings: {
+              temperatureUnit: 'C',
+              scanNotificationTime: '00:00',
+              scanReminderEnabled: true,
+              theme: 'light',
+              ...dbSettings
+            }
+          };
+          if (isMounted) {
+            setUserProfile(profile);
+
+            // If onboarding has not been completed, trigger onboarding
+            const hasCompletedOnboarding = dbSettings.onboardingCompleted === true;
+            if (!hasCompletedOnboarding) {
+              setForceOnboarding(true);
+            } else {
+              setForceOnboarding(false);
+            }
+          }
+
+          try {
+            await syncUserProfile(user, profile.settings);
+          } catch (e) {
+            console.warn("Could not sync user profile:", e);
+          }
+        } else {
+          if (isMounted) {
+            setUserProfile(null);
+            setForceOnboarding(false);
+          }
+        }
+      } catch (err) {
+        console.error("Auth state handler error:", err);
+      } finally {
+        if (isMounted) {
+          setAuthInitializing(false);
+          clearTimeout(safetyTimer);
+        }
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   // Dynamic browser coords fallback
