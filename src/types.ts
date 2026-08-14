@@ -7,6 +7,15 @@ export interface OnboardingProfile {
   ageGroup?: string;
   waterTarget?: string;
   routineHabits?: string;
+  userPerceptionText?: string;
+  preferredName?: string;
+  locationName?: string;
+  height?: string;
+  gender?: string;
+  hormonalFactors?: string;
+  skincareGoals?: string;
+  upcomingEvent?: string;
+  skinPriorities?: string;
 }
 
 export interface UserSettings {
@@ -22,6 +31,14 @@ export interface UserSettings {
   responseStyle?: 'professional_medical' | 'casual_conversational' | 'cool_friendly';
   onboardingCompleted?: boolean;
   onboardingProfile?: OnboardingProfile;
+  userPerceptionText?: string;
+  preferredName?: string;
+  height?: string;
+  gender?: string;
+  hormonalFactors?: string;
+  skincareGoals?: string;
+  upcomingEvent?: string;
+  skinPriorities?: string;
 }
 
 export interface UserProfile {
@@ -30,6 +47,15 @@ export interface UserProfile {
   email: string;
   photoURL?: string;
   isAnonymous: boolean;
+  preferredName?: string;
+  locationName?: string;
+  userPerceptionText?: string;
+  hormonalFactors?: string;
+  skincareGoals?: string;
+  skinPriorities?: string;
+  upcomingEvent?: string;
+  height?: string;
+  gender?: string;
   settings: UserSettings;
 }
 

@@ -109,6 +109,31 @@ function analyzeIntentAndThinkingMode(userPrompt: string): ThinkingAnalysis {
   };
 }
 
+function getUserProfileContextString(userProfile: any): string {
+  if (!userProfile) return "";
+  const settings = userProfile.settings || {};
+  const onboarding = settings.onboardingProfile || {};
+  const name = settings.preferredName || userProfile.displayName || "User";
+  const perception = settings.userPerceptionText || onboarding.userPerceptionText || "Not specified";
+  const location = settings.locationName || "Bardoli, IN";
+  const skinType = onboarding.skinType || settings.skinType || "Combination";
+  const concerns = onboarding.concerns || [];
+  const event = settings.upcomingEvent || onboarding.upcomingEvent || "None specified";
+  const priorities = settings.skinPriorities || onboarding.skinPriorities || "Overall skin health & barrier glow";
+
+  return `\nUser Profile Context:
+- Preferred Name: ${name}
+- Self-Described Skin Perception: "${perception}"
+- Registered Skin Type: ${skinType}
+- Target Skin Concerns: ${Array.isArray(concerns) ? concerns.join(', ') : concerns}
+- Location / Climate: ${location}
+- Upcoming Event Target: ${event}
+- Skin Goals / Priorities: ${priorities}
+- Gender / Biological Profile: ${settings.gender || 'Not specified'}
+- Height: ${settings.height ? settings.height + ' cm' : 'Not specified'}
+`;
+}
+
 // AI Chat Endpoint with SANA Thinking Agent
 app.post("/api/chat", async (req, res) => {
   try {
@@ -129,8 +154,10 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
+    const userCtx = getUserProfileContextString(userProfile);
     const systemInstruction = `You are SANA, a sophisticated AI skin health & wellness thinking agent.
-User Name: ${userProfile?.displayName || 'User'}.
+User Name: ${userProfile?.settings?.preferredName || userProfile?.displayName || 'User'}.
+${userCtx}
 Selected Agent Thinking Strategy: ${thinkingAnalysis.thinkingMode.toUpperCase()} THINKING MODE (Calculated Complexity: ${thinkingAnalysis.complexityScore}/10).
 Detected Intent: ${thinkingAnalysis.intent}.
 Applied Agent Swift Rules: ${thinkingAnalysis.appliedRules.join("; ")}.
@@ -140,7 +167,7 @@ ${thinkingAnalysis.thinkingMode === 'hard'
   ? "Deliver a deep, thorough, clinical-grade skin health analysis. Break down active ingredients, skin barrier protection rules, and step-by-step guidance clearly with expert depth."
   : "Deliver a concise, clear, and direct friendly answer. Keep it approachable and easy to digest."
 }
-Never use emojis. Maintain an elegant, warm, empathetic tone.`;
+Always address the user warmly using their Preferred Name if available. Never use emojis. Maintain an elegant, warm, empathetic tone.`;
 
     // Convert messages to Gemini format
     const contents = messages.map((m: { role: string; text: string }) => ({
@@ -210,8 +237,10 @@ app.post("/api/chat/stream", async (req, res) => {
       parts: [{ text: m.text }]
     }));
 
+    const userCtx = getUserProfileContextString(userProfile);
     const systemInstruction = `You are SANA, a sophisticated AI skin health & wellness thinking agent.
-User Name: ${userProfile?.displayName || 'User'}.
+User Name: ${userProfile?.settings?.preferredName || userProfile?.displayName || 'User'}.
+${userCtx}
 Selected Agent Thinking Strategy: ${thinkingAnalysis.thinkingMode.toUpperCase()} THINKING MODE (Calculated Complexity: ${thinkingAnalysis.complexityScore}/10).
 Detected Intent: ${thinkingAnalysis.intent}.
 Applied Agent Swift Rules: ${thinkingAnalysis.appliedRules.join("; ")}.
@@ -221,7 +250,7 @@ ${thinkingAnalysis.thinkingMode === 'hard'
   ? "Deliver a deep, thorough, clinical-grade skin health analysis. Break down active ingredients, skin barrier protection rules, and step-by-step guidance clearly with expert depth."
   : "Deliver a concise, clear, and direct friendly answer. Keep it approachable and easy to digest."
 }
-Never use emojis. Maintain an elegant, warm, empathetic tone.`;
+Always address the user warmly using their Preferred Name if available. Never use emojis. Maintain an elegant, warm, empathetic tone.`;
 
     try {
       const streamGenerator = generateContentStreamWithRouter({

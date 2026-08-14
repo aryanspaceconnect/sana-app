@@ -163,13 +163,21 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Mask Images thumbnails */}
-                        {maskImages.length > 0 && (
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-semibold text-slate-500 uppercase">Tag Mask Overlays ({maskImages.length})</span>
+                        {/* Captured Face Image & Mask Overlays */}
+                        {(scan.capturedImage || maskImages.length > 0) && (
+                          <div className="space-y-1.5 pt-1">
+                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Scan Media & Overlays</span>
                             <div className="flex space-x-2 overflow-x-auto pb-1">
+                              {scan.capturedImage && (
+                                <div className="shrink-0 w-16 h-16 rounded-xl bg-slate-900 border border-slate-700 overflow-hidden relative shadow-xs">
+                                  <img src={scan.capturedImage} alt="Captured Face" className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-0 inset-x-0 bg-black/80 text-white text-[8px] font-mono text-center truncate px-0.5">
+                                    Face Photo
+                                  </span>
+                                </div>
+                              )}
                               {maskImages.map((m, mIdx) => (
-                                <div key={mIdx} className="shrink-0 w-16 h-16 rounded-xl bg-slate-900 border border-slate-700 overflow-hidden relative group">
+                                <div key={mIdx} className="shrink-0 w-16 h-16 rounded-xl bg-slate-900 border border-slate-700 overflow-hidden relative group shadow-xs">
                                   <img src={m.mask_url} alt={m.label} className="w-full h-full object-cover" />
                                   <span className="absolute bottom-0 inset-x-0 bg-black/80 text-white text-[8px] font-mono text-center truncate px-0.5">
                                     {m.label}

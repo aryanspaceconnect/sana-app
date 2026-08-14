@@ -137,37 +137,74 @@ export const getUserProfileFromFirestore = async (uid: string) => {
 };
 
 // User Profile Sync
-export const syncUserProfile = async (user: User | { uid: string; displayName?: string | null; email?: string | null; photoURL?: string | null }, customSettings?: Record<string, any>) => {
+export const syncUserProfile = async (
+  user: User | { uid: string; displayName?: string | null; email?: string | null; photoURL?: string | null },
+  customSettings?: Record<string, any>,
+  additionalTopLevelData?: Record<string, any>
+) => {
   if (!user || !user.uid) return;
   try {
     const userRef = doc(db, "users", user.uid);
     const snap = await getDoc(userRef);
 
+    const sanitizedSettings = customSettings ? sanitizeForFirestore(customSettings) : {};
+    const sanitizedTopLevel = additionalTopLevelData ? sanitizeForFirestore(additionalTopLevelData) : {};
+
     if (!snap.exists()) {
-      await setDoc(userRef, {
-        displayName: user.displayName || "SANA User",
+      await setDoc(userRef, sanitizeForFirestore({
+        displayName: customSettings?.preferredName || user.displayName || "SANA User",
         email: user.email || "guest@sana.app",
         photoURL: user.photoURL || "",
+        preferredName: customSettings?.preferredName || user.displayName || "",
+        locationName: customSettings?.locationName || "Bardoli, IN",
+        userPerceptionText: customSettings?.userPerceptionText || "",
+        hormonalFactors: customSettings?.hormonalFactors || "",
+        skincareGoals: customSettings?.skincareGoals || "",
+        skinPriorities: customSettings?.skinPriorities || "",
+        upcomingEvent: customSettings?.upcomingEvent || "",
+        height: customSettings?.height || "",
+        gender: customSettings?.gender || "",
+        ...sanitizedTopLevel,
         settings: {
           temperatureUnit: "C",
           scanNotificationTime: "00:00",
           scanReminderEnabled: true,
           theme: "light",
           onboardingCompleted: false,
-          ...customSettings
+          ...sanitizedSettings
         },
-        createdAt: serverTimestamp()
-      });
-    } else if (customSettings) {
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }));
+    } else {
       const existingData = snap.data();
       const existingSettings = existingData.settings || {};
       const mergedSettings = {
         ...existingSettings,
-        ...customSettings
+        ...sanitizedSettings
       };
-      await updateDoc(userRef, {
-        "settings": mergedSettings
+
+      const payloadToUpdate: Record<string, any> = sanitizeForFirestore({
+        settings: mergedSettings,
+        updatedAt: serverTimestamp(),
+        ...sanitizedTopLevel
       });
+
+      // Explicitly mirror user-provided fields at top-level of userProfile doc in Firestore
+      if (customSettings?.preferredName) {
+        payloadToUpdate.displayName = customSettings.preferredName;
+        payloadToUpdate.preferredName = customSettings.preferredName;
+      }
+      if (customSettings?.locationName) payloadToUpdate.locationName = customSettings.locationName;
+      if (customSettings?.userPerceptionText) payloadToUpdate.userPerceptionText = customSettings.userPerceptionText;
+      if (customSettings?.hormonalFactors) payloadToUpdate.hormonalFactors = customSettings.hormonalFactors;
+      if (customSettings?.skincareGoals) payloadToUpdate.skincareGoals = customSettings.skincareGoals;
+      if (customSettings?.skinPriorities) payloadToUpdate.skinPriorities = customSettings.skinPriorities;
+      if (customSettings?.upcomingEvent) payloadToUpdate.upcomingEvent = customSettings.upcomingEvent;
+      if (customSettings?.height) payloadToUpdate.height = customSettings.height;
+      if (customSettings?.gender) payloadToUpdate.gender = customSettings.gender;
+
+      await updateDoc(userRef, payloadToUpdate);
     }
   } catch (err) {
     console.warn("syncUserProfile Firestore warning:", err);
@@ -193,7 +230,7 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
       rawMetrics: scanData.rawMetrics || null,
       scoreInfo: scanData.scoreInfo || null,
       concernImages: scanData.concernImages || null,
-      capturedImage: scanData.capturedImage ? scanData.capturedImage.slice(0, 500) + '...' : null, // keep concise reference for DB
+      capturedImage: scanData.capturedImage ? (scanData.capturedImage.length < 800000 ? scanData.capturedImage : scanData.capturedImage) : null,
       rawPerfectCorpOutput: scanData.rawPerfectCorpOutput || null,
       scanDate: todayStr,
       timestamp: serverTimestamp()
