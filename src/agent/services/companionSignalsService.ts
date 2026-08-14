@@ -32,6 +32,40 @@ function getGeminiClient(): GoogleGenAI | null {
   return new GoogleGenAI({ apiKey });
 }
 
+function parseToDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  if (typeof val?.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      return isNaN(d.getTime()) ? null : d;
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof val === 'object' && typeof val.seconds === 'number') {
+    const d = new Date(val.seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof val === 'string' || typeof val === 'number') {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function safeIsoString(val: any, fallback: string = new Date().toISOString()): string {
+  const d = parseToDate(val);
+  return d ? d.toISOString() : (typeof val === 'string' && val.length > 0 ? val : fallback);
+}
+
+function safeDateOnlyString(val: any, fallback: string = 'Unknown'): string {
+  const d = parseToDate(val);
+  if (d) return d.toISOString().split('T')[0];
+  if (typeof val === 'string' && val.length > 0) return val;
+  return fallback;
+}
+
 /**
  * Generate or fetch warm, context-aware Daily Companion Signals for the user
  */
@@ -71,14 +105,15 @@ export async function getOrGenerateCompanionSignals(
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const fireData = snap.data() as any;
-        const fireTime = fireData.timestamp ? new Date(fireData.timestamp).getTime() : 0;
+        const fireDate = parseToDate(fireData.timestamp);
+        const fireTime = fireDate ? fireDate.getTime() : 0;
         if (nowMs - fireTime < CACHE_TTL_MS && Array.isArray(fireData.lines) && fireData.lines.length > 0) {
           const resObj: CompanionSignalResponse = {
             id: fireData.id || `signal_${fireTime}`,
             userId: safeUid,
             lines: fireData.lines,
-            timestamp: fireData.timestamp || new Date().toISOString(),
-            cachedAt: fireData.cachedAt || new Date().toISOString(),
+            timestamp: safeIsoString(fireData.timestamp),
+            cachedAt: safeIsoString(fireData.cachedAt),
             enabled: true,
             contextMeta: fireData.contextMeta
           };
@@ -92,11 +127,11 @@ export async function getOrGenerateCompanionSignals(
   }
 
   // 3. Check activity check-in window (>2 days inactive check)
-  const lastActiveStr = settings.lastCompletedScanDate || userProfile?.updatedAt || null;
-  if (lastActiveStr && !options.forceRefresh) {
-    const lastActiveTime = new Date(lastActiveStr).getTime();
+  const lastActiveDate = parseToDate(settings.lastCompletedScanDate || userProfile?.updatedAt);
+  if (lastActiveDate && !options.forceRefresh) {
+    const lastActiveTime = lastActiveDate.getTime();
     const twoDaysMs = 48 * 60 * 60 * 1000;
-    if (!isNaN(lastActiveTime) && nowMs - lastActiveTime > twoDaysMs) {
+    if (nowMs - lastActiveTime > twoDaysMs) {
       console.log(`[CompanionSignalsService] User ${safeUid} inactive > 2 days. Returning default warm pulse.`);
       // Return a soft default pulse until they check in
       const defaultLines = [
@@ -166,10 +201,12 @@ export async function getOrGenerateCompanionSignals(
   let scanGraphSummary = "No recent facial scans recorded yet.";
   let lastScanDateStr = undefined;
   if (pastScans.length > 0) {
-    lastScanDateStr = pastScans[0].scanDate || pastScans[0].timestamp || 'Recently';
+    const rawFirstScanDate = pastScans[0].scanDate || pastScans[0].timestamp;
+    lastScanDateStr = safeIsoString(rawFirstScanDate, 'Recently');
+
     const scanPoints = pastScans.map(s => {
       const scanId = s.scanId || s.id || 'scan';
-      const date = s.scanDate || (s.timestamp ? new Date(s.timestamp).toISOString().split('T')[0] : 'Unknown');
+      const date = s.scanDate ? String(s.scanDate) : safeDateOnlyString(s.timestamp, 'Unknown');
       const h = s.hydrationScore ?? 80;
       const b = s.barrierScore ?? 80;
       const c = s.clarityScore ?? 80;
