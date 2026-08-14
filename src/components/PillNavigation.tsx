@@ -225,29 +225,14 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                     <DynamicCalendarIcon isActive={activeTab === 'calendar'} />
                   </button>
 
-                  {/* 4. @ Connect */}
-                  <button
-                    onClick={() => {
-                      setIsExpanded(true);
-                      setExpandedView('connect');
-                    }}
-                    className="p-2.5 rounded-2xl flex items-center justify-center text-[#616874] hover:text-[#1a1c1e] hover:bg-[#f2f4f7] transition-all duration-200 cursor-pointer font-bold text-base"
-                    title="Connect"
-                  >
-                    <Icon icon="solar:mention-square-linear" className="w-5 h-5" />
-                  </button>
-
-                  {/* Divider */}
-                  <div className="w-[1px] h-4 bg-slate-200/80 mx-0.5" />
-
-                  {/* 5. Expansion SVG Chevron Button */}
+                  {/* 4. Menu Expansion Button */}
                   <button
                     onClick={() => {
                       setIsExpanded(true);
                       setExpandedView('main');
                     }}
                     className="p-2.5 rounded-2xl flex items-center justify-center text-[#616874] hover:text-[#1a1c1e] hover:bg-[#f2f4f7] transition-all duration-200 cursor-pointer"
-                    title="Expand Menu"
+                    title="Menu & Settings"
                   >
                     <svg
                       width="18"

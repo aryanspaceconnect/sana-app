@@ -446,12 +446,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'uv')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#fffcf7] border border-[#fde8d0]/60 hover:bg-[#fff7ed] transition-all duration-200 cursor-pointer group"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[12.5px] font-bold leading-none text-[#c2410c] tracking-tight">
-                UV {uvVal.toFixed(1)}
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#f97316]/70 group-hover:scale-125 transition-transform" />
-            </div>
+            <span className="text-[12.5px] font-bold leading-none text-[#c2410c] tracking-tight">
+              UV {uvVal.toFixed(1)}
+            </span>
             <span className="text-[10px] font-semibold text-[#9a3412]/80 mt-1.5 truncate">
               {dailyBrief.uvLevel || (uvVal < 3 ? "Low" : uvVal < 6 ? "Moderate" : "High")}
             </span>
@@ -462,12 +459,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'aqi')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f8fdf9] border border-[#d1fae5]/60 hover:bg-[#f0fdf4] transition-all duration-200 cursor-pointer group"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[12.5px] font-bold leading-none text-[#15803d] tracking-tight">
-                AQI {aqiVal}
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]/70 group-hover:scale-125 transition-transform" />
-            </div>
+            <span className="text-[12.5px] font-bold leading-none text-[#15803d] tracking-tight">
+              AQI {aqiVal}
+            </span>
             <span className="text-[10px] font-semibold text-[#166534]/80 mt-1.5 truncate">
               {aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
             </span>
@@ -478,12 +472,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'humidity')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f7fbfe] border border-[#dbeafe]/60 hover:bg-[#eff6ff] transition-all duration-200 cursor-pointer group"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold leading-none text-[#0284c7] tracking-tight truncate">
-                {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '78%'}
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]/70 group-hover:scale-125 transition-transform" />
-            </div>
+            <span className="text-[12px] font-bold leading-none text-[#0284c7] tracking-tight truncate">
+              {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '78%'}
+            </span>
             <span className="text-[9.5px] font-semibold text-[#0369a1]/80 mt-1.5 truncate">
               {dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% rain` : '81% rain'}
             </span>

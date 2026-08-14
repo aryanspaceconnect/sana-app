@@ -220,7 +220,7 @@ function safeIsoString(val: any, fallback: string = new Date().toISOString()): s
  *
  * Rules:
  * - lines = lines.slice(0, 6)
- * - Drop line if length > 72
+ * - Drop line if length > 90
  * - If name appears in >1 line → strip name from extras
  * - If city appears in >1 line → strip from extras
  * - Reject / regen if match:
@@ -296,13 +296,13 @@ export function runPostLlmGuard(
       continue;
     }
 
-    // Drop line if length > 72
-    if (l.length > 72) {
-      if (l.length > 80) {
+    // Drop line if length > 90
+    if (l.length > 90) {
+      if (l.length > 105) {
         continue;
       }
-      // Trim slightly if just over 72
-      l = l.slice(0, 72).replace(/[\s,;:-]+$/, '');
+      // Trim slightly if just over 90
+      l = l.slice(0, 90).replace(/[\s,;:-]+$/, '');
       if (!l.endsWith('.')) l += '.';
     }
 
@@ -329,7 +329,7 @@ export function runPostLlmGuard(
     }
 
     l = l.trim();
-    if (l && l.length <= 72) {
+    if (l && l.length <= 90) {
       cleaned.push(l);
     }
   }
@@ -519,7 +519,7 @@ export async function getOrGenerateCompanionSignals(
 Brain-wise: home is glanced, not read. Working memory holds ~one actionable thought per line.
 Every line must be concrete, specific, and directly useful.
 
-Max 72 characters a line, 45-60 suggested, 2 to 3 lines total.
+Max 90 characters a line, 60-80 suggested, 2 to 3 lines total.
 
 VOICE & TONE:
 - Practical, dermatologically grounded, calm.
@@ -537,7 +537,7 @@ STRICTLY PROHIBITED (Hard Ban):
 HARD RULES:
 - Output ONLY a JSON array of strings. No markdown, no prose outside JSON.
 - Exactly 2 to 3 lines.
-- Each line: max 64 characters (absolute hard limit 72).
+- Each line: max 80 characters (absolute hard limit 90).
 - Be precise with textures and ingredients: specify "fluid SPF", "hyaluronic serum", "ceramide cream", "gel cleanser", "niacinamide", "salicylic acid pause", etc.
 
 GOOD EXAMPLES:
@@ -564,7 +564,7 @@ ${universalNotepad ? `- Notepad Memory: "${universalNotepad}"` : ''}
 SUGGESTIONS FROM ALL EARLIER INTERVALS TODAY (Maintain continuity, do not repeat identical lines, evolve gracefully):
 ${earlierAdviceContextBlock}
 
-Generate 2 to 4 concise lines (each under 64 chars, absolute max 72). JSON array of strings only.`;
+Generate 2 to 3 concise lines (each under 80 chars, absolute max 90). JSON array of strings only.`;
 
   let rawLines: string[] = [];
   try {
