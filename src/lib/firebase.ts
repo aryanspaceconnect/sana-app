@@ -156,7 +156,7 @@ export const syncUserProfile = async (
         email: user.email || "guest@sana.app",
         photoURL: user.photoURL || "",
         preferredName: customSettings?.preferredName || user.displayName || "",
-        locationName: customSettings?.locationName || "Bardoli, IN",
+        locationName: customSettings?.locationName || "",
         userPerceptionText: customSettings?.userPerceptionText || "",
         hormonalFactors: customSettings?.hormonalFactors || "",
         skincareGoals: customSettings?.skincareGoals || "",

@@ -116,7 +116,7 @@ function getUserProfileContextString(userProfile: any): string {
   const onboarding = settings.onboardingProfile || {};
   const name = settings.preferredName || userProfile.displayName || "User";
   const perception = settings.userPerceptionText || onboarding.userPerceptionText || "Not specified";
-  const location = settings.locationName || "Bardoli, IN";
+  const location = settings.locationName || "Local Area";
   const skinType = onboarding.skinType || settings.skinType || "Combination";
   const concerns = onboarding.concerns || [];
   const event = settings.upcomingEvent || onboarding.upcomingEvent || "None specified";
@@ -857,7 +857,7 @@ app.post("/api/daily-brief", async (req, res) => {
     else if (weather.uvIndex < 11) uvLevel = "Very High";
     else uvLevel = "Extreme";
 
-    const displayLocation = locationName || weather.locationName || "Bardoli, IN";
+    const displayLocation = locationName || weather.locationName || "Local Area";
 
     res.json({
       greeting: "Morning, sunshine",

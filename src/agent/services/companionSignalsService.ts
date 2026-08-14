@@ -31,9 +31,17 @@ export interface CompanionSignalResponse {
   };
 }
 
-export type DiurnalWindowKey = 'window_04_06' | 'window_06_11' | 'window_11_17' | 'window_17_22' | 'window_22_04';
+export type DiurnalWindowKey =
+  | 'window_04_06'
+  | 'window_06_11'
+  | 'window_11_14'
+  | 'window_14_17'
+  | 'window_17_19'
+  | 'window_19_22'
+  | 'window_22_24'
+  | 'window_00_04';
 
-interface DiurnalWindowInfo {
+export interface DiurnalWindowInfo {
   key: DiurnalWindowKey;
   label: string;
   startHour: number;
@@ -42,60 +50,115 @@ interface DiurnalWindowInfo {
   periodDescription: string;
 }
 
+export const DIURNAL_WINDOW_SCHEDULE: DiurnalWindowInfo[] = [
+  {
+    key: 'window_04_06',
+    label: '4 AM – 6 AM (Early Dawn)',
+    startHour: 4,
+    endHour: 6,
+    isNight: false,
+    periodDescription: 'First awakenings, pre-sun dawn setup.'
+  },
+  {
+    key: 'window_06_11',
+    label: '6 AM – 11 AM (Morning)',
+    startHour: 6,
+    endHour: 11,
+    isNight: false,
+    periodDescription: 'Daylight barrier activation, rising solar exposome.'
+  },
+  {
+    key: 'window_11_14',
+    label: '11 AM – 2 PM (Peak Midday)',
+    startHour: 11,
+    endHour: 14,
+    isNight: false,
+    periodDescription: 'Maximum solar heat and UV radiation intensity.'
+  },
+  {
+    key: 'window_14_17',
+    label: '2 PM – 5 PM (Late Afternoon)',
+    startHour: 14,
+    endHour: 17,
+    isNight: false,
+    periodDescription: 'Afternoon transpiration, hydration replenishment.'
+  },
+  {
+    key: 'window_17_19',
+    label: '5 PM – 7 PM (Golden Dusk)',
+    startHour: 17,
+    endHour: 19,
+    isNight: true,
+    periodDescription: 'Dusk wind-down, daylight transition.'
+  },
+  {
+    key: 'window_19_22',
+    label: '7 PM – 10 PM (Evening Rest)',
+    startHour: 19,
+    endHour: 22,
+    isNight: true,
+    periodDescription: 'Evening barrier replenishment, unwinding.'
+  },
+  {
+    key: 'window_22_24',
+    label: '10 PM – 12 AM (Pre-Midnight Regeneration)',
+    startHour: 22,
+    endHour: 24,
+    isNight: true,
+    periodDescription: 'Night rest, lipid barrier repair.'
+  },
+  {
+    key: 'window_00_04',
+    label: '12 AM – 4 AM (Deep Overnight Cellular Recovery)',
+    startHour: 0,
+    endHour: 4,
+    isNight: true,
+    periodDescription: 'Deep overnight rest and cellular renewal.'
+  }
+];
+
+export const ORDERED_WINDOW_KEYS: DiurnalWindowKey[] = [
+  'window_00_04',
+  'window_04_06',
+  'window_06_11',
+  'window_11_14',
+  'window_14_17',
+  'window_17_19',
+  'window_19_22',
+  'window_22_24'
+];
+
 /**
  * Determine diurnal window from local hour (0-23)
- * 04:00 - 05:59 -> Early Morning (window_04_06)
- * 06:00 - 10:59 -> Morning (window_06_11)
- * 11:00 - 16:59 -> Midday / Afternoon (window_11_17)
- * 17:00 - 21:59 -> Evening (window_17_22)
- * 22:00 - 03:59 -> Night / Recovery (window_22_04)
+ * Exact interval boundaries:
+ * 4 to 6   (4:00 - 5:59) -> window_04_06
+ * 6 to 11  (6:00 - 10:59) -> window_06_11
+ * 11 to 2  (11:00 - 13:59) -> window_11_14
+ * 2 to 5   (14:00 - 16:59) -> window_14_17
+ * 5 to 7   (17:00 - 18:59) -> window_17_19
+ * 7 to 10  (19:00 - 21:59) -> window_19_22
+ * 10 to 12 (22:00 - 23:59) -> window_22_24
+ * 12 to 4  (00:00 - 03:59) -> window_00_04
  */
 export function getDiurnalWindowInfo(localHour: number): DiurnalWindowInfo {
-  if (localHour >= 4 && localHour < 6) {
-    return {
-      key: 'window_04_06',
-      label: 'Early Morning (4 AM - 6 AM)',
-      startHour: 4,
-      endHour: 6,
-      isNight: false,
-      periodDescription: 'Early dawn awakenings, pre-sun barrier preparation.'
-    };
-  } else if (localHour >= 6 && localHour < 11) {
-    return {
-      key: 'window_06_11',
-      label: 'Morning (6 AM - 11 AM)',
-      startHour: 6,
-      endHour: 11,
-      isNight: false,
-      periodDescription: 'Morning barrier setup, rising daylight, diurnal activation.'
-    };
-  } else if (localHour >= 11 && localHour < 17) {
-    return {
-      key: 'window_11_17',
-      label: 'Midday & Afternoon (11 AM - 5 PM)',
-      startHour: 11,
-      endHour: 17,
-      isNight: false,
-      periodDescription: 'Peak solar heat/UV, oil transpiration, hydration refresh.'
-    };
-  } else if (localHour >= 17 && localHour < 22) {
-    return {
-      key: 'window_17_22',
-      label: 'Evening & Golden Hour (5 PM - 10 PM)',
-      startHour: 17,
-      endHour: 22,
-      isNight: true,
-      periodDescription: 'Evening detox, post-sun barrier replenishment.'
-    };
+  const normHour = ((localHour % 24) + 24) % 24;
+
+  if (normHour >= 4 && normHour < 6) {
+    return DIURNAL_WINDOW_SCHEDULE[0]; // 4-6
+  } else if (normHour >= 6 && normHour < 11) {
+    return DIURNAL_WINDOW_SCHEDULE[1]; // 6-11
+  } else if (normHour >= 11 && normHour < 14) {
+    return DIURNAL_WINDOW_SCHEDULE[2]; // 11-14
+  } else if (normHour >= 14 && normHour < 17) {
+    return DIURNAL_WINDOW_SCHEDULE[3]; // 14-17
+  } else if (normHour >= 17 && normHour < 19) {
+    return DIURNAL_WINDOW_SCHEDULE[4]; // 17-19
+  } else if (normHour >= 19 && normHour < 22) {
+    return DIURNAL_WINDOW_SCHEDULE[5]; // 19-22
+  } else if (normHour >= 22 && normHour < 24) {
+    return DIURNAL_WINDOW_SCHEDULE[6]; // 22-24
   } else {
-    return {
-      key: 'window_22_04',
-      label: 'Night & Cellular Repair (10 PM - 4 AM)',
-      startHour: 22,
-      endHour: 4,
-      isNight: true,
-      periodDescription: 'Overnight rest, stratum corneum lipid regeneration.'
-    };
+    return DIURNAL_WINDOW_SCHEDULE[7]; // 0-4
   }
 }
 
@@ -137,13 +200,6 @@ function parseToDate(val: any): Date | null {
 function safeIsoString(val: any, fallback: string = new Date().toISOString()): string {
   const d = parseToDate(val);
   return d ? d.toISOString() : (typeof val === 'string' && val.length > 0 ? val : fallback);
-}
-
-function safeDateOnlyString(val: any, fallback: string = 'Unknown'): string {
-  const d = parseToDate(val);
-  if (d) return d.toISOString().split('T')[0];
-  if (typeof val === 'string' && val.length > 0) return val;
-  return fallback;
 }
 
 /**
@@ -326,7 +382,7 @@ export async function getOrGenerateCompanionSignals(
     };
   }
 
-  // Check In-Memory Diurnal Cache
+  // 1. Check In-Memory Diurnal Cache — NEVER re-query LLM/Firestore if within the same window unless explicitly forceRefresh
   const memoryEntry = DIURNAL_MEMORY_CACHE[safeUid];
   if (!options.forceRefresh && memoryEntry && memoryEntry.dateStr === dateStr) {
     const cachedWindowSignal = memoryEntry.windows[windowInfo.key];
@@ -335,7 +391,7 @@ export async function getOrGenerateCompanionSignals(
     }
   }
 
-  // Check Firestore Diurnal Store: users/{uid}/diurnal_signals/{dateStr}
+  // 2. Check Firestore Diurnal Store: users/{uid}/diurnal_signals/{dateStr}
   let earlierDayWindowsContext: Array<{ window: string; label: string; lines: string[] }> = [];
   try {
     if (db) {
@@ -346,15 +402,7 @@ export async function getOrGenerateCompanionSignals(
         const storedWindows = dayData.windows || {};
 
         // Collect all previous windows from earlier in the day
-        const windowOrder: DiurnalWindowKey[] = [
-          'window_04_06',
-          'window_06_11',
-          'window_11_17',
-          'window_17_22',
-          'window_22_04'
-        ];
-
-        for (const wKey of windowOrder) {
+        for (const wKey of ORDERED_WINDOW_KEYS) {
           if (wKey === windowInfo.key) break;
           if (storedWindows[wKey]?.lines && Array.isArray(storedWindows[wKey].lines)) {
             earlierDayWindowsContext.push({
@@ -365,10 +413,10 @@ export async function getOrGenerateCompanionSignals(
           }
         }
 
-        // If not force refresh, and current window is already generated, return it
+        // If not force refresh, and current window is already generated in Firestore, return it immediately without calling Gemini or writing to DB
         if (!options.forceRefresh && storedWindows[windowInfo.key]?.lines?.length > 0) {
           const resObj = storedWindows[windowInfo.key] as CompanionSignalResponse;
-          // Update in-memory
+          // Populate in-memory cache to save even Firestore reads on subsequent client refreshes
           if (!DIURNAL_MEMORY_CACHE[safeUid] || DIURNAL_MEMORY_CACHE[safeUid].dateStr !== dateStr) {
             DIURNAL_MEMORY_CACHE[safeUid] = { dateStr, windows: storedWindows, lastUpdated: Date.now() };
           } else {
@@ -384,9 +432,9 @@ export async function getOrGenerateCompanionSignals(
 
   // Gather Context
   const preferredName = settings.preferredName || userProfile?.displayName?.split(' ')[0] || 'friend';
-  const locationName = settings.locationName || userProfile?.locationName || 'Bardoli, IN';
-  const lat = options.latitude ?? settings.latitude ?? 21.12;
-  const lon = options.longitude ?? settings.longitude ?? 73.11;
+  const locationName = settings.locationName || userProfile?.locationName || 'Local Atmosphere';
+  const lat = options.latitude ?? settings.latitude;
+  const lon = options.longitude ?? settings.longitude;
 
   // Goals & Constraints
   const skincareGoals = settings.skincareGoals || userProfile?.skincareGoals || 'Restore skin barrier & boost glow';
@@ -438,11 +486,11 @@ export async function getOrGenerateCompanionSignals(
     : currentTemp;
   const afternoonOutlook = envData?.hourlyForecastNext24h?.afternoonWorseningNote || 'Stable conditions across the day';
 
-  // Build string of what was suggested earlier in the day
+  // Build string of what was suggested in ALL past intervals of today
   let earlierAdviceContextBlock = 'None (First refresh of the day).';
   if (earlierDayWindowsContext.length > 0) {
     earlierAdviceContextBlock = earlierDayWindowsContext
-      .map(w => `[${w.label}]:\n` + w.lines.map(l => `  - "${l}"`).join('\n'))
+      .map(w => `[Interval: ${w.label}]:\n` + w.lines.map(l => `  - "${l}"`).join('\n'))
       .join('\n\n');
   }
 
@@ -495,9 +543,9 @@ STYLE EXAMPLES (match this density, not the facts)
 ["Humidity’s high — keep layers light.", "Let actives rest if the barrier’s been reactive."]
 ["Grey light still carries UV — a thin SPF is enough.", "Skip heavy cream until the air dries out."]`;
 
-  const promptContent = `CURRENT TIME & DIURNAL WINDOW:
-- Local Time: ${localHour.toString().padStart(2, '0')}:00 (Window: ${windowInfo.label})
-- Window Phase: ${windowInfo.periodDescription}
+  const promptContent = `CURRENT TIME & DIURNAL INTERVAL:
+- Local Time: ${localHour.toString().padStart(2, '0')}:00 (Current Interval: ${windowInfo.label})
+- Interval Focus: ${windowInfo.periodDescription}
 - Is Night/Dark: ${isNight}
 
 ENVIRONMENTAL GROUND TRUTH (Location: ${locationName}):
@@ -511,7 +559,7 @@ USER PROFILE & CONSTRAINTS (Internal understanding only — do NOT parrot stupid
 - Cycle / Incident: "${hormonalFactors}"
 ${universalNotepad ? `- Notepad Memory: "${universalNotepad}"` : ''}
 
-WHAT YOU SUGGESTED IN EARLIER WINDOWS TODAY (Do not repeat or contradict; evolve smoothly for this window):
+SUGGESTIONS FROM ALL EARLIER INTERVALS TODAY (Maintain continuity, do not repeat identical lines, evolve gracefully):
 ${earlierAdviceContextBlock}
 
 Generate 2 to 4 concise lines (each under 64 chars, absolute max 72). JSON array of strings only.`;

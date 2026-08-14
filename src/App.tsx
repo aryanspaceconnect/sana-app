@@ -120,9 +120,9 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             temperatureUnit: userProfile?.settings?.temperatureUnit || 'C',
-            latitude: userProfile?.settings?.latitude ?? 21.12,
-            longitude: userProfile?.settings?.longitude ?? 73.11,
-            locationName: userProfile?.settings?.locationName || 'Bardoli, IN'
+            latitude: userProfile?.settings?.latitude,
+            longitude: userProfile?.settings?.longitude,
+            locationName: userProfile?.settings?.locationName || ''
           })
         });
         if (res.ok) {

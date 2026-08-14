@@ -297,7 +297,7 @@ export function OnboardingScreen({ userProfile, onCompleteOnboarding }: Onboardi
     userProfile.settings?.preferredName || userProfile.preferredName || userProfile.displayName || ''
   );
   const [locationName, setLocationName] = useState<string>(
-    userProfile.settings?.locationName || userProfile.locationName || 'Bardoli, IN'
+    userProfile.settings?.locationName || userProfile.locationName || ''
   );
   const [heightCm, setHeightCm] = useState<string>(
     userProfile.settings?.height || userProfile.height || '170'
@@ -1077,7 +1077,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   type="text"
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
-                  placeholder="e.g., Bardoli, IN or New York, USA"
+                  placeholder="e.g., San Francisco, London, Tokyo..."
                   className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Geological / Climate Location") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}

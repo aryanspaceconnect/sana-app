@@ -502,7 +502,7 @@ export const saveUserIdentitySchema = z.object({
   preferredName: z.string().optional().describe('Preferred name or nickname (e.g. Ray)'),
   ageRange: z.string().optional().describe('Age or age bracket (e.g. 25-30)'),
   sexOrHormonalContext: z.string().optional().describe('Hormonal context or gender identity'),
-  locationOrClimate: z.string().optional().describe('User city, state, country or climate (e.g. Bardoli, Gujarat, India / Humid Tropical)'),
+  locationOrClimate: z.string().optional().describe('User city, state, country or climate (e.g. San Francisco, California / Humid Continental)'),
   occupationOrLifestyle: z.string().optional().describe('Occupation or daily lifestyle environment'),
   languages: flexArray([]),
   permanentFacts: flexArray([])
@@ -912,8 +912,8 @@ export const getVaultFileSystemIndexTool: ToolDefinition = {
 import { fetchAdvancedEnvironmentalData } from './services/WeatherAwarenessEngine.js';
 
 export const fetchAdvancedEnvironmentalDataSchema = z.object({
-  latitude: z.number().optional().describe('Latitude of user/location (default: 21.12)'),
-  longitude: z.number().optional().describe('Longitude of user/location (default: 73.11)'),
+  latitude: z.number().optional().describe('Latitude of user/location'),
+  longitude: z.number().optional().describe('Longitude of user/location'),
   locationName: z.string().optional().describe('Optional city/location label (e.g. "Surat, India", "Berlin, Germany")'),
   includeAirQuality: z.boolean().optional().default(true).describe('Include PM2.5, PM10, Nitrogen Dioxide (NO2), Ozone (O3), Dust, US AQI'),
   includePollen: z.boolean().optional().default(true).describe('Include pollen counts (Alder, Birch, Grass, Mugwort, Olive, Ragweed)'),

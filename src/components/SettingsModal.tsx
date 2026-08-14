@@ -35,9 +35,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     scanNotificationTime: '00:00',
     scanReminderEnabled: true,
     theme: 'light',
-    locationName: 'Bardoli, IN',
-    latitude: 21.12,
-    longitude: 73.11
+    locationName: '',
+    latitude: undefined,
+    longitude: undefined
   };
 
   const handleSearchLocation = async (q: string) => {
@@ -342,11 +342,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <div className="min-w-0">
                     <p className="text-[12.5px] font-semibold text-[#121316] truncate">
-                      {currentSettings.locationName || 'Bardoli, IN'}
+                      {currentSettings.locationName || 'Location not set'}
                     </p>
-                    <p className="text-[10px] text-[#94a3b8]">
-                      Lat: {currentSettings.latitude ?? 21.12}, Lon: {currentSettings.longitude ?? 73.11}
-                    </p>
+                    {currentSettings.latitude != null && currentSettings.longitude != null && (
+                      <p className="text-[10px] text-[#94a3b8]">
+                        Lat: {currentSettings.latitude.toFixed(2)}, Lon: {currentSettings.longitude.toFixed(2)}
+                      </p>
+                    )}
                   </div>
                 </div>
 

@@ -304,7 +304,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
   const uvVal = Number(dailyBrief.uvIndex) || 4.0;
   const aqiVal = dailyBrief.airQualityAqi ?? 67;
-  const locationText = dailyBrief.locationName || userProfile?.settings?.locationName || 'Bardoli, IN';
+  const locationText = dailyBrief.locationName || userProfile?.settings?.locationName || 'Local Atmosphere';
 
   return (
     <div className="w-full h-full px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">
@@ -561,16 +561,16 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </AnimatePresence>
       </motion.div>
 
-      {/* 3. Companion Thought / Contextual Insights (Refined editorial typography, zero friction) */}
+      {/* 3. Daily Focus / Atmospheric Insights (Apple-inspired minimalist design) */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="w-full pt-6 px-1"
+        transition={{ duration: 0.4, delay: 0.08 }}
+        className="w-full pt-1 px-0.5"
       >
         {userProfile?.settings?.companionSignalsEnabled === false ? (
-          <div className="p-3 text-center text-xs text-[#94a3b8]">
-            <span>Companion insights paused. </span>
+          <div className="p-4 text-center text-xs text-[#94a3b8] rounded-[22px] bg-white border border-[#eaedf1]">
+            <span>Daily focus paused. </span>
             <button
               onClick={onOpenSettings}
               className="text-[#0284c7] font-medium hover:underline cursor-pointer"
@@ -579,25 +579,51 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </button>
           </div>
         ) : isLoadingSignal && (!companionSignal?.lines || companionSignal.lines.length === 0) ? (
-          <div className="space-y-3 py-2">
-            <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-full" />
-            <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-4/5" />
-          </div>
-        ) : companionSignal?.lines && companionSignal.lines.length > 0 ? (
-          <div className="space-y-3.5 py-1">
-            {companionSignal.lines.map((sentence, idx) => (
-              <p
-                key={idx}
-                className="text-[14.5px] text-[#2c3038] leading-[1.65] font-medium tracking-[-0.01em] font-sans"
-              >
-                {sentence}
-              </p>
-            ))}
+          <div className="rounded-[22px] bg-white border border-[#eaedf1] p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#f1f5f9]">
+              <div className="h-3 bg-[#f1f5f9] rounded-md animate-pulse w-20" />
+              <div className="h-3 bg-[#f1f5f9] rounded-md animate-pulse w-14" />
+            </div>
+            <div className="space-y-2 py-1">
+              <div className="h-3.5 bg-[#f8fafc] rounded-md animate-pulse w-full" />
+              <div className="h-3.5 bg-[#f8fafc] rounded-md animate-pulse w-4/5" />
+            </div>
           </div>
         ) : (
-          <p className="text-[14.5px] text-[#2c3038] leading-[1.65] font-medium tracking-[-0.01em] font-sans">
-            {userName}, with today&apos;s UV and humidity conditions, giving your skin barrier gentle hydration and broad-spectrum SPF 50 will keep your skin glowing and balanced.
-          </p>
+          <div className="rounded-[24px] bg-white border border-[#eaedf1] p-4 shadow-2xs hover:border-[#dbe0e8] transition-all duration-300">
+            {/* Minimalist Apple-style Header */}
+            <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-[#f1f4f8]">
+              <div className="flex items-center space-x-1.5">
+                <Icon icon="solar:sparkles-bold-duotone" className="w-3.5 h-3.5 text-[#0284c7]" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
+                  Daily Focus
+                </span>
+              </div>
+              {companionSignal?.windowLabel && (
+                <span className="text-[10.5px] font-medium text-[#94a3b8]">
+                  {companionSignal.windowLabel.replace(/window_\d+_\d+/, '').trim()}
+                </span>
+              )}
+            </div>
+
+            {/* Insight Lines with Minimalist Micro-Accents */}
+            <div className="space-y-2.5">
+              {(companionSignal?.lines && companionSignal.lines.length > 0
+                ? companionSignal.lines
+                : [
+                    "Keep morning hydration lightweight and breathable today.",
+                    "Let active serums rest if your barrier feels reactive."
+                  ]
+              ).map((sentence, idx) => (
+                <div key={idx} className="flex items-start space-x-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7]/40 mt-1.5 shrink-0" />
+                  <p className="text-[13.5px] text-[#1e293b] leading-[1.55] font-normal tracking-tight">
+                    {sentence}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </motion.div>
 
