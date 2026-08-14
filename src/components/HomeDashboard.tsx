@@ -171,6 +171,41 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
   const [showExposomeModal, setShowExposomeModal] = useState(false);
 
+  const [companionSignal, setCompanionSignal] = useState<{
+    lines: string[];
+    timestamp?: string;
+    enabled?: boolean;
+    contextMeta?: any;
+  } | null>(null);
+  const [isLoadingSignal, setIsLoadingSignal] = useState(false);
+
+  const fetchCompanionSignal = async (forceRefresh = false) => {
+    setIsLoadingSignal(true);
+    try {
+      const res = await fetch('/api/companion-signals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userProfile?.uid || 'guest_user',
+          userProfile,
+          forceRefresh
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCompanionSignal(data);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch companion signals:", err);
+    } finally {
+      setIsLoadingSignal(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCompanionSignal(false);
+  }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled]);
+
   return (
     <div className="w-full px-5 pt-2 pb-28 space-y-5 overflow-y-auto no-scrollbar">
       {/* Dynamic Warm Greeting */}
@@ -304,6 +339,78 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <Icon icon="solar:alt-arrow-right-linear" className="w-3 h-3" />
             </button>
           </div>
+        </div>
+      </motion.div>
+
+      {/* Daily Companion Signals Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.15 }}
+      >
+        <div className="squircle-card p-4.5 flex flex-col justify-between relative overflow-hidden rounded-[24px] bg-gradient-to-b from-[#fbfbfe] to-white border border-[#eaedf1] shadow-2xs">
+          {/* Card Header */}
+          <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#f1f5f9]">
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                <Icon icon="solar:stars-bold-duotone" className="w-4 h-4 text-amber-500 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-[13px] font-bold text-[#121316] tracking-tight">Companion Signals</h3>
+                <p className="text-[10.5px] text-[#787f8d]">
+                  {companionSignal?.contextMeta?.locationName
+                    ? `${companionSignal.contextMeta.locationName} • Live Pulse`
+                    : 'Context-Aware Companion'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => fetchCompanionSignal(true)}
+              disabled={isLoadingSignal}
+              title="Refresh companion signal"
+              className="p-1.5 px-2 rounded-xl bg-[#f0f3f6] hover:bg-[#e2e8f0] text-[#5e6573] transition-colors cursor-pointer flex items-center space-x-1"
+            >
+              <Icon
+                icon="solar:restart-bold"
+                className={`w-3.5 h-3.5 ${isLoadingSignal ? 'animate-spin text-[#0284c7]' : ''}`}
+              />
+              <span className="text-[10.5px] font-semibold">{isLoadingSignal ? 'Synthesizing...' : 'Refresh'}</span>
+            </button>
+          </div>
+
+          {/* Card Body */}
+          {userProfile?.settings?.companionSignalsEnabled === false ? (
+            <div className="py-3 px-3 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] text-center space-y-1">
+              <p className="text-[12px] font-medium text-[#5e6573]">Companion Signals are paused</p>
+              <button
+                onClick={onOpenSettings}
+                className="text-[11px] font-semibold text-[#0284c7] hover:underline cursor-pointer"
+              >
+                Enable in Settings
+              </button>
+            </div>
+          ) : isLoadingSignal && (!companionSignal?.lines || companionSignal.lines.length === 0) ? (
+            <div className="py-3 space-y-2.5">
+              <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-full" />
+              <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-4/5" />
+            </div>
+          ) : companionSignal?.lines && companionSignal.lines.length > 0 ? (
+            <div className="space-y-3 py-1">
+              {companionSignal.lines.map((sentence, idx) => (
+                <div key={idx} className="flex items-start space-x-2.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0" />
+                  <p className="text-[13.5px] font-medium text-[#18191c] leading-relaxed">
+                    {sentence}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-2 text-[12.5px] text-[#5e6573] font-medium">
+              Keep your skin hydrated and protected today — SANA is monitoring your local exposome.
+            </div>
+          )}
         </div>
       </motion.div>
 

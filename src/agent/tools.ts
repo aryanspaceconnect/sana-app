@@ -1111,6 +1111,24 @@ export const retrieveScanMasksTool: ToolDefinition = {
   }
 };
 
+export const getCompanionSignalsSchema = z.object({
+  forceRefresh: z.boolean().optional().default(false).describe('Whether to force re-generating fresh companion signals from live context.')
+});
+
+export const getCompanionSignalsTool: ToolDefinition = {
+  name: 'get_companion_signals',
+  description: 'Retrieves the latest warm, context-aware Daily Companion Signals generated for the user based on live weather, skin goals, universal notes, and scan trends.',
+  parameters: getCompanionSignalsSchema,
+  execute: async (args: z.infer<typeof getCompanionSignalsSchema>, context: AgentContext) => {
+    const { getOrGenerateCompanionSignals } = await import('./services/companionSignalsService.js');
+    const result = await getOrGenerateCompanionSignals(context.userId, context.profile, { forceRefresh: args.forceRefresh });
+    return {
+      success: true,
+      companionSignal: result
+    };
+  }
+};
+
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
@@ -1118,6 +1136,7 @@ export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   exaContentsTool,
   exaAnswerTool,
   fetchAdvancedEnvironmentalDataTool,
+  getCompanionSignalsTool,
   requestFacialScanTool,
   requestUserInputTool,
   triggerPopUpCardTool,

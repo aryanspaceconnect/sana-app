@@ -144,6 +144,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleToggleCompanionSignals = () => {
+    const updated = {
+      ...currentSettings,
+      companionSignalsEnabled: currentSettings.companionSignalsEnabled === false ? true : false
+    };
+    onUpdateSettings(updated);
+    if (userProfile?.uid && !userProfile.isAnonymous) {
+      syncUserProfile({ uid: userProfile.uid } as any, updated);
+    }
+  };
+
   const handleResponseStyleChange = (style: 'professional_medical' | 'casual_conversational' | 'cool_friendly') => {
     const updated = { ...currentSettings, responseStyle: style };
     onUpdateSettings(updated);
@@ -426,6 +437,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <option value="casual_conversational">Conversational Companion (Warm & Approachable)</option>
                 <option value="cool_friendly">Wellness Coach (Cool, Empathetic & Modern)</option>
               </select>
+            </div>
+
+            {/* Daily Companion Signals Toggle */}
+            <div className="p-3.5 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-semibold text-[#121316]">Daily Companion Signals</p>
+                  <p className="text-[11px] text-[#787f8d]">Warm home screen signals based on live weather & goals</p>
+                </div>
+
+                <button
+                  onClick={handleToggleCompanionSignals}
+                  className={`w-11 h-6 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                    currentSettings.companionSignalsEnabled !== false ? 'bg-[#121316]' : 'bg-[#cbd5e1]'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                      currentSettings.companionSignalsEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Notification Time & Daily Scan Setting */}

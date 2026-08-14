@@ -16,6 +16,7 @@ import { SkinTrendGraphEngine } from "./src/agent/services/skinTrendGraph.js";
 import { saveFacialScan, updateFacialScanReport, getPastScansForUser, saveChatMessage } from "./src/lib/firebase.js";
 import { getUniversalNotepad } from "./src/agent/universalNotepad.js";
 import { saveSkinScanToVault } from "./src/agent/agentVault.js";
+import { getOrGenerateCompanionSignals } from "./src/agent/services/companionSignalsService.js";
 
 dotenv.config();
 
@@ -884,6 +885,21 @@ app.post("/api/daily-brief", async (req, res) => {
   } catch (error: any) {
     console.warn("Daily brief generation fallback:", error);
     res.status(500).json({ error: "Failed to generate daily brief" });
+  }
+});
+
+// Daily Companion Signals Endpoint (Warm, context-aware companion thoughts)
+app.post("/api/companion-signals", async (req, res) => {
+  try {
+    const { userId = "guest_user", userProfile, forceRefresh = false, latitude, longitude } = req.body;
+    const result = await getOrGenerateCompanionSignals(userId, userProfile, { forceRefresh, latitude, longitude });
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Error generating companion signals:", error);
+    return res.status(500).json({
+      error: "Failed to generate companion signals",
+      details: error?.message || String(error)
+    });
   }
 });
 

@@ -29,6 +29,7 @@ export interface UserSettings {
   longitude?: number;
   isPremium?: boolean;
   responseStyle?: 'professional_medical' | 'casual_conversational' | 'cool_friendly';
+  companionSignalsEnabled?: boolean;
   onboardingCompleted?: boolean;
   onboardingProfile?: OnboardingProfile;
   userPerceptionText?: string;
