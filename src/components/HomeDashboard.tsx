@@ -356,61 +356,70 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
         </div>
 
-        {/* 4-Block Visual Metric Grid (Clean typographic presentation) */}
+        {/* 4-Block Visual Metric Grid (Light ethereal palette with creative micro-accents) */}
         <div className="grid grid-cols-4 gap-2 items-stretch">
           {/* Block 1: Temperature & Condition */}
           <div
             onClick={(e) => handleMetricClick(e, 'weather')}
-            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f8fafc] border border-[#f1f5f9] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
+            className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#fafbfe] border border-[#eff1f6] hover:bg-[#f1f4f9] transition-all duration-200 cursor-pointer group"
           >
-            <div className="text-[22px] font-bold text-[#121316] tracking-tight leading-none">
-              {dailyBrief.temperature || "29°C"}
+            <div className="flex items-baseline justify-between">
+              <span className="text-[21px] font-bold text-[#1a1c20] tracking-tight leading-none">
+                {dailyBrief.temperature || "29°C"}
+              </span>
             </div>
-            <p className="text-[10.5px] font-medium text-[#64748b] truncate mt-1">
-              {dailyBrief.weatherCondition || "Overcast"}
+            <p className="text-[10px] font-medium text-[#64748b] truncate mt-1.5 flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#94a3b8]" />
+              <span className="truncate">{dailyBrief.weatherCondition || "Overcast"}</span>
             </p>
           </div>
 
-          {/* Block 2: UV Metric (Pure typographic focus) */}
+          {/* Block 2: UV Metric (Ultra-light sunbeam wash) */}
           <div
             onClick={(e) => handleMetricClick(e, 'uv')}
-            className="flex flex-col justify-between p-2 rounded-2xl bg-[#fff7ed]/70 border border-[#ffedd5] hover:bg-[#ffedd5] transition-colors cursor-pointer"
+            className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#fffcf7] border border-[#fde8d0]/60 hover:bg-[#fff7ed] transition-all duration-200 cursor-pointer group"
           >
-            <div className="text-[13px] font-bold leading-none text-[#ea580c]">
-              UV {uvVal.toFixed(1)}
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-bold leading-none text-[#c2410c] tracking-tight">
+                UV {uvVal.toFixed(1)}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#f97316]/70 group-hover:scale-125 transition-transform" />
             </div>
-            <span className="text-[10px] font-semibold text-[#c2410c] mt-1 truncate">
+            <span className="text-[10px] font-semibold text-[#9a3412]/80 mt-1.5 truncate">
               {dailyBrief.uvLevel || (uvVal < 3 ? "Low" : uvVal < 6 ? "Moderate" : "High")}
             </span>
           </div>
 
-          {/* Block 3: Air Quality / AQI (Pure typographic focus) */}
+          {/* Block 3: Air Quality / AQI (Ultra-light botanical wash) */}
           <div
             onClick={(e) => handleMetricClick(e, 'aqi')}
-            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f0fdf4]/70 border border-[#dcfce7] hover:bg-[#dcfce7] transition-colors cursor-pointer"
+            className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f8fdf9] border border-[#d1fae5]/60 hover:bg-[#f0fdf4] transition-all duration-200 cursor-pointer group"
           >
-            <div className="text-[13px] font-bold leading-none text-[#16a34a]">
-              AQI {aqiVal}
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-bold leading-none text-[#15803d] tracking-tight">
+                AQI {aqiVal}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]/70 group-hover:scale-125 transition-transform" />
             </div>
-            <span className="text-[10px] font-semibold text-[#15803d] mt-1 truncate">
+            <span className="text-[10px] font-semibold text-[#166534]/80 mt-1.5 truncate">
               {aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
             </span>
           </div>
 
-          {/* Block 4: Other (Humidity & Rain Probability) */}
+          {/* Block 4: Humidity & Rain (Ultra-light sky wash, formatted cleanly) */}
           <div
             onClick={(e) => handleMetricClick(e, 'humidity')}
-            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f0f9ff]/70 border border-[#e0f2fe] hover:bg-[#e0f2fe] transition-colors cursor-pointer"
+            className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f7fbfe] border border-[#dbeafe]/60 hover:bg-[#eff6ff] transition-all duration-200 cursor-pointer group"
           >
-            <div className="flex items-center space-x-1 text-[#0284c7]">
-              <Icon icon="solar:droplet-bold" className="w-3 h-3 shrink-0" />
-              <span className="text-[11.5px] font-bold leading-none truncate">
-                {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '') : '78%'}
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold leading-none text-[#0284c7] tracking-tight truncate">
+                {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '78%'}
               </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]/70 group-hover:scale-125 transition-transform" />
             </div>
-            <div className="text-[9.5px] font-semibold text-[#0369a1] mt-1 truncate">
-              <span>{dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% Rain` : '88% Rain'}</span>
-            </div>
+            <span className="text-[9.5px] font-semibold text-[#0369a1]/80 mt-1.5 truncate">
+              {dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% rain` : '81% rain'}
+            </span>
           </div>
         </div>
 
