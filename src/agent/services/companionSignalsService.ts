@@ -250,6 +250,16 @@ export function runPostLlmGuard(
     /nobody tells you/i,
     /not a routine/i,
     /not a checklist/i,
+    /(barrier|skin)\s+(loves|craves|wants|appreciates)/i,
+    /gentle hydration/i,
+    /simple,?\s*calm steps/i,
+    /support your barrier with (simple|calm|gentle)/i,
+    /a light layer\b(?!\s+(of|with)\s+[a-z]+)/i, // rejects "a light layer still helps" without specifying what layer
+    /a light layer still helps/i,
+    /drizzle and humidity mean/i,
+    /humidity is high with this/i,
+    /listen to your skin/i,
+    /be gentle with your skin/i,
     /\b(delve|foster|leverage|utilize|facilitate|empower|streamline|cutting-edge|transformative|elevate|embark|harness|meticulous|paramount|game-changer|tapestry|realm)\b/i
   ];
 
@@ -328,13 +338,13 @@ export function runPostLlmGuard(
   if (cleaned.length === 0) {
     if (options.isNight) {
       return [
-        "Evening air is quiet — let a rich barrier cream work overnight.",
-        "Rest early to support cellular skin repair."
+        "Seal nighttime hydration with a ceramide barrier cream.",
+        "Pause exfoliating acids overnight to encourage skin recovery."
       ];
     }
     return [
-      "Keep morning hydration lightweight and breathable today.",
-      "Let active serums rest if your barrier feels reactive."
+      "Layer a light hyaluronic hydrating gel before stepping out.",
+      "Apply a broad-spectrum fluid SPF 30 for daytime protection."
     ];
   }
 
@@ -504,53 +514,36 @@ export async function getOrGenerateCompanionSignals(
   }
 
   // Build System & User Prompt according to exact user specifications
-  const systemInstruction = `You write Daily Companion lines for a skincare home screen.
+  const systemInstruction = `You write Daily Focus lines for a skincare home screen.
 
-Brain-wise: home is glanced, not read. Working memory holds ~one idea per line. Extra name/city is noise, not care. Care = one true local detail + one true personal constraint, said once, lightly.
+Brain-wise: home is glanced, not read. Working memory holds ~one actionable thought per line.
+Every line must be concrete, specific, and directly useful.
 
-Max 72 characters a line, 50-55 suggested, expand only when necessary and max 6 lines.
+Max 72 characters a line, 45-60 suggested, 2 to 3 lines total.
 
-VOICE
-- A quiet, warm friend. Not a coach, not a doctor order list, not marketing.
-- Short. Glanced in under two seconds.
-- Compassion = specific and light, not soft filler and not lectures.
+VOICE & TONE:
+- Practical, dermatologically grounded, calm.
+- Every line MUST state a clear, specific action, product type, texture, or ingredient.
+- Glanced and understood in under two seconds.
 
-HARD RULES
-- Output ONLY a JSON array of strings. No markdown, no keys, no prose outside the array.
-- 2 to 4 lines preferred. Absolute maximum 6.
-- Each line: max 64 characters (absolute hard limit 72). No exceptions.
-- Do NOT use the user's name unless a single line truly needs it (almost never).
-- Do NOT repeat the city/location name in more than one line. Prefer zero times; weather can imply place.
-- Do NOT start multiple lines the same way.
-- Do NOT invent products, scores, events, or weather not in CONTEXT.
-- No bullets, numbering, emoji, hashtags, or "Remember:" / "Don't forget:".
-- No full routines. No streaks, quotes, or motivation speeches.
-- If night / is_day false: no SPF or UV pressure.
-- Prefer one environmental truth + one personal constraint across the set—not the same idea six times.
+STRICTLY PROHIBITED (Hard Ban):
+1. NO OBVIOUS WEATHER REPORTING: Do NOT narrate raw weather conditions already visible in the weather card (e.g. "Humidity is high with this afternoon drizzle", "It is raining outside"). Connect the condition directly to an actionable skincare choice (e.g. "High air moisture slows evaporation — switch to a lightweight gel.").
+2. NO VAGUE FLUFF OR PERSONIFICATION: NEVER say "your barrier loves gentle hydration", "skin loves care", "support your barrier with calm steps", "take gentle moments". These are forbidden.
+3. NO AMBIGUOUS PHRASING: NEVER say "a light layer still helps" without stating EXACTLY what the layer is (e.g. "A fluid broad-spectrum SPF 30 protects against UV through clouds", "A thin layer of squalane locks in moisture").
+4. NO FILLER OR THROAT-CLEARING: No "Remember:", "Keep in mind:", "Don't forget:", "Here's the thing:".
+5. NO REPETITIVE PHRASES: Do not repeat user name or city.
+6. NO NIGHTTIME SPF: If isNight is true, do not mention SPF or UV.
 
-CONTENT PRIORITY (use only what exists in CONTEXT)
-1) Air right now / next hours (humidity, wet, wind, heat)
-2) Their goal or recent skin note (if any)
-3) Latest scan or trend only if it changes advice
-4) Notepad / incident only if concrete
+HARD RULES:
+- Output ONLY a JSON array of strings. No markdown, no prose outside JSON.
+- Exactly 2 to 3 lines.
+- Each line: max 64 characters (absolute hard limit 72).
+- Be precise with textures and ingredients: specify "fluid SPF", "hyaluronic serum", "ceramide cream", "gel cleanser", "niacinamide", "salicylic acid pause", etc.
 
-NO-SLOP (hard):
-- No binary contrasts ("It's not X, it's Y").
-- No throat-clearing ("Remember," "Keep in mind," "Here's the thing," "Don't forget").
-- No faux-insight ("What most people miss," "Nobody tells you").
-- No colon drama ("The key: light layers.").
-- No negative lists ("Not a routine. Not a checklist.").
-- No puffery ("vital," "crucial," "journey," "support your goals").
-- No "experts/studies say." No invented facts.
-- No em-dash stacks.
-- No synonym cycling for "skin."
-- Portability test: if the line works for anyone, anywhere, make it concrete from CONTEXT or drop it.
-- Banned: delve, foster, leverage, utilize, facilitate, empower, streamline, robust, cutting-edge, transformative, elevate, embark, harness, meticulous, paramount, game-changer, tapestry, realm.
-- State the thing. Don't explain why it matters.
-
-STYLE EXAMPLES (match this density, not the facts)
-["Humidity’s high — keep layers light.", "Let actives rest if the barrier’s been reactive."]
-["Grey light still carries UV — a thin SPF is enough.", "Skip heavy cream until the air dries out."]`;
+GOOD EXAMPLES:
+["High air humidity — swap heavy cream for a light hydrating gel.", "Moderate UV through cloud cover — apply fluid SPF 30 before leaving."]
+["Dry indoor AC running — mist and seal with a ceramide moisturizer.", "Pause retinol tonight to give your barrier a recovery window."]
+["Post-workout sweat buildup — cleanse with a gentle low-pH wash.", "Keep pores clear with a lightweight BHA swipe."]`;
 
   const promptContent = `CURRENT TIME & DIURNAL INTERVAL:
 - Local Time: ${localHour.toString().padStart(2, '0')}:00 (Current Interval: ${windowInfo.label})
