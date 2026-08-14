@@ -35,13 +35,17 @@
   border-radius: 18px;
 }
 
-/* Hide scrollbars for clean app feel */
+/* Hide scrollbars for clean app feel while enabling natural touch/mouse scrolling */
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 .no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 @keyframes pixel-on {

@@ -612,7 +612,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           </>
           ) : (
             /* Direct API Scan Result Inspector */
-            <div className="space-y-3.5 overflow-y-auto max-h-[72vh] pr-1">
+            <div className="space-y-3.5 overflow-y-auto no-scrollbar max-h-[72vh] pr-1">
               {/* Top Meta Bar */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-xs">
                 <div className="flex items-center space-x-2 text-slate-300 font-mono">

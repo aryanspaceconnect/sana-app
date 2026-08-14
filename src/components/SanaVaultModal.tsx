@@ -160,7 +160,7 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
           </div>
 
           {/* Content Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-6">
             {loading ? (
               <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400 space-y-3">
                 <Icon icon="solar:spinner-linear" className="w-8 h-8 animate-spin text-[#121316]" />

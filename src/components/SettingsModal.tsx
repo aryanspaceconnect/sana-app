@@ -204,10 +204,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-sm rounded-[32px] bg-white border border-white/80 overflow-hidden shadow-2xl p-6 relative flex flex-col space-y-5"
+          className="w-full max-w-sm max-h-[88vh] rounded-[32px] bg-white border border-white/80 overflow-hidden shadow-2xl p-5 relative flex flex-col"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between">
+          {/* Header (Fixed Top) */}
+          <div className="flex items-center justify-between shrink-0 pb-3 border-b border-[#f1f5f9] mb-3">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 rounded-2xl bg-[#1a1c1e] text-white">
                 <Icon icon="solar:settings-bold" className="w-5 h-5" />
@@ -226,7 +226,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
-          {/* User Profile Card */}
+          {/* Scrollable Modal Content Body */}
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-5 pr-0.5 py-1">
+            {/* User Profile Card */}
           <div className="p-4 rounded-[22px] bg-[#f8f9fb] border border-[#eaedf1] flex items-center space-x-3.5">
             {userProfile?.photoURL ? (
               <img
@@ -565,6 +567,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Reset Daily Scan Completion Status
               </button>
             </div>
+          </div>
           </div>
         </motion.div>
       </div>

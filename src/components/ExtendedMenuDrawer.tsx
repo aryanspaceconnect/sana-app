@@ -60,12 +60,15 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
             transition={{ type: 'spring', stiffness: 360, damping: 28 }}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            className="fixed bottom-6 left-4 right-4 max-w-md mx-auto z-50 pointer-events-auto bg-white/98 backdrop-blur-2xl rounded-[32px] shadow-2xl border border-slate-200/80 p-5 overflow-hidden"
+            className="fixed bottom-6 left-4 right-4 max-w-md mx-auto z-50 pointer-events-auto bg-white/98 backdrop-blur-2xl rounded-[32px] shadow-2xl border border-slate-200/80 p-5 overflow-hidden max-h-[85vh] flex flex-col"
           >
             {/* Top Drag Handle Indicator */}
-            <div className="w-full flex justify-center pb-4 cursor-grab" onClick={onClose}>
+            <div className="w-full flex justify-center pb-3 cursor-grab shrink-0" onClick={onClose}>
               <div className="w-12 h-1.5 rounded-full bg-[#d0d5dd]" />
             </div>
+
+            {/* Scrollable Drawer Body */}
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-3 pt-1 pb-1">
 
             {/* Account & User Header */}
             <div 
@@ -196,6 +199,7 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
                 </div>
                 <Icon icon="solar:alt-arrow-right-linear" className="w-5 h-5 text-[#a0a7b4] group-hover:translate-x-0.5 transition-transform" />
               </button>
+            </div>
             </div>
           </motion.div>
         </>

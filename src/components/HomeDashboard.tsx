@@ -207,7 +207,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled]);
 
   return (
-    <div className="w-full px-5 pt-2 pb-28 space-y-5 overflow-y-auto no-scrollbar">
+    <div className="w-full h-full px-5 pt-2 pb-28 space-y-5 overflow-y-auto no-scrollbar">
       {/* Dynamic Warm Greeting */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
