@@ -3,12 +3,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import {
-  ListToolsResultSchema,
-  CallToolResultSchema,
-  ListResourcesResultSchema,
-  ReadResourceResultSchema,
-  ListPromptsResultSchema,
-  GetPromptResultSchema
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { ToolDefinition, AgentContext } from '../types.js';
@@ -161,7 +161,7 @@ class McpManagerService {
       { capabilities: { tools: {}, resources: {} } }
     );
 
-    server.setRequestHandler(ListToolsResultSchema, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'search_vault',
@@ -192,7 +192,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(CallToolResultSchema, async (request: any) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params || {};
       if (name === 'search_vault') {
         const data = await loadAgentVault('guest_user');
@@ -214,7 +214,7 @@ class McpManagerService {
       throw new Error(`Unknown tool: ${name}`);
     });
 
-    server.setRequestHandler(ListResourcesResultSchema, async () => ({
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
       resources: [
         {
           uri: 'mcp://sana_vault/patient_profile',
@@ -231,7 +231,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(ReadResourceResultSchema, async (request: any) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request: any) => {
       const { uri } = request.params || {};
       if (uri === 'mcp://sana_vault/patient_profile') {
         const data = await loadAgentVault('guest_user');
@@ -277,7 +277,7 @@ class McpManagerService {
       { capabilities: { tools: {} } }
     );
 
-    server.setRequestHandler(ListToolsResultSchema, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'exa_answer',
@@ -304,7 +304,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(CallToolResultSchema, async (request: any) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params || {};
       if (name === 'exa_answer') {
         const res = await performExaAnswer({ query: String(args?.query || '') });
@@ -350,7 +350,7 @@ class McpManagerService {
       { capabilities: { tools: {}, resources: {} } }
     );
 
-    server.setRequestHandler(ListToolsResultSchema, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'read_notepad',
@@ -374,7 +374,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(CallToolResultSchema, async (request: any) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params || {};
       if (name === 'read_notepad') {
         const content = getSessionNotepad('session_default');
@@ -391,7 +391,7 @@ class McpManagerService {
       throw new Error(`Unknown tool: ${name}`);
     });
 
-    server.setRequestHandler(ListResourcesResultSchema, async () => ({
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
       resources: [
         {
           uri: 'mcp://sana_notepad/session_notes',
@@ -402,7 +402,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(ReadResourceResultSchema, async (request: any) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request: any) => {
       const { uri } = request.params || {};
       if (uri === 'mcp://sana_notepad/session_notes') {
         const text = getSessionNotepad('session_default');
@@ -442,7 +442,7 @@ class McpManagerService {
       { capabilities: { tools: {}, prompts: {} } }
     );
 
-    server.setRequestHandler(ListToolsResultSchema, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'calculate_fitzpatrick',
@@ -474,7 +474,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(CallToolResultSchema, async (request: any) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params || {};
       if (name === 'calculate_fitzpatrick') {
         const burn = String(args?.sunburnTendency || 'burns_then_tans');
@@ -520,7 +520,7 @@ class McpManagerService {
       throw new Error(`Unknown tool: ${name}`);
     });
 
-    server.setRequestHandler(ListPromptsResultSchema, async () => ({
+    server.setRequestHandler(ListPromptsRequestSchema, async () => ({
       prompts: [
         {
           name: 'barrier_recovery_protocol',
@@ -533,7 +533,7 @@ class McpManagerService {
       ]
     }));
 
-    server.setRequestHandler(GetPromptResultSchema, async (request: any) => {
+    server.setRequestHandler(GetPromptRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params || {};
       if (name === 'barrier_recovery_protocol') {
         const symptoms = args?.symptoms || 'general burning and tightness';
