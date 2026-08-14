@@ -93,6 +93,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
   onTabChange,
   isMinimized = false,
   onRestorePill,
+  userProfile,
   onOpenVault,
   onOpenSettings,
   theme = 'light',
@@ -159,8 +160,8 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
             }}
             className={`pointer-events-auto relative overflow-hidden transition-colors duration-300 z-50 ${
               isExpanded
-                ? 'w-[320px] rounded-[32px] bg-white text-slate-900 border border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.16)] p-3.5'
-                : 'rounded-full bg-white/90 backdrop-blur-2xl text-slate-900 border border-slate-200/80 shadow-[0_12px_32px_rgba(0,0,0,0.12)] px-3 py-1.5'
+                ? 'w-[320px] rounded-[28px] bg-white text-slate-900 border border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.16)] p-3.5'
+                : 'rounded-[22px] bg-white/90 backdrop-blur-2xl text-slate-900 border border-slate-200/80 shadow-[0_12px_32px_rgba(0,0,0,0.12)] px-2.5 py-1.5'
             }`}
           >
             <AnimatePresence mode="wait" initial={false}>
@@ -303,44 +304,19 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                         transition={{ duration: 0.16 }}
                         className="space-y-0.5"
                       >
-                        {/* Home */}
+                        {/* More (Moved to top, renamed from Connect, updated icon) */}
                         <button
-                          onClick={() => {
-                            onTabChange('home');
-                            setIsExpanded(false);
-                          }}
-                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
+                          onClick={() => setExpandedView('connect')}
+                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center justify-between text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
                         >
-                          <Icon icon="solar:home-smile-angle-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
-                          <span className="flex-1">Home</span>
+                          <div className="flex items-center space-x-3">
+                            <Icon icon="solar:menu-dots-circle-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
+                            <span>More</span>
+                          </div>
+                          <Icon icon="solar:alt-arrow-right-linear" className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                         </button>
 
-                        {/* About / AI Agent */}
-                        <button
-                          onClick={() => {
-                            onTabChange('agent');
-                            setIsExpanded(false);
-                          }}
-                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
-                        >
-                          <SanaAgentLogoIcon size={18} color="#475569" />
-                          <span className="flex-1">About</span>
-                        </button>
-
-                        {/* Playground / Vault */}
-                        <button
-                          onClick={() => {
-                            if (onOpenVault) onOpenVault();
-                            else onTabChange('calendar');
-                            setIsExpanded(false);
-                          }}
-                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
-                        >
-                          <Icon icon="solar:printer-minimalistic-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
-                          <span className="flex-1">Playground</span>
-                        </button>
-
-                        {/* Settings & Preferences */}
+                        {/* Settings */}
                         <button
                           onClick={() => {
                             if (onOpenSettings) onOpenSettings();
@@ -352,16 +328,49 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                           <span className="flex-1">Settings</span>
                         </button>
 
-                        {/* Connect Option */}
+                        {/* Vault */}
                         <button
-                          onClick={() => setExpandedView('connect')}
+                          onClick={() => {
+                            if (onOpenVault) onOpenVault();
+                            setIsExpanded(false);
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
+                        >
+                          <Icon icon="solar:safe-square-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
+                          <span className="flex-1">Vault</span>
+                        </button>
+
+                        {/* User Profile */}
+                        <button
+                          onClick={() => {
+                            if (onOpenSettings) onOpenSettings();
+                            setIsExpanded(false);
+                          }}
                           className="w-full px-3.5 py-2.5 rounded-2xl flex items-center justify-between text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
                         >
-                          <div className="flex items-center space-x-3">
-                            <Icon icon="solar:mention-square-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
-                            <span>Connect</span>
+                          <div className="flex items-center space-x-3 min-w-0 flex-1">
+                            {userProfile?.photoURL ? (
+                              <img
+                                src={userProfile.photoURL}
+                                alt={userProfile.displayName || "User"}
+                                className="w-5 h-5 rounded-full object-cover border border-slate-200 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-5 h-5 rounded-full bg-[#121316] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {userProfile?.preferredName
+                                  ? userProfile.preferredName.charAt(0).toUpperCase()
+                                  : userProfile?.displayName
+                                  ? userProfile.displayName.charAt(0).toUpperCase()
+                                  : 'M'}
+                              </div>
+                            )}
+                            <span className="truncate flex-1">
+                              {userProfile?.preferredName ||
+                                (userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Marcy')}
+                            </span>
                           </div>
-                          <Icon icon="solar:alt-arrow-right-linear" className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                          <Icon icon="solar:alt-arrow-right-linear" className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-2" />
                         </button>
                       </motion.div>
                     ) : (

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { UserProfile, FacialScanResult, DailyBriefing } from '../types';
+import { pickHomeGreeting, GreetingConfig } from '../lib/homeGreetings';
 
 interface HomeDashboardProps {
   userProfile: UserProfile | null;
@@ -23,68 +24,6 @@ interface MetricDetailPopup {
   colorClass: string;
 }
 
-const getDynamicGreetingConfig = (name: string, variantOffset = 0) => {
-  const now = new Date();
-  const hour = now.getHours();
-
-  let greetingList: string[];
-  let subtext: string;
-  let iconName: string;
-  let iconColor: string;
-
-  if (hour >= 4 && hour < 12) {
-    greetingList = [
-      `Good morning, ${name}`,
-      `Rise & glow, ${name}`,
-      `Bright morning, ${name}`,
-      `Sun's up, ${name}`,
-      `Fresh morning, ${name}`
-    ];
-    subtext = "Time for your morning barrier & SPF routine";
-    iconName = "solar:sun-2-bold-duotone";
-    iconColor = "text-amber-500";
-  } else if (hour >= 12 && hour < 17) {
-    greetingList = [
-      `Good afternoon, ${name}`,
-      `Sunlit afternoon, ${name}`,
-      `Midday refresh, ${name}`,
-      `Afternoon glow, ${name}`,
-      `Radiant afternoon, ${name}`
-    ];
-    subtext = "Hydrate & reapply UV protection if needed";
-    iconName = "solar:sun-bold-duotone";
-    iconColor = "text-amber-400";
-  } else if (hour >= 17 && hour < 21) {
-    greetingList = [
-      `Good evening, ${name}`,
-      `Golden hour, ${name}`,
-      `Evening unwind, ${name}`,
-      `Twilight glow, ${name}`,
-      `Peaceful evening, ${name}`
-    ];
-    subtext = "Unwind & prepare for your evening repair regimen";
-    iconName = "solar:sunset-bold-duotone";
-    iconColor = "text-orange-500";
-  } else {
-    greetingList = [
-      `Restful night, ${name}`,
-      `Late night breeze, ${name}`,
-      `Nighttime glow, ${name}`,
-      `Peaceful night, ${name}`,
-      `Starlit night, ${name}`
-    ];
-    subtext = "Overnight cellular recovery in progress";
-    iconName = "solar:moon-stars-bold-duotone";
-    iconColor = "text-indigo-400";
-  }
-
-  const baseIndex = Math.floor(now.getMinutes() / 12);
-  const greetingIndex = (baseIndex + variantOffset) % greetingList.length;
-  const greeting = greetingList[greetingIndex];
-
-  return { greeting, subtext, iconName, iconColor };
-};
-
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   userProfile,
   latestScan,
@@ -98,28 +37,57 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(false);
   const [activeMetricDetail, setActiveMetricDetail] = useState<MetricDetailPopup | null>(null);
 
-  const userName = userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Marcy';
+  const rawName =
+    userProfile?.preferredName ||
+    userProfile?.settings?.preferredName ||
+    userProfile?.settings?.onboardingProfile?.preferredName ||
+    userProfile?.displayName ||
+    'Marcy';
+
+  const userAgeGroup = userProfile?.settings?.onboardingProfile?.ageGroup || '';
+  const userGender = userProfile?.gender || userProfile?.settings?.gender || userProfile?.settings?.onboardingProfile?.gender || '';
 
   const [currentTime, setCurrentTime] = useState(() => {
     const now = new Date();
     return now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
   });
 
-  const [greetingConfig, setGreetingConfig] = useState(() =>
-    getDynamicGreetingConfig(userName, variantOffset)
+  const [greetingConfig, setGreetingConfig] = useState<GreetingConfig>(() =>
+    pickHomeGreeting({
+      name: rawName,
+      ageGroup: userAgeGroup,
+      gender: userGender,
+      cycleOffset: 0
+    })
   );
 
   useEffect(() => {
-    setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
+    setGreetingConfig(
+      pickHomeGreeting({
+        name: rawName,
+        ageGroup: userAgeGroup,
+        gender: userGender,
+        cycleOffset: variantOffset
+      })
+    );
 
     const interval = setInterval(() => {
       const now = new Date();
       setCurrentTime(now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }));
-      setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
-    }, 10000);
+      // Automatically refresh greeting when entering a new hour/window
+      setGreetingConfig(prev => {
+        const fresh = pickHomeGreeting({
+          name: rawName,
+          ageGroup: userAgeGroup,
+          gender: userGender,
+          cycleOffset: variantOffset
+        });
+        return fresh;
+      });
+    }, 60000); // 1-minute interval for time & hour checks
 
     return () => clearInterval(interval);
-  }, [userName, variantOffset]);
+  }, [rawName, userAgeGroup, userGender, variantOffset]);
 
   const cycleGreeting = () => {
     setVariantOffset(prev => prev + 1);

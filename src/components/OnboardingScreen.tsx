@@ -321,8 +321,18 @@ export function OnboardingScreen({ userProfile, onCompleteOnboarding }: Onboardi
   // Tooltip UI State
   const [activeTooltip, setActiveTooltip] = useState<'location' | 'biological' | 'goals' | null>(null);
 
+  // Main scroll container ref for smooth regulated scrolling without scrollbars
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+
   // Auto-scroll cascade
   const cascadeRef = useRef<HTMLDivElement>(null);
+
+  // Smoothly scroll to top on step change for a seamless regulated flow
+  useEffect(() => {
+    if (mainContainerRef.current) {
+      mainContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
 
   // Toggle Quick Chip in Step 2
   const handleToggleChip = (chip: typeof QUICK_KEYWORD_OPTIONS[0]) => {
@@ -635,18 +645,25 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
   };
 
   return (
-    <div className="w-full h-full min-h-screen bg-[#f8f9fb] flex flex-col justify-between p-4 sm:p-6 overflow-y-auto select-none">
+    <div
+      ref={mainContainerRef}
+      className="w-full min-h-screen h-[100dvh] bg-[#f8f9fb] flex flex-col items-center p-3.5 sm:p-6 overflow-y-auto overflow-x-hidden no-scrollbar smooth-scroll-container pb-14 sm:pb-8 touch-pan-y"
+    >
       {/* Header Bar */}
-      <div className="w-full max-w-xl mx-auto pt-2 pb-3 flex items-center justify-between">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[#121316] flex items-center justify-center text-white shadow-xs">
-            <SanaLogoIcon size={18} color="#ffffff" />
+      <div className="w-full max-w-xl mx-auto pt-1 pb-3 flex items-center justify-between shrink-0 sticky top-0 bg-[#f8f9fb]/90 backdrop-blur-md z-20 py-2 mb-1">
+        {step > 1 ? (
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-xl bg-[#121316] flex items-center justify-center text-white shadow-xs">
+              <SanaLogoIcon size={18} color="#ffffff" />
+            </div>
+            <div>
+              <span className="text-sm font-bold tracking-tight text-[#121316] lowercase">sana</span>
+              <span className="text-xs text-slate-400 ml-1.5 font-medium">Skin Discovery</span>
+            </div>
           </div>
-          <div>
-            <span className="text-sm font-bold tracking-tight text-[#121316] lowercase">sana</span>
-            <span className="text-xs text-slate-400 ml-1.5 font-medium">Skin Discovery</span>
-          </div>
-        </div>
+        ) : (
+          <div />
+        )}
 
         {/* Step Progress Bar */}
         <div className="flex items-center space-x-1.5">
@@ -666,7 +683,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
       </div>
 
       {/* Main Container Card */}
-      <div className="w-full max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/50 my-auto">
+      <div className="w-full max-w-xl mx-auto bg-white rounded-3xl p-5 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/50 my-2 sm:my-auto shrink-0">
         <AnimatePresence mode="wait">
           {/* STEP 1: WELCOME SCREEN */}
           {step === 1 && (
@@ -677,8 +694,8 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               exit={{ opacity: 0, y: -12 }}
               className="space-y-6 text-center py-2"
             >
-              <div className="w-16 h-16 rounded-2xl bg-[#121316] text-white flex items-center justify-center mx-auto shadow-lg shadow-slate-900/10">
-                <SanaLogoIcon size={32} color="#ffffff" />
+              <div className="flex items-center justify-center mx-auto py-1">
+                <SanaLogoIcon size={38} color="#121316" />
               </div>
 
               <div className="space-y-2">
@@ -698,17 +715,17 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                   <Icon icon="solar:heart-bold-duotone" className="w-5 h-5 text-rose-500" />
                   <p className="text-[11px] font-bold text-[#121316]">Empathy First</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">No judgment, just personalized care.</p>
+                  <p className="text-[10px] text-slate-500 leading-tight">Judgment-free guidance tailored to your skin.</p>
                 </div>
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                   <Icon icon="solar:scanner-bold-duotone" className="w-5 h-5 text-indigo-500" />
-                  <p className="text-[11px] font-bold text-[#121316]">Micro Scan</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">Live hydration & barrier scoring.</p>
+                  <p className="text-[11px] font-bold text-[#121316]">Dermal Vision</p>
+                  <p className="text-[10px] text-slate-500 leading-tight">Powered by Perfect Corp skin analysis.</p>
                 </div>
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                   <Icon icon="solar:cloud-sun-bold-duotone" className="w-5 h-5 text-amber-500" />
-                  <p className="text-[11px] font-bold text-[#121316]">Climate Shield</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">Open-Meteo local weather shielding.</p>
+                  <p className="text-[11px] font-bold text-[#121316]">Climate Defense</p>
+                  <p className="text-[10px] text-slate-500 leading-tight">Hyperlocal weather & UV barrier shielding.</p>
                 </div>
               </div>
 
@@ -1261,7 +1278,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
       </div>
 
       {/* Footer */}
-      <div className="w-full max-w-xl mx-auto py-2 text-center text-[10px] text-slate-400 flex items-center justify-center space-x-2">
+      <div className="w-full max-w-xl mx-auto pt-3 pb-2 text-center text-[10px] text-slate-400 flex items-center justify-center space-x-2 shrink-0">
         <Icon icon="solar:shield-check-bold" className="w-3.5 h-3.5 text-emerald-600" />
         <span>End-to-End Encrypted Skin Barrier Profile</span>
       </div>

@@ -46,6 +46,25 @@
   scrollbar-width: none !important;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+}
+
+/* Regulated silky-smooth scrolling container without visible scrollbars */
+.smooth-scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.smooth-scroll-container::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 @keyframes pixel-on {
