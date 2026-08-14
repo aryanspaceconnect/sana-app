@@ -845,6 +845,10 @@ app.post("/api/daily-brief", async (req, res) => {
     const displayTemp = isFahrenheit 
       ? `${Math.round((weather.tempC * 9/5) + 32)}°F` 
       : `${Math.round(weather.tempC)}°C`;
+
+    const displayFeelsLike = isFahrenheit
+      ? `${Math.round((weather.feelsLikeC * 9/5) + 32)}°F`
+      : `${Math.round(weather.feelsLikeC)}°C`;
       
     let uvLevel = "Moderate";
     if (weather.uvIndex < 3) uvLevel = "Low";
@@ -858,6 +862,7 @@ app.post("/api/daily-brief", async (req, res) => {
     res.json({
       greeting: "Morning, sunshine",
       temperature: displayTemp,
+      feelsLike: displayFeelsLike,
       weatherCondition: (weather as any).weatherCondition || "Partly Sunny",
       uvIndex: weather.uvIndex,
       uvLevel: uvLevel,
@@ -888,11 +893,30 @@ app.post("/api/daily-brief", async (req, res) => {
   }
 });
 
-// Daily Companion Signals Endpoint (Warm, context-aware companion thoughts)
+// Daily Companion / Compassion Sync Signals Endpoint (Warm, context-aware diurnal companion thoughts)
 app.post("/api/companion-signals", async (req, res) => {
   try {
-    const { userId = "guest_user", userProfile, forceRefresh = false, latitude, longitude } = req.body;
-    const result = await getOrGenerateCompanionSignals(userId, userProfile, { forceRefresh, latitude, longitude });
+    const {
+      userId = "guest_user",
+      userProfile,
+      forceRefresh = false,
+      latitude,
+      longitude,
+      clientLocalTime,
+      clientHour,
+      clientDateStr,
+      timezone
+    } = req.body;
+
+    const result = await getOrGenerateCompanionSignals(userId, userProfile, {
+      forceRefresh,
+      latitude,
+      longitude,
+      clientLocalTime,
+      clientHour,
+      clientDateStr,
+      timezone
+    });
     return res.json(result);
   } catch (error: any) {
     console.error("Error generating companion signals:", error);

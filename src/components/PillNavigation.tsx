@@ -94,6 +94,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
   isMinimized = false,
   onRestorePill,
   onOpenVault,
+  onOpenSettings,
   theme = 'light',
   onThemeChange
 }) => {
@@ -352,6 +353,18 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                         >
                           <Icon icon="solar:printer-minimalistic-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
                           <span className="flex-1">Playground</span>
+                        </button>
+
+                        {/* Settings & Preferences */}
+                        <button
+                          onClick={() => {
+                            if (onOpenSettings) onOpenSettings();
+                            setIsExpanded(false);
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
+                        >
+                          <Icon icon="solar:settings-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
+                          <span className="flex-1">Settings</span>
                         </button>
 
                         {/* Connect Option */}

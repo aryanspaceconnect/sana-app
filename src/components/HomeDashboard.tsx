@@ -13,17 +13,19 @@ interface HomeDashboardProps {
   onOpenSettings?: () => void;
 }
 
-interface RoutineStep {
-  id: string;
-  title: string;
-  completed: boolean;
-  time: 'AM' | 'PM' | 'ANY';
+interface MetricDetailPopup {
+  label: string;
+  value: string;
+  category: string;
+  skinImpact: string;
+  recommendation: string;
+  icon: string;
+  colorClass: string;
 }
 
 const getDynamicGreetingConfig = (name: string, variantOffset = 0) => {
   const now = new Date();
   const hour = now.getHours();
-  const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   let greetingList: string[];
   let subtext: string;
@@ -80,7 +82,7 @@ const getDynamicGreetingConfig = (name: string, variantOffset = 0) => {
   const greetingIndex = (baseIndex + variantOffset) % greetingList.length;
   const greeting = greetingList[greetingIndex];
 
-  return { greeting, subtext, iconName, iconColor, formattedTime };
+  return { greeting, subtext, iconName, iconColor };
 };
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
@@ -93,8 +95,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenSettings
 }) => {
   const [variantOffset, setVariantOffset] = useState(0);
+  const [isWeatherExpanded, setIsWeatherExpanded] = useState(false);
+  const [activeMetricDetail, setActiveMetricDetail] = useState<MetricDetailPopup | null>(null);
 
   const userName = userProfile?.displayName ? userProfile.displayName.split(' ')[0] : 'Marcy';
+
+  const [currentTime, setCurrentTime] = useState(() => {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  });
 
   const [greetingConfig, setGreetingConfig] = useState(() =>
     getDynamicGreetingConfig(userName, variantOffset)
@@ -104,8 +113,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
 
     const interval = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }));
       setGreetingConfig(getDynamicGreetingConfig(userName, variantOffset));
-    }, 30000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [userName, variantOffset]);
@@ -114,65 +125,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     setVariantOffset(prev => prev + 1);
   };
 
-  // Dynamic hydration logs with local persistence
-  const [hydrationLogs, setHydrationLogs] = useState<number>(() => {
-    const saved = localStorage.getItem('sana_hydration_logs');
-    return saved ? parseFloat(saved) : 1.2;
-  });
-
-  // Dynamic regimen steps with local persistence
-  const [regimenSteps, setRegimenSteps] = useState<RoutineStep[]>(() => {
-    const saved = localStorage.getItem('sana_regimen_steps');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
-    }
-    return [
-      { id: '1', title: 'Gentle pH-balanced Cleanser', completed: false, time: 'AM' },
-      { id: '2', title: 'Hyaluronic Acid Barrier Serum', completed: false, time: 'AM' },
-      { id: '3', title: 'Broad Spectrum SPF 50 Sunscreen', completed: false, time: 'AM' },
-      { id: '4', title: 'Ceramide Night Repair Moisturizer', completed: false, time: 'PM' }
-    ];
-  });
-
-  const [notesList, setNotesList] = useState<string[]>(() => {
-    const saved = localStorage.getItem('sana_quick_notes');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [quickInput, setQuickInput] = useState('Japan Trip');
-
-  useEffect(() => {
-    localStorage.setItem('sana_quick_notes', JSON.stringify(notesList));
-  }, [notesList]);
-
-  const handleQuickCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickInput.trim()) return;
-    setNotesList(prev => [quickInput.trim(), ...prev]);
-    setQuickInput('');
-  };
-
-  useEffect(() => {
-    localStorage.setItem('sana_hydration_logs', hydrationLogs.toString());
-  }, [hydrationLogs]);
-
-  useEffect(() => {
-    localStorage.setItem('sana_regimen_steps', JSON.stringify(regimenSteps));
-  }, [regimenSteps]);
-
-  const toggleStep = (id: string) => {
-    setRegimenSteps(prev =>
-      prev.map(s => (s.id === id ? { ...s, completed: !s.completed } : s))
-    );
-  };
-
-  const addHydration = () => {
-    setHydrationLogs(prev => Math.min(3.0, Number((prev + 0.25).toFixed(2))));
-  };
-
-  const [showExposomeModal, setShowExposomeModal] = useState(false);
-
+  // Companion Signals state with silent diurnal auto-refresh
   const [companionSignal, setCompanionSignal] = useState<{
     lines: string[];
+    windowId?: string;
+    windowLabel?: string;
     timestamp?: string;
     enabled?: boolean;
     contextMeta?: any;
@@ -182,13 +139,24 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const fetchCompanionSignal = async (forceRefresh = false) => {
     setIsLoadingSignal(true);
     try {
+      const now = new Date();
+      const clientHour = now.getHours();
+      const clientDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       const res = await fetch('/api/companion-signals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: userProfile?.uid || 'guest_user',
           userProfile,
-          forceRefresh
+          forceRefresh,
+          clientLocalTime: now.toISOString(),
+          clientHour,
+          clientDateStr,
+          timezone,
+          latitude: userProfile?.settings?.latitude,
+          longitude: userProfile?.settings?.longitude
         })
       });
       if (res.ok) {
@@ -196,7 +164,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         setCompanionSignal(data);
       }
     } catch (err) {
-      console.warn("Failed to fetch companion signals:", err);
+      console.warn("Companion signals fetch warning:", err);
     } finally {
       setIsLoadingSignal(false);
     }
@@ -204,339 +172,488 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
   useEffect(() => {
     fetchCompanionSignal(false);
-  }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled]);
+
+    // Automatic diurnal window change monitor & silent auto-refresh every 5 minutes
+    const autoRefreshInterval = setInterval(() => {
+      fetchCompanionSignal(false);
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(autoRefreshInterval);
+  }, [userProfile?.uid, userProfile?.settings?.companionSignalsEnabled, userProfile?.settings?.locationName]);
+
+  // Metric info definitions for popups
+  const handleMetricClick = (e: React.MouseEvent, type: string) => {
+    e.stopPropagation();
+
+    const uvVal = Number(dailyBrief.uvIndex) || 4.0;
+    const aqiVal = dailyBrief.airQualityAqi ?? 67;
+    const humVal = dailyBrief.humidity || '78%';
+    const feelsLikeVal = dailyBrief.feelsLike || dailyBrief.temperature || '29°C';
+    const windVal = `${dailyBrief.windSpeed ?? 13.9} km/h`;
+    const cloudVal = `${dailyBrief.cloudCover ?? 87}%`;
+    const dewVal = dailyBrief.dewPoint ?? '24.6°C';
+    const pm25Val = `${dailyBrief.pm25 ?? 18.8} µg/m³`;
+    const pm10Val = `${dailyBrief.pm10 ?? 32.0} µg/m³`;
+    const ozoneVal = `${dailyBrief.ozone ?? 35.0} µg/m³`;
+    const vpdVal = `${dailyBrief.vpdKpa ?? 0.85} kPa`;
+
+    const metricMap: Record<string, MetricDetailPopup> = {
+      weather: {
+        label: "Atmospheric Temperature",
+        value: dailyBrief.temperature || "29°C",
+        category: dailyBrief.weatherCondition || "Overcast",
+        skinImpact: "Ambient heat accelerates micro-circulation and cutaneous sebum liquefaction.",
+        recommendation: "Keep skin balanced with a lightweight, non-comedogenic water gel or hydration mist.",
+        icon: "solar:cloud-sun-2-bold-duotone",
+        colorClass: "bg-amber-500/10 text-amber-600 border-amber-200/60"
+      },
+      feels_like: {
+        label: "Apparent Thermal Load",
+        value: feelsLikeVal,
+        category: "Biometeorological Index",
+        skinImpact: "Higher apparent temperature increases transpiration and pore dilatation.",
+        recommendation: "Use oil-absorbing blotting sheets and refresh with electrolyte-infused mist.",
+        icon: "solar:thermometer-bold-duotone",
+        colorClass: "bg-orange-500/10 text-orange-600 border-orange-200/60"
+      },
+      uv: {
+        label: "Ultraviolet Radiation Index",
+        value: `UV ${uvVal.toFixed(1)}`,
+        category: uvVal < 3 ? "Low Risk" : uvVal < 6 ? "Moderate Risk" : uvVal < 8 ? "High Risk" : "Extreme Risk",
+        skinImpact: "Solar UV triggers reactive oxygen species (ROS), breaking down collagen fibrils and stimulating melanocytes.",
+        recommendation: "Apply 2 finger-lengths of broad-spectrum SPF 50+. Reapply every 2 hours if outdoors.",
+        icon: "solar:sun-bold-duotone",
+        colorClass: "bg-amber-500/10 text-amber-600 border-amber-200/60"
+      },
+      aqi: {
+        label: "Air Quality Index (AQI)",
+        value: `AQI ${aqiVal}`,
+        category: aqiVal <= 50 ? "Good" : aqiVal <= 100 ? "Moderate" : "Sensitive Alert",
+        skinImpact: "Microscopic airborne particles trigger AhR receptor pathways, weakening the stratum corneum lipid matrix.",
+        recommendation: "Layer an antioxidant serum (Niacinamide / Vitamin C) under moisturizer to neutralize free radicals.",
+        icon: "solar:leaf-bold-duotone",
+        colorClass: "bg-emerald-500/10 text-emerald-600 border-emerald-200/60"
+      },
+      humidity: {
+        label: "Relative Humidity",
+        value: humVal.includes('%') ? humVal : `${humVal}%`,
+        category: "Atmospheric Moisture",
+        skinImpact: "Higher relative humidity preserves epidermal hydration but can trap excess sebum and micro-debris.",
+        recommendation: "A gentle gel cleanser prevents follicular congestion without stripping your acid mantle.",
+        icon: "solar:droplet-bold-duotone",
+        colorClass: "bg-sky-500/10 text-sky-600 border-sky-200/60"
+      },
+      wind: {
+        label: "Wind Velocity & Gusts",
+        value: windVal,
+        category: "Atmospheric Flow",
+        skinImpact: "Surface airflow strips the moisture film, accelerating transepidermal water loss (TEWL).",
+        recommendation: "Reinforce with a ceramide-rich barrier cream and apply a protective lip occlusive.",
+        icon: "solar:wind-bold-duotone",
+        colorClass: "bg-cyan-500/10 text-cyan-600 border-cyan-200/60"
+      },
+      clouds: {
+        label: "Cloud Cover & UV Penetration",
+        value: cloudVal,
+        category: "Solar Filtration",
+        skinImpact: "Overcast skies absorb infra-red heat, but up to 85% of damaging UVA radiation still penetrates through clouds.",
+        recommendation: "Do not skip daily SPF sunscreen on overcast or cloudy days.",
+        icon: "solar:clouds-bold-duotone",
+        colorClass: "bg-slate-500/10 text-slate-600 border-slate-200/60"
+      },
+      dew_point: {
+        label: "Dew Point Saturation",
+        value: dewVal,
+        category: "Comfort Index",
+        skinImpact: "Dew point indicates absolute air moisture. Higher levels increase sweat evaporation resistance.",
+        recommendation: "Switch to featherweight humectants like Hyaluronic Acid and Panthenol.",
+        icon: "solar:water-drop-bold-duotone",
+        colorClass: "bg-blue-500/10 text-blue-600 border-blue-200/60"
+      },
+      pm25: {
+        label: "PM2.5 Microparticulates",
+        value: pm25Val,
+        category: "Fine Particulate Matter",
+        skinImpact: "Combustion particulates under 2.5 micrometers penetrate follicular openings, inducing lipid peroxidation.",
+        recommendation: "Double cleanse in the evening (oil/balm followed by gentle pH-balanced foaming cleanser).",
+        icon: "solar:shield-warning-bold-duotone",
+        colorClass: "bg-emerald-500/10 text-emerald-600 border-emerald-200/60"
+      },
+      pm10: {
+        label: "PM10 Coarse Particulates",
+        value: pm10Val,
+        category: "Coarse Airborne Dust",
+        skinImpact: "Coarse dust and environmental soil rest on the surface, causing friction and superficial irritation.",
+        recommendation: "Rinse face with thermal spring water or micellar cleanser after prolonged outdoor exposure.",
+        icon: "solar:atom-bold-duotone",
+        colorClass: "bg-teal-500/10 text-teal-600 border-teal-200/60"
+      },
+      vpd: {
+        label: "Vapour Pressure Deficit (VPD)",
+        value: vpdVal,
+        category: "Epidermal Evaporative Pressure",
+        skinImpact: "VPD measures the drying force exerted by ambient air on your skin barrier.",
+        recommendation: "At optimal VPD, skin transpires naturally without excessive dehydration.",
+        icon: "solar:soundwave-bold-duotone",
+        colorClass: "bg-indigo-500/10 text-indigo-600 border-indigo-200/60"
+      }
+    };
+
+    setActiveMetricDetail(metricMap[type] || metricMap.weather);
+  };
+
+  const uvVal = Number(dailyBrief.uvIndex) || 4.0;
+  const aqiVal = dailyBrief.airQualityAqi ?? 67;
+  const locationText = dailyBrief.locationName || userProfile?.settings?.locationName || 'Bardoli, IN';
 
   return (
-    <div className="w-full h-full px-5 pt-2 pb-28 space-y-5 overflow-y-auto no-scrollbar">
-      {/* Dynamic Warm Greeting */}
+    <div className="w-full h-full px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">
+      {/* 1. Dynamic Warm Greeting with Live Time */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="pt-2 pb-1"
+        transition={{ duration: 0.5 }}
+        className="pt-2 pb-0.5"
       >
         <div
           onClick={cycleGreeting}
           className="group cursor-pointer select-none inline-block"
-          title="Click to cycle creative greeting"
+          title="Tap to cycle greeting"
         >
-          <div className="flex items-center space-x-2 text-[11px] font-medium text-[#737a87] mb-1">
-            <Icon icon={greetingConfig.iconName} className={`w-3.5 h-3.5 ${greetingConfig.iconColor}`} />
-            <span>{greetingConfig.formattedTime}</span>
+          <div className="flex items-center space-x-1.5 text-[11.5px] font-medium text-[#737a87] mb-1.5">
+            <Icon icon={greetingConfig.iconName} className={`w-3.5 h-3.5 ${greetingConfig.iconColor} shrink-0`} />
+            <span className="font-semibold text-[#1e293b]">{currentTime}</span>
             <span className="text-[#cbd5e1]">•</span>
-            <span className="text-[#94a3b8]">{greetingConfig.subtext}</span>
+            <span className="text-[#64748b]">{greetingConfig.subtext}</span>
           </div>
-          <h1 className="text-[26px] font-bold leading-tight text-[#121316] tracking-tight group-hover:text-black transition-colors flex items-center space-x-2">
-            <span>{greetingConfig.greeting}</span>
+          <h1 className="text-[26px] font-bold leading-tight text-[#121316] tracking-tight group-hover:text-black transition-colors">
+            {greetingConfig.greeting}
           </h1>
         </div>
       </motion.div>
 
-      {/* Weather & Environmental Exposome Card */}
+      {/* 2. Interactive Expandable Weather & Advanced Telemetry Card */}
       <motion.div
-        initial={{ opacity: 0, y: 14 }}
+        layout
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
+        transition={{
+          layout: { type: "spring", stiffness: 350, damping: 28 },
+          duration: 0.4
+        }}
+        onClick={() => setIsWeatherExpanded(prev => !prev)}
+        className="w-full rounded-[26px] bg-white border border-[#eaedf1] shadow-2xs hover:border-[#d9dfeb] hover:shadow-xs transition-all duration-300 cursor-pointer overflow-hidden p-4.5 relative select-none"
       >
-        <div
-          onClick={onOpenSettings}
-          className="squircle-card p-4.5 flex flex-col justify-between relative overflow-hidden rounded-[24px] bg-white border border-[#eaedf1] shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
-        >
-          {/* Card Top: Weather Title, Location Badge & AQI Badge */}
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[12px] font-semibold text-[#737a87]">Weather</span>
-              <span className="text-[10px] text-[#cbd5e1]">•</span>
-              <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-[10.5px] font-medium">
-                <Icon icon="solar:map-point-bold-duotone" className="w-3 h-3 text-[#0284c7]" />
-                <span className="truncate max-w-[110px]">
-                  {dailyBrief.locationName || userProfile?.settings?.locationName || 'Bardoli, IN'}
-                </span>
-              </div>
+        {/* Card Header: Weather Label & Location */}
+        <div className="flex items-center justify-between mb-3.5">
+          <div className="flex items-center space-x-1.5">
+            <span className="text-[12px] font-semibold text-[#737a87]">Weather</span>
+            <span className="text-[10px] text-[#cbd5e1]">•</span>
+            <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-[11px] font-medium">
+              <Icon icon="solar:map-point-bold-duotone" className="w-3 h-3 text-[#0284c7]" />
+              <span className="truncate max-w-[140px]">{locationText}</span>
             </div>
-
-            {/* Air Quality Badge */}
-            {dailyBrief.airQualityAqi !== undefined && (
-              <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-[#f0fdf4] border border-[#dcfce7] text-[#16a34a] text-[10.5px] font-semibold shadow-2xs">
-                <Icon icon="solar:leaf-bold-duotone" className="w-3.5 h-3.5 text-[#16a34a]" />
-                <span>AQI {dailyBrief.airQualityAqi}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Temperature & Main Badges */}
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="text-[32px] font-bold text-[#121316] tracking-tight leading-none">
-                {dailyBrief.temperature}
-              </div>
-              <p className="text-[12.5px] font-medium text-[#5e6573] mt-1 flex items-center space-x-1">
-                <span>{dailyBrief.weatherCondition}</span>
-              </p>
-            </div>
-
-            {/* Key Metrics Badges */}
-            <div className="flex flex-wrap items-center justify-end gap-1.5 text-[10.5px] font-semibold max-w-[190px]">
-              {Number(dailyBrief.uvIndex) > 0 && (
-                <div className="px-2 py-1 rounded-xl bg-[#fff7ed] border border-[#ffedd5] text-[#c2410c] flex items-center space-x-1">
-                  <Icon icon="solar:sun-bold" className="w-3 h-3 text-[#ea580c]" />
-                  <span>UV {dailyBrief.uvIndex}</span>
-                </div>
-              )}
-              {dailyBrief.humidity && (
-                <div className="px-2.5 py-1 rounded-xl bg-[#f0f9ff] border border-[#e0f2fe] text-[#0369a1] flex items-center space-x-1 shadow-2xs">
-                  <Icon icon="solar:droplet-bold" className="w-3.5 h-3.5 text-[#0284c7]" />
-                  <span>{dailyBrief.humidity.includes('Humidity') ? dailyBrief.humidity : `${dailyBrief.humidity} Humidity`}</span>
-                </div>
-              )}
-              {dailyBrief.precipProb !== undefined && dailyBrief.precipProb > 0 && (
-                <div className="px-2 py-1 rounded-xl bg-[#f0f9ff] border border-[#bae6fd] text-[#0284c7] flex items-center space-x-1">
-                  <Icon icon="solar:cloud-waterdrops-bold-duotone" className="w-3 h-3 text-[#0284c7]" />
-                  <span>{dailyBrief.precipProb}% Rain</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Clean 1-Line Exposome Micro-Bar (Zero-Noise) */}
-          <div className="mt-3 pt-2.5 border-t border-[#f1f5f9] flex items-center justify-between text-[11px] text-[#64748b]">
-            <div className="flex items-center space-x-3 overflow-x-auto no-scrollbar py-0.5">
-              {dailyBrief.windSpeed !== undefined && (
-                <span className="flex items-center space-x-1 whitespace-nowrap text-[#475569] font-medium">
-                  <Icon icon="solar:wind-bold-duotone" className="w-3.5 h-3.5 text-[#0284c7]" />
-                  <span>{dailyBrief.windSpeed} km/h</span>
-                </span>
-              )}
-              {dailyBrief.cloudCover !== undefined && (
-                <span className="flex items-center space-x-1 whitespace-nowrap text-[#475569] font-medium">
-                  <Icon icon="solar:clouds-bold-duotone" className="w-3.5 h-3.5 text-[#64748b]" />
-                  <span>{dailyBrief.cloudCover}% Clouds</span>
-                </span>
-              )}
-              {dailyBrief.dewPoint && (
-                <span className="flex items-center space-x-1 whitespace-nowrap text-[#475569] font-medium">
-                  <Icon icon="solar:water-drop-bold-duotone" className="w-3.5 h-3.5 text-[#0ea5e9]" />
-                  <span>Dew {dailyBrief.dewPoint}</span>
-                </span>
-              )}
-              {dailyBrief.pm25 !== undefined && (
-                <span className="flex items-center space-x-1 whitespace-nowrap text-[#475569] font-medium">
-                  <Icon icon="solar:shield-warning-bold-duotone" className="w-3.5 h-3.5 text-[#16a34a]" />
-                  <span>PM2.5 {dailyBrief.pm25}</span>
-                </span>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowExposomeModal(true);
-              }}
-              className="flex items-center space-x-1 text-[10.5px] font-semibold text-[#0284c7] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-2 py-0.5 rounded-lg transition-colors ml-2 shrink-0 cursor-pointer"
-            >
-              <span>Exposome</span>
-              <Icon icon="solar:alt-arrow-right-linear" className="w-3 h-3" />
-            </button>
           </div>
         </div>
-      </motion.div>
 
-      {/* Daily Companion Signals Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.15 }}
-      >
-        <div className="squircle-card p-4.5 flex flex-col justify-between relative overflow-hidden rounded-[24px] bg-gradient-to-b from-[#fbfbfe] to-white border border-[#eaedf1] shadow-2xs">
-          {/* Card Header */}
-          <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#f1f5f9]">
-            <div className="flex items-center space-x-2">
-              <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                <Icon icon="solar:stars-bold-duotone" className="w-4 h-4 text-amber-500 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-[13px] font-bold text-[#121316] tracking-tight">Companion Signals</h3>
-                <p className="text-[10.5px] text-[#787f8d]">
-                  {companionSignal?.contextMeta?.locationName
-                    ? `${companionSignal.contextMeta.locationName} • Live Pulse`
-                    : 'Context-Aware Companion'}
-                </p>
-              </div>
+        {/* 4-Block Visual Metric Grid (Clean typographic presentation) */}
+        <div className="grid grid-cols-4 gap-2 items-stretch">
+          {/* Block 1: Temperature & Condition */}
+          <div
+            onClick={(e) => handleMetricClick(e, 'weather')}
+            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f8fafc] border border-[#f1f5f9] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
+          >
+            <div className="text-[22px] font-bold text-[#121316] tracking-tight leading-none">
+              {dailyBrief.temperature || "29°C"}
             </div>
-
-            <button
-              onClick={() => fetchCompanionSignal(true)}
-              disabled={isLoadingSignal}
-              title="Refresh companion signal"
-              className="p-1.5 px-2 rounded-xl bg-[#f0f3f6] hover:bg-[#e2e8f0] text-[#5e6573] transition-colors cursor-pointer flex items-center space-x-1"
-            >
-              <Icon
-                icon="solar:restart-bold"
-                className={`w-3.5 h-3.5 ${isLoadingSignal ? 'animate-spin text-[#0284c7]' : ''}`}
-              />
-              <span className="text-[10.5px] font-semibold">{isLoadingSignal ? 'Synthesizing...' : 'Refresh'}</span>
-            </button>
+            <p className="text-[10.5px] font-medium text-[#64748b] truncate mt-1">
+              {dailyBrief.weatherCondition || "Overcast"}
+            </p>
           </div>
 
-          {/* Card Body */}
-          {userProfile?.settings?.companionSignalsEnabled === false ? (
-            <div className="py-3 px-3 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] text-center space-y-1">
-              <p className="text-[12px] font-medium text-[#5e6573]">Companion Signals are paused</p>
-              <button
-                onClick={onOpenSettings}
-                className="text-[11px] font-semibold text-[#0284c7] hover:underline cursor-pointer"
-              >
-                Enable in Settings
-              </button>
+          {/* Block 2: UV Metric (Pure typographic focus) */}
+          <div
+            onClick={(e) => handleMetricClick(e, 'uv')}
+            className="flex flex-col justify-between p-2 rounded-2xl bg-[#fff7ed]/70 border border-[#ffedd5] hover:bg-[#ffedd5] transition-colors cursor-pointer"
+          >
+            <div className="text-[13px] font-bold leading-none text-[#ea580c]">
+              UV {uvVal.toFixed(1)}
             </div>
-          ) : isLoadingSignal && (!companionSignal?.lines || companionSignal.lines.length === 0) ? (
-            <div className="py-3 space-y-2.5">
-              <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-full" />
-              <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-4/5" />
-            </div>
-          ) : companionSignal?.lines && companionSignal.lines.length > 0 ? (
-            <div className="space-y-3 py-1">
-              {companionSignal.lines.map((sentence, idx) => (
-                <div key={idx} className="flex items-start space-x-2.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0" />
-                  <p className="text-[13.5px] font-medium text-[#18191c] leading-relaxed">
-                    {sentence}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-2 text-[12.5px] text-[#5e6573] font-medium">
-              Keep your skin hydrated and protected today — SANA is monitoring your local exposome.
-            </div>
-          )}
-        </div>
-      </motion.div>
+            <span className="text-[10px] font-semibold text-[#c2410c] mt-1 truncate">
+              {dailyBrief.uvLevel || (uvVal < 3 ? "Low" : uvVal < 6 ? "Moderate" : "High")}
+            </span>
+          </div>
 
-      {/* Environmental Exposome Deep Modal */}
-      <AnimatePresence>
-        {showExposomeModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          {/* Block 3: Air Quality / AQI (Pure typographic focus) */}
+          <div
+            onClick={(e) => handleMetricClick(e, 'aqi')}
+            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f0fdf4]/70 border border-[#dcfce7] hover:bg-[#dcfce7] transition-colors cursor-pointer"
+          >
+            <div className="text-[13px] font-bold leading-none text-[#16a34a]">
+              AQI {aqiVal}
+            </div>
+            <span className="text-[10px] font-semibold text-[#15803d] mt-1 truncate">
+              {aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
+            </span>
+          </div>
+
+          {/* Block 4: Other (Humidity & Rain Probability) */}
+          <div
+            onClick={(e) => handleMetricClick(e, 'humidity')}
+            className="flex flex-col justify-between p-2 rounded-2xl bg-[#f0f9ff]/70 border border-[#e0f2fe] hover:bg-[#e0f2fe] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center space-x-1 text-[#0284c7]">
+              <Icon icon="solar:droplet-bold" className="w-3 h-3 shrink-0" />
+              <span className="text-[11.5px] font-bold leading-none truncate">
+                {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '') : '78%'}
+              </span>
+            </div>
+            <div className="text-[9.5px] font-semibold text-[#0369a1] mt-1 truncate">
+              <span>{dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% Rain` : '88% Rain'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Advanced Telemetry Section (Smooth Downward Expansion ~35-40%) */}
+        <AnimatePresence>
+          {isWeatherExpanded && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              layout
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 14 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              transition={{
+                duration: 0.3,
+                ease: [0.16, 1, 0.3, 1]
+              }}
+              className="overflow-hidden pt-3 border-t border-[#f1f5f9] space-y-2.5"
+            >
+              {/* Telemetry Micro Grid */}
+              <div className="grid grid-cols-4 gap-1.5 text-left">
+                {/* Feels Like */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'feels_like')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:thermometer-bold-duotone" className="w-3 h-3 text-[#f97316]" />
+                    <span className="truncate">Feels Like</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.feelsLike || dailyBrief.temperature || "30°C"}
+                  </span>
+                </div>
+
+                {/* Wind Speed */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'wind')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:wind-bold-duotone" className="w-3 h-3 text-[#0284c7]" />
+                    <span className="truncate">Wind</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.windSpeed ?? 13.9} <span className="text-[9.5px] font-normal text-[#64748b]">km/h</span>
+                  </span>
+                </div>
+
+                {/* Cloud Cover */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'clouds')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:clouds-bold-duotone" className="w-3 h-3 text-[#64748b]" />
+                    <span className="truncate">Clouds</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.cloudCover ?? 87}%
+                  </span>
+                </div>
+
+                {/* Dew Point */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'dew_point')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:water-drop-bold-duotone" className="w-3 h-3 text-[#0ea5e9]" />
+                    <span className="truncate">Dew Pt</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.dewPoint ?? "24.6°C"}
+                  </span>
+                </div>
+
+                {/* PM2.5 */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'pm25')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:shield-warning-bold-duotone" className="w-3 h-3 text-[#16a34a]" />
+                    <span className="truncate">PM2.5</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.pm25 ?? 18.8} <span className="text-[9.5px] font-normal text-[#64748b]">µg</span>
+                  </span>
+                </div>
+
+                {/* PM10 */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'pm10')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:atom-bold-duotone" className="w-3 h-3 text-[#0d9488]" />
+                    <span className="truncate">PM10</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.pm10 ?? 32.0} <span className="text-[9.5px] font-normal text-[#64748b]">µg</span>
+                  </span>
+                </div>
+
+                {/* Solar Peak UV */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'uv')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:sun-2-bold-duotone" className="w-3 h-3 text-[#ea580c]" />
+                    <span className="truncate">Peak UV</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.uvIndexClearSky ?? (uvVal + 1.2).toFixed(1)}
+                  </span>
+                </div>
+
+                {/* VPD (Vapour Pressure Deficit) */}
+                <div
+                  onClick={(e) => handleMetricClick(e, 'vpd')}
+                  className="p-2 rounded-xl bg-[#f8f9fb] border border-[#eaedf1] hover:border-[#cbd5e1] hover:bg-white transition-all cursor-pointer group"
+                >
+                  <span className="text-[9.5px] font-medium text-[#787f8d] flex items-center space-x-1">
+                    <Icon icon="solar:soundwave-bold-duotone" className="w-3 h-3 text-[#6366f1]" />
+                    <span className="truncate">VPD</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
+                    {dailyBrief.vpdKpa ?? 0.85} <span className="text-[9.5px] font-normal text-[#64748b]">kPa</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Minimalist Hint Bar */}
+              <div className="pt-1 text-left text-[10px] text-[#94a3b8]">
+                <span>Tap any metric to inspect skin barrier impact</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* 3. Companion Thought / Contextual Insights (Refined editorial typography, zero friction) */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="w-full pt-6 px-1"
+      >
+        {userProfile?.settings?.companionSignalsEnabled === false ? (
+          <div className="p-3 text-center text-xs text-[#94a3b8]">
+            <span>Companion insights paused. </span>
+            <button
+              onClick={onOpenSettings}
+              className="text-[#0284c7] font-medium hover:underline cursor-pointer"
+            >
+              Enable in Settings
+            </button>
+          </div>
+        ) : isLoadingSignal && (!companionSignal?.lines || companionSignal.lines.length === 0) ? (
+          <div className="space-y-3 py-2">
+            <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-full" />
+            <div className="h-4 bg-[#f1f5f9] rounded-md animate-pulse w-4/5" />
+          </div>
+        ) : companionSignal?.lines && companionSignal.lines.length > 0 ? (
+          <div className="space-y-4 py-1">
+            {companionSignal.lines.map((sentence, idx) => (
+              <p
+                key={idx}
+                className="text-[16px] text-[#2c3038] leading-[1.7] font-normal tracking-normal font-['Newsreader',serif]"
+              >
+                {sentence}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[16px] text-[#2c3038] leading-[1.7] font-normal tracking-normal font-['Newsreader',serif]">
+            {userName}, with today&apos;s UV and humidity conditions, giving your skin barrier gentle hydration and broad-spectrum SPF 50 will keep your skin glowing and balanced.
+          </p>
+        )}
+      </motion.div>
+
+      {/* 4. Interactive Metric Pop-up Dialog */}
+      <AnimatePresence>
+        {activeMetricDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/25 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="w-full max-w-md bg-white rounded-3xl p-5 shadow-2xl border border-[#eaedf1] space-y-4 max-h-[85vh] overflow-y-auto no-scrollbar relative"
+              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-xs bg-white rounded-[28px] p-5 shadow-2xl border border-[#eaedf1] space-y-3.5 relative overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[#f1f5f9]">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 rounded-xl bg-sky-50 text-[#0284c7]">
-                    <Icon icon="solar:planet-bold-duotone" className="w-5 h-5" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className={`p-2 rounded-2xl border ${activeMetricDetail.colorClass}`}>
+                    <Icon icon={activeMetricDetail.icon} className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-[15px] font-bold text-[#121316]">Environmental Exposome</h3>
-                    <p className="text-[11px] text-[#64748b]">Live Open-Meteo Meteorological & AQI Metrics</p>
+                    <h4 className="text-[14px] font-bold text-[#121316] leading-tight">
+                      {activeMetricDetail.label}
+                    </h4>
+                    <span className="text-[11px] font-semibold text-[#64748b]">
+                      {activeMetricDetail.value} • {activeMetricDetail.category}
+                    </span>
                   </div>
                 </div>
+
                 <button
-                  onClick={() => setShowExposomeModal(false)}
-                  className="p-1.5 rounded-full hover:bg-slate-100 text-[#64748b] transition-colors cursor-pointer"
+                  onClick={() => setActiveMetricDetail(null)}
+                  className="p-1 rounded-full text-[#94a3b8] hover:text-[#121316] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
                 >
                   <Icon icon="solar:close-circle-bold" className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Grid 1: Air Quality & Pollution */}
-              <div className="p-3.5 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-bold text-[#0f172a] flex items-center space-x-1.5">
-                    <Icon icon="solar:leaf-bold-duotone" className="w-4 h-4 text-[#16a34a]" />
-                    <span>Air Quality & Pollution</span>
-                  </span>
-                  <span className="text-[11px] font-semibold text-[#16a34a] bg-[#f0fdf4] px-2 py-0.5 rounded-full border border-[#dcfce7]">
-                    AQI {dailyBrief.airQualityAqi ?? 65} ({ (dailyBrief.airQualityAqi ?? 65) <= 50 ? 'Good' : 'Moderate' })
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-                  <div className="p-2 rounded-xl bg-white border border-[#f1f5f9]">
-                    <span className="text-[#64748b] text-[10px] block">PM2.5 Microparticles</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.pm25 ?? 18.5} μg/m³</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#f1f5f9]">
-                    <span className="text-[#64748b] text-[10px] block">PM10 Coarse Dust</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.pm10 ?? 32.0} μg/m³</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#f1f5f9]">
-                    <span className="text-[#64748b] text-[10px] block">Ozone (O₃)</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.ozone ?? 35.0} μg/m³</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#f1f5f9]">
-                    <span className="text-[#64748b] text-[10px] block">Nitrogen Dioxide (NO₂)</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.no2 ?? 14.2} μg/m³</span>
-                  </div>
-                </div>
-                <p className="text-[10.5px] text-[#475569] bg-white p-2 rounded-xl border border-[#f1f5f9]">
-                  💡 <strong>Skin Impact:</strong> PM2.5 triggers oxidative stress and AhR receptors. Double-cleansing is recommended tonight.
+              {/* Skin Impact Card */}
+              <div className="p-3 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0] space-y-1.5">
+                <span className="text-[10.5px] font-bold text-[#475569] uppercase tracking-wider block">
+                  Cutaneous Impact
+                </span>
+                <p className="text-[12px] font-medium text-[#1e293b] leading-relaxed">
+                  {activeMetricDetail.skinImpact}
                 </p>
               </div>
 
-              {/* Grid 2: Solar Radiation & Cloud UV Ratio */}
-              <div className="p-3.5 rounded-2xl bg-[#fff7ed] border border-[#ffedd5] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-bold text-[#9a3412] flex items-center space-x-1.5">
-                    <Icon icon="solar:sun-bold-duotone" className="w-4 h-4 text-[#ea580c]" />
-                    <span>Solar Radiation & UV</span>
-                  </span>
-                  <span className="text-[11px] font-semibold text-[#c2410c] bg-white px-2 py-0.5 rounded-full border border-[#ffedd5]">
-                    UV Index {dailyBrief.uvIndex} ({dailyBrief.uvLevel})
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-                  <div className="p-2 rounded-xl bg-white border border-[#ffedd5]">
-                    <span className="text-[#9a3412] text-[10px] block">Clear-Sky UV Max</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.uvIndexClearSky ?? dailyBrief.uvIndex}</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#ffedd5]">
-                    <span className="text-[#9a3412] text-[10px] block">Cloud Cover</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.cloudCover ?? 40}%</span>
-                  </div>
-                </div>
-                <p className="text-[10.5px] text-[#7c2d12] bg-white p-2 rounded-xl border border-[#ffedd5]">
-                  ☀️ <strong>UV Cloud Penetration:</strong> UVA rays penetrate cloud cover. Reapply SPF 50 if outdoors.
+              {/* Recommendation */}
+              <div className="p-3 rounded-2xl bg-[#f0f9ff] border border-[#e0f2fe] space-y-1.5">
+                <span className="text-[10.5px] font-bold text-[#0369a1] uppercase tracking-wider block">
+                  Regimen Adjustment
+                </span>
+                <p className="text-[12px] font-medium text-[#0c4a6e] leading-relaxed">
+                  {activeMetricDetail.recommendation}
                 </p>
               </div>
 
-              {/* Grid 3: Atmospheric Hydration & Wind */}
-              <div className="p-3.5 rounded-2xl bg-[#f0f9ff] border border-[#e0f2fe] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-bold text-[#0369a1] flex items-center space-x-1.5">
-                    <Icon icon="solar:droplet-bold-duotone" className="w-4 h-4 text-[#0284c7]" />
-                    <span>Atmospheric Dynamics</span>
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-                  <div className="p-2 rounded-xl bg-white border border-[#e0f2fe]">
-                    <span className="text-[#0369a1] text-[10px] block">Dew Point</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.dewPoint ?? '21°C'}</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#e0f2fe]">
-                    <span className="text-[#0369a1] text-[10px] block">Vapour Pressure Deficit</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.vpdKpa ?? 0.85} kPa</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#e0f2fe]">
-                    <span className="text-[#0369a1] text-[10px] block">Wind Speed</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.windSpeed ?? 12} km/h</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white border border-[#e0f2fe]">
-                    <span className="text-[#0369a1] text-[10px] block">Wind Gusts</span>
-                    <span className="font-bold text-[#0f172a]">{dailyBrief.windGusts ?? 22} km/h</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Close Action */}
+              {/* Dismiss Button */}
               <button
-                onClick={() => setShowExposomeModal(false)}
-                className="w-full py-2.5 rounded-2xl bg-[#0f172a] text-white text-[13px] font-semibold hover:bg-black transition-colors cursor-pointer text-center"
+                onClick={() => setActiveMetricDetail(null)}
+                className="w-full py-2.5 rounded-2xl bg-[#121316] text-white text-[12.5px] font-semibold hover:bg-black transition-colors cursor-pointer text-center"
               >
-                Close Exposome Breakdown
+                Understood
               </button>
             </motion.div>
           </div>

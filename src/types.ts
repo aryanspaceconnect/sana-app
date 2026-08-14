@@ -204,6 +204,7 @@ export interface CalendarEventItem {
 export interface DailyBriefing {
   greeting: string;
   temperature: string;
+  feelsLike?: string;
   weatherCondition: string;
   uvIndex: number;
   uvLevel: string;
