@@ -85,19 +85,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
   const selectedDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
   const todaysEvents = events.filter(e => e.date === selectedDateStr);
 
-  const getCategoryBadgeClass = (category: string) => {
-    switch (category) {
-      case 'scan':
-        return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-      case 'treatment':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'habit':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'wellness':
-        return 'bg-teal-100 text-teal-800 border-teal-200';
-      default:
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-    }
+  const getCategoryBadgeClass = (_category: string) => {
+    return 'text-slate-500 font-medium text-[11px] tracking-tight';
   };
 
   return (
@@ -144,11 +133,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
 
         {/* Days Grid */}
         <div className="grid grid-cols-7 gap-1 text-center">
-          {/* Previous Month Inactive Days */}
-          {prevMonthDays.map((d, i) => (
-            <div key={`prev-${i}`} className="p-2.5 text-[14px] text-[#cbd5e1] font-medium">
-              {d}
-            </div>
+          {/* Previous Month Inactive Slots (Empty spacers to preserve alignment without cluttering previous month numbers) */}
+          {prevMonthDays.map((_, i) => (
+            <div key={`prev-${i}`} className="py-2.5 h-10" />
           ))}
 
           {/* Current Month Days */}
@@ -162,11 +149,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
               <button
                 key={`curr-${day}`}
                 onClick={() => setSelectedDate(day)}
-                className={`relative py-2.5 rounded-2xl text-[14px] font-semibold transition-all cursor-pointer flex flex-col items-center justify-center ${
+                className={`relative h-10 rounded-2xl text-[13.5px] font-semibold transition-all cursor-pointer flex flex-col items-center justify-center ${
                   isSelected
-                    ? 'bg-[#3b82f6] text-white shadow-md'
+                    ? 'bg-[#2563eb] text-white shadow-md font-bold'
                     : isToday
-                    ? 'bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]'
+                    ? 'bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe] font-bold'
                     : 'text-[#334155] hover:bg-[#f1f5f9]'
                 }`}
               >
@@ -182,50 +169,42 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
       </motion.div>
 
       {/* Scheduled Events & Regimen Logs for Selected Date */}
-      <div className="squircle-card p-5 space-y-4 bg-white border border-[#eaedf1] shadow-sm">
+      <div className="squircle-card p-4 sm:p-5 space-y-3.5 bg-white border border-[#eaedf1] shadow-xs">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-[15px] font-semibold text-[#121316]">
+            <h3 className="text-[15px] font-bold text-[#121316]">
               Schedule for {monthNames[month]} {selectedDate}
             </h3>
-            <p className="text-[11.5px] text-[#787f8d]">
+            <p className="text-[11.5px] text-[#787f8d] font-medium">
               {todaysEvents.length} {todaysEvents.length === 1 ? 'event' : 'events'} planned
             </p>
           </div>
-
-          <button
-            onClick={onOpenScan}
-            className="px-3 py-1.5 rounded-xl bg-[#1a1c1e] text-white text-[12px] font-medium flex items-center space-x-1 hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
-          >
-            <Icon icon="solar:camera-minimalistic-bold" className="w-3.5 h-3.5 text-blue-400" />
-            <span>Scan Skin</span>
-          </button>
         </div>
 
         {todaysEvents.length === 0 ? (
-          <div className="p-4 rounded-2xl bg-[#f8f9fb] text-center border border-[#eaedf1]">
-            <Icon icon="solar:calendar-minimalistic-linear" className="w-6 h-6 text-[#94a3b8] mx-auto mb-1" />
-            <p className="text-[13px] text-[#787f8d]">No events scheduled for this date.</p>
-            <p className="text-[11px] text-[#a0a7b5]">Add a reminder or ask SANA in chat to set up an event!</p>
+          <div className="p-3.5 rounded-2xl bg-[#f8f9fb] text-center border border-[#eaedf1]">
+            <Icon icon="solar:calendar-minimalistic-linear" className="w-5 h-5 text-[#94a3b8] mx-auto mb-1" />
+            <p className="text-[12.5px] text-[#64748b] font-medium">No events scheduled for this date.</p>
+            <p className="text-[11px] text-[#94a3b8] mt-0.5">Tap below to log a regimen or skin check reminder.</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-1 divide-y divide-slate-100">
             {todaysEvents.map(evt => (
               <div
                 key={evt.id}
-                className="p-3.5 rounded-2xl bg-[#f8fafc] border border-[#eaedf1] hover:border-[#cbd5e1] transition-all flex flex-col space-y-1.5 relative group"
+                className="py-2.5 px-1 hover:bg-slate-50/80 transition-all flex flex-col space-y-1 relative group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-[12px] font-semibold text-[#2563eb] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 flex items-center gap-1">
-                      <Icon icon="solar:clock-circle-bold" className="w-3 h-3 text-blue-500" />
+                    <span className="text-[11.5px] font-semibold text-slate-700 font-mono flex items-center gap-1">
+                      <Icon icon="solar:clock-circle-bold" className="w-3.5 h-3.5 text-blue-500" />
                       {evt.time || '20:00'}
                     </span>
                     <span className="text-[13.5px] font-semibold text-[#121316]">{evt.title}</span>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <span className={`text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full border capitalize ${getCategoryBadgeClass(evt.category)}`}>
+                    <span className={`capitalize ${getCategoryBadgeClass(evt.category)}`}>
                       {evt.category}
                     </span>
 
@@ -240,15 +219,15 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
                 </div>
 
                 {evt.notes && (
-                  <p className="text-[12px] text-[#475569] bg-white p-2 rounded-xl border border-[#e2e8f0] leading-relaxed">
+                  <p className="text-[12px] text-[#475569] leading-relaxed pl-5">
                     {evt.notes}
                   </p>
                 )}
 
                 {evt.reminder && (
-                  <div className="flex items-center space-x-1 text-[11px] text-[#10b981] font-medium pt-0.5">
-                    <Icon icon="solar:bell-bing-bold" className="w-3 h-3 text-[#10b981]" />
-                    <span>Active Reminder Alert</span>
+                  <div className="flex items-center space-x-1 text-[11px] text-slate-500 font-medium pt-0.5 pl-5">
+                    <Icon icon="solar:bell-bing-bold" className="w-3 h-3 text-blue-500" />
+                    <span>Reminder Active</span>
                   </div>
                 )}
               </div>

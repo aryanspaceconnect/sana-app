@@ -100,6 +100,44 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const [surveyOptionalNote, setSurveyOptionalNote] = useState<string>('');
   const [hideImages, setHideImages] = useState<boolean>(false);
 
+  // Horizontal Slider Mouse Drag & Smooth Navigation State
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const [isDraggingSlider, setIsDraggingSlider] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeftState, setScrollLeftState] = useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!sliderRef.current) return;
+    setIsDraggingSlider(true);
+    setStartX(e.pageX - sliderRef.current.offsetLeft);
+    setScrollLeftState(sliderRef.current.scrollLeft);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDraggingSlider(false);
+  };
+
+  const handleMouseUp = () => {
+    setIsDraggingSlider(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingSlider || !sliderRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - sliderRef.current.offsetLeft;
+    const walk = (x - startX) * 1.8;
+    sliderRef.current.scrollLeft = scrollLeftState - walk;
+  };
+
+  const scrollSlider = (direction: 'left' | 'right') => {
+    if (!sliderRef.current) return;
+    const scrollAmount = 240;
+    sliderRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth'
+    });
+  };
+
   // Extract gallery images for horizontal slider (Concern overlays FIRST, original photo LAST)
   const galleryImages = scanResult ? extractGalleryImages(scanResult) : [];
   const allReportImages: { type: string; url: string; score?: number }[] = [];
@@ -859,36 +897,70 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 </div>
               </div>
 
-              {/* Horizontal Image Slider Section with Hide Images Toggle */}
+              {/* Horizontal Image Slider Section with Hide Images Toggle & Scroll Arrows */}
               <div className="w-full space-y-2 shrink-0">
                 <div className="flex items-center justify-between px-0.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Scan Visuals</span>
                   
-                  {/* Hide / Show Images Toggle Button */}
-                  <button
-                    type="button"
-                    onClick={() => setHideImages(!hideImages)}
-                    className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center space-x-1.5 py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200/80 active:scale-95 shadow-2xs"
-                  >
-                    <Icon icon={hideImages ? "solar:eye-bold" : "solar:eye-closed-bold"} className="w-3.5 h-3.5 text-slate-700" />
-                    <span>{hideImages ? "Show Images" : "Hide Images"}</span>
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    {/* Left & Right Scroll Arrows */}
+                    {!hideImages && allReportImages.length > 1 && (
+                      <div className="flex items-center space-x-1 mr-1">
+                        <button
+                          type="button"
+                          onClick={() => scrollSlider('left')}
+                          className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200/80 transition-all cursor-pointer active:scale-90"
+                          title="Scroll Left"
+                        >
+                          <Icon icon="solar:alt-arrow-left-bold" className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollSlider('right')}
+                          className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200/80 transition-all cursor-pointer active:scale-90"
+                          title="Scroll Right"
+                        >
+                          <Icon icon="solar:alt-arrow-right-bold" className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hide / Show Images Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setHideImages(!hideImages)}
+                      className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center space-x-1.5 py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200/80 active:scale-95 shadow-2xs"
+                    >
+                      <Icon icon={hideImages ? "solar:eye-bold" : "solar:eye-closed-bold"} className="w-3.5 h-3.5 text-slate-700" />
+                      <span>{hideImages ? "Show Images" : "Hide Images"}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {!hideImages && (
-                  <div className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar gap-3 py-1 -mx-1 px-1 touch-pan-x overscroll-x-contain select-none">
+                  <div
+                    ref={sliderRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseLeave={handleMouseLeave}
+                    onMouseUp={handleMouseUp}
+                    onMouseMove={handleMouseMove}
+                    className={`flex overflow-x-auto no-scrollbar gap-3 py-1 -mx-1 px-1 touch-pan-x overscroll-x-contain select-none scroll-smooth ${
+                      isDraggingSlider ? 'cursor-grabbing' : 'cursor-grab'
+                    }`}
+                  >
                     {allReportImages.length > 0 ? (
                       allReportImages.map((img, idx) => (
                         <div
                           key={idx}
-                          className="snap-center shrink-0 w-[220px] sm:w-[260px] h-[220px] sm:h-[260px] rounded-3xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs relative group transition-transform duration-300 hover:scale-[1.01]"
+                          className="shrink-0 w-[220px] sm:w-[260px] h-[220px] sm:h-[260px] rounded-3xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs relative group transition-transform duration-300 hover:scale-[1.01]"
                         >
                           <img
                             src={img.url}
                             alt={img.type}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover pointer-events-none select-none"
+                            draggable={false}
                           />
-                          {/* Frosted tag badge in bottom-right corner, max 2 simple words, no percentage */}
+                          {/* Frosted tag badge in bottom-right corner, max 2 simple words */}
                           <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-xl bg-white/35 backdrop-blur-md text-white text-[11px] font-semibold border border-white/20 shadow-xs pointer-events-none tracking-wide">
                             <span>{formatTagLabel(img.type)}</span>
                           </div>
