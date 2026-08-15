@@ -537,445 +537,121 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
             )}
           </>
           ) : (
-            /* Direct API Scan Result Inspector */
+            /* Clean User Skin Health Report View */
             <div className="space-y-3.5 overflow-y-auto no-scrollbar max-h-[72vh] pr-1">
-              {/* Top Meta Bar */}
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/80 border border-slate-700 text-xs">
-                <div className="flex items-center space-x-2 text-slate-300 font-mono">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Task ID: {scanResult.rawJson?.data?.task_id || scanResult.rawJson?.task_id || scanResult.id}</span>
+              {/* Top Scores & Metrics Snapshot */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center font-bold text-lg">
+                      {Math.round(((scanResult.hydrationScore || 85) + (scanResult.barrierScore || 88) + (scanResult.clarityScore || 90)) / 3)}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white tracking-tight">Clinical Skin Health Index</h4>
+                      <p className="text-[11px] text-slate-400">Verified Skin Metrics</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-500 uppercase font-mono block">EST. SKIN AGE</span>
+                    <span className="text-sm font-bold text-amber-400">
+                      {scanResult.scoreInfo?.skin_age || scanResult.rawJson?.score_info?.skin_age || '24 yrs'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-mono border border-blue-500/30">
-                    Format: JSON
-                  </span>
-                  <span className="text-slate-400 text-[11px] font-mono">
-                    {new Date(scanResult.timestamp).toLocaleTimeString()}
-                  </span>
+
+                {/* Score Progress Bars */}
+                <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Moisture</span>
+                      <span className="font-bold text-amber-400">{scanResult.hydrationScore}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${scanResult.hydrationScore}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Barrier</span>
+                      <span className="font-bold text-emerald-400">{scanResult.barrierScore}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${scanResult.barrierScore}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Clarity</span>
+                      <span className="font-bold text-blue-400">{scanResult.clarityScore}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-blue-400 rounded-full" style={{ width: `${scanResult.clarityScore}%` }} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* View Switcher Tabs */}
-              <div className="flex items-center p-1 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-medium overflow-x-auto">
-                <button
-                  onClick={() => setActiveTab('report')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 ${
-                    activeTab === 'report' ? 'bg-amber-400 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Icon icon="solar:document-text-bold" className="w-4 h-4 text-amber-900" />
-                  <span>AI Scan Report</span>
-                  {scanResult.reportStatus === 'running' && !scanResult.reportText && (
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+              {/* AI Report Card Status / Content */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                  <div className="flex items-center space-x-2">
+                    <Icon icon="solar:stars-minimalistic-bold" className="w-4 h-4 text-amber-400" />
+                    <h4 className="text-xs font-bold text-white tracking-wide uppercase">SANA Clinical Agent Scan Report</h4>
+                  </div>
+
+                  {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-semibold border border-amber-400/30 flex items-center space-x-1.5 animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <span>Generating Clinical Report...</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold border border-emerald-400/30 flex items-center space-x-1">
+                      <Icon icon="solar:check-circle-bold" className="w-3 h-3" />
+                      <span>Report Ready</span>
+                    </span>
                   )}
-                </button>
-                <button
-                  onClick={() => setActiveTab('raw_json')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 ${
-                    activeTab === 'raw_json' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Icon icon="solar:code-bold" className="w-4 h-4" />
-                  <span>Raw API JSON</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('gallery')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 ${
-                    activeTab === 'gallery' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Icon icon="solar:gallery-wide-bold" className="w-4 h-4" />
-                  <span>Masks ({returnedGalleryImages.length})</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('raw_scores')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 ${
-                    activeTab === 'raw_scores' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Icon icon="solar:tuning-square-2-bold" className="w-4 h-4" />
-                  <span>Scores ({rawOutputList.length})</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('s2s_logs')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 ${
-                    activeTab === 's2s_logs' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Icon icon="solar:list-check-bold" className="w-4 h-4" />
-                  <span>Logs</span>
-                </button>
+                </div>
+
+                {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
+                  <div className="py-6 px-4 text-center space-y-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center mx-auto animate-spin">
+                      <Icon icon="solar:restart-circle-bold" className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-slate-200">SANA Agent is analyzing scan metrics & past history...</p>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+                        Formulating 6-point clinical diagnosis, day-to-day score trends, and actionable morning & evening skin regimen.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-300 leading-relaxed max-h-80 overflow-y-auto pr-1">
+                    <div className="markdown-body space-y-2">
+                      <Markdown>{scanResult.reportText || scanResult.summary || 'Clinical scan report generated successfully.'}</Markdown>
+                    </div>
+                  </div>
+                )}
+
+                {/* Direct CTA Button to Discuss in Chat */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
+                      window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
+                        detail: { sessionId }
+                      }));
+                      onClose();
+                    }}
+                    className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
+                  >
+                    <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4" />
+                    <span>Discuss Report with SANA Agent →</span>
+                  </button>
+                </div>
               </div>
-
-              {/* TAB 0: MODULAR CLINICAL AI SKIN REPORT & MASK CASCADE */}
-              {activeTab === 'report' && (
-                <div className="space-y-4">
-                  {/* Top Scores & Metrics Snapshot */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center font-bold text-lg">
-                          {Math.round(((scanResult.hydrationScore || 85) + (scanResult.barrierScore || 88) + (scanResult.clarityScore || 90)) / 3)}
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white tracking-tight">Clinical Skin Health Index</h4>
-                          <p className="text-[11px] text-slate-400">Perfect Corp S2S Server Verified Metrics</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-500 uppercase font-mono block">EST. SKIN AGE</span>
-                        <span className="text-sm font-bold text-amber-400">
-                          {scanResult.scoreInfo?.skin_age || scanResult.rawJson?.score_info?.skin_age || '24 yrs'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Score Progress Bars */}
-                    <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span>Moisture</span>
-                          <span className="font-bold text-amber-400">{scanResult.hydrationScore}%</span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                          <div className="h-full bg-amber-400 rounded-full" style={{ width: `${scanResult.hydrationScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span>Barrier</span>
-                          <span className="font-bold text-emerald-400">{scanResult.barrierScore}%</span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                          <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${scanResult.barrierScore}%` }} />
-                        </div>
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span>Clarity</span>
-                          <span className="font-bold text-blue-400">{scanResult.clarityScore}%</span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${scanResult.clarityScore}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cascade of Tagged Mask Cards */}
-                  {returnedGalleryImages.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-                        <span>Tag-Based Mask Overlays ({returnedGalleryImages.length})</span>
-                        <span className="text-[11px] text-amber-400/80">Click image to enlarge</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                        {returnedGalleryImages.map((img, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => setSelectedGalleryImage(img.url)}
-                            className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800/80 hover:border-amber-400/50 transition-all cursor-pointer group flex flex-col justify-between space-y-2"
-                          >
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 font-bold capitalize truncate max-w-[90px]">
-                                {img.type}
-                              </span>
-                              {img.score !== undefined && (
-                                <span className="font-mono font-bold text-emerald-400">
-                                  {img.score}/100
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="relative aspect-4/3 rounded-xl bg-slate-900 overflow-hidden border border-slate-800 flex items-center justify-center">
-                              {capturedImage && (
-                                <img src={capturedImage} alt="Base" className="absolute inset-0 w-full h-full object-cover opacity-50" />
-                              )}
-                              <img
-                                src={img.url}
-                                alt={img.type}
-                                className="relative z-10 w-full h-full object-contain group-hover:scale-105 transition-transform"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI Report Card Status / Content */}
-                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-                      <div className="flex items-center space-x-2">
-                        <Icon icon="solar:stars-minimalistic-bold" className="w-4 h-4 text-amber-400" />
-                        <h4 className="text-xs font-bold text-white tracking-wide uppercase">SANA Clinical Agent Scan Report</h4>
-                      </div>
-
-                      {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-semibold border border-amber-400/30 flex items-center space-x-1.5 animate-pulse">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                          <span>Generating Clinical Report...</span>
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold border border-emerald-400/30 flex items-center space-x-1">
-                          <Icon icon="solar:check-circle-bold" className="w-3 h-3" />
-                          <span>Report Ready</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
-                      <div className="py-6 px-4 text-center space-y-3">
-                        <div className="w-10 h-10 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center mx-auto animate-spin">
-                          <Icon icon="solar:restart-circle-bold" className="w-5 h-5" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-slate-200">SANA Agent is analyzing scan metrics & past history...</p>
-                          <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
-                            Formulating 6-point clinical diagnosis, day-to-day score trends, and actionable morning & evening skin regimen.
-                          </p>
-                        </div>
-                        <div className="flex justify-center items-center space-x-2 text-[10px] text-slate-500 font-mono pt-1">
-                          <span>Metrics Pack</span>
-                          <span>•</span>
-                          <span>2-Day Scan History</span>
-                          <span>•</span>
-                          <span>3-Week Score Trends</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-300 leading-relaxed max-h-80 overflow-y-auto pr-1">
-                        <div className="markdown-body space-y-2">
-                          <Markdown>{scanResult.reportText || scanResult.summary || 'Clinical scan report generated successfully.'}</Markdown>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Direct CTA Button to Discuss in Chat */}
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
-                          window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
-                            detail: { sessionId }
-                          }));
-                          onClose();
-                        }}
-                        className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
-                      >
-                        <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4" />
-                        <span>Discuss Report with SANA Agent →</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 1: EXACT RAW JSON RESPONSE */}
-              {activeTab === 'raw_json' && (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">
-                      Exact payload returned by Perfect Corp S2S Server:
-                    </span>
-                    <button
-                      onClick={copyJsonToClipboard}
-                      className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 border border-slate-700 transition-colors flex items-center space-x-1.5 cursor-pointer"
-                    >
-                      <Icon icon={copiedJson ? "solar:check-circle-bold" : "solar:copy-bold"} className="w-3.5 h-3.5" />
-                      <span>{copiedJson ? 'Copied to Clipboard!' : 'Copy Raw JSON'}</span>
-                    </button>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 max-h-96 overflow-y-auto">
-                    <pre className="text-[11px] font-mono text-emerald-400 leading-relaxed whitespace-pre-wrap break-all select-text">
-                      {JSON.stringify(scanResult.rawJson || scanResult, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: RETURNED IMAGE & MASK GALLERY */}
-              {activeTab === 'gallery' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>
-                      Images, PNG/JPG Masks, and Overlays returned in API response ({returnedGalleryImages.length}):
-                    </span>
-                  </div>
-
-                  {returnedGalleryImages.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {returnedGalleryImages.map((img, idx) => (
-                        <div key={idx} className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-2">
-                          <div className="flex items-center justify-between text-[10px] font-mono">
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase font-bold border border-emerald-500/30">
-                              {img.format}
-                            </span>
-                            <span className="text-slate-400 capitalize">{img.type}</span>
-                          </div>
-
-                          <div className="relative aspect-square rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex items-center justify-center bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:12px_12px]">
-                            {capturedImage && (
-                              <img
-                                src={capturedImage}
-                                alt="Base face"
-                                className="absolute inset-0 w-full h-full object-cover opacity-60"
-                              />
-                            )}
-                            <img
-                              src={img.url}
-                              alt={img.type}
-                              className="relative z-10 w-full h-full object-contain cursor-pointer hover:scale-105 transition-transform"
-                              onClick={() => setSelectedGalleryImage(img.url)}
-                              onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = 'none';
-                              }}
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between text-[11px]">
-                            {img.score !== undefined && (
-                              <span className="text-slate-300 font-semibold">
-                                Score: <span className="text-emerald-400">{img.score}</span>
-                              </span>
-                            )}
-                            <a
-                              href={img.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-blue-400 hover:underline flex items-center space-x-1"
-                            >
-                              <span>Open URL</span>
-                              <Icon icon="solar:link-circle-linear" className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-3">
-                      <Icon icon="solar:gallery-remove-bold" className="w-10 h-10 text-slate-600 mx-auto" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-slate-300">No Image/Mask URLs in Current API Payload</p>
-                        <p className="text-[11px] text-slate-400 max-w-md mx-auto leading-relaxed">
-                          The Perfect Corp S2S API returned feature diagnostic scores directly in JSON format.
-                          Mask images (.png/.jpg) are included when <code className="text-emerald-400 font-mono">enable_mask_overlay: true</code> is active and the API host renders mask overlays.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Selected Expanded Image Modal */}
-                  {selectedGalleryImage && (
-                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-300">
-                        <span className="font-semibold">Expanded Mask / Image View</span>
-                        <button
-                          onClick={() => setSelectedGalleryImage(null)}
-                          className="text-xs text-rose-400 hover:underline"
-                        >
-                          Close Preview
-                        </button>
-                      </div>
-                      <img
-                        src={selectedGalleryImage}
-                        alt="Enlarged preview"
-                        className="w-full max-h-80 object-contain rounded-xl bg-black"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: RAW OUTPUT SCORE METRICS */}
-              {activeTab === 'raw_scores' && (
-                <div className="space-y-3">
-                  <span className="text-xs text-slate-400">
-                    Raw output array items from Perfect Corp S2S task response:
-                  </span>
-
-                  {rawOutputList.length > 0 ? (
-                    <div className="space-y-2">
-                      {rawOutputList.map((item: any, idx: number) => (
-                        <div key={idx} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-white capitalize">{item.type || item.action || `Feature #${idx + 1}`}</span>
-                              <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-400 font-mono">
-                                Region: {item.region || 'whole'}
-                              </span>
-                            </div>
-                            {item.mask_urls && (
-                              <p className="text-[10px] text-emerald-400 font-mono">
-                                {item.mask_urls.length} Mask URL(s) attached
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="flex items-center space-x-3 text-right font-mono">
-                            <div>
-                              <span className="text-[10px] text-slate-500 block">RAW SCORE</span>
-                              <span className="text-sm font-bold text-blue-400">{item.raw_score ?? item.score ?? 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] text-slate-500 block">UI SCORE</span>
-                              <span className="text-sm font-bold text-emerald-400">{item.ui_score ?? item.score ?? 'N/A'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-center">
-                      Raw scores available in score_info object in Raw JSON tab.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 4: S2S STEP LOGS */}
-              {activeTab === 's2s_logs' && (
-                <div className="space-y-2">
-                  <span className="text-xs text-slate-400">
-                    4-Step Server-to-Server API execution timeline:
-                  </span>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
-                    {(scanResult.s2sStepLogs || [
-                      '[S2S Step 1/4] Base64 image prepared & sanitized with sharp',
-                      '[S2S Step 2/4] Initialized file metadata on POST /s2s/v2.1/file',
-                      '[S2S Step 3/4] Created skin analysis task on POST /s2s/v2.1/task/skin-analysis',
-                      '[S2S Step 4/4] Polled task status until task_status="success"'
-                    ]).map((log, idx) => (
-                      <div key={idx} className="flex items-start space-x-2 text-xs font-mono text-slate-300">
-                        <span className="text-emerald-400 font-bold shrink-0">{idx + 1}.</span>
-                        <span className="leading-relaxed">{log}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Action Controls when viewing results */}
-          {scanResult && (
-            <div className="pt-2 flex items-center space-x-2 border-t border-slate-200">
-              <button
-                onClick={() => {
-                  setScanResult(null);
-                  setCapturedImage(null);
-                }}
-                className="w-full py-2.5 rounded-2xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center space-x-2 border border-slate-800"
-              >
-                <Icon icon="solar:restart-bold" className="w-4 h-4 text-amber-400" />
-                <span>Retake Photo & Scan Again</span>
-              </button>
             </div>
           )}
         </motion.div>

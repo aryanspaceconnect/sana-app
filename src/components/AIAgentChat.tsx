@@ -615,30 +615,25 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   return (
     <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
       {/* Minimal Top Header Bar: Side Panel Toggle & New Chat Action */}
-      <div className="flex items-center justify-between py-2 px-1 border-b border-slate-200/60 shrink-0 mb-1">
-        {/* Toggle Sessions Side Panel Button */}
-        <button
-          onClick={() => setShowSessionsDrawer(!showSessionsDrawer)}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 text-slate-800 transition-all cursor-pointer text-xs font-semibold border border-slate-200/60 group"
-          title="Toggle history side panel"
-        >
-          <Icon icon="solar:sidebar-minimalistic-bold" className="w-4 h-4 text-slate-700 group-hover:text-slate-900 shrink-0" />
-          <span className="font-semibold text-slate-900">History</span>
-          {sessions.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-md bg-slate-200 text-[10px] font-bold text-slate-700">
-              {sessions.length}
-            </span>
-          )}
-        </button>
+      <div className="flex items-center justify-between py-2 px-1 shrink-0 mb-1">
+        {/* Left Side Header Actions: History Panel Toggle & New Chat Button */}
+        <div className="flex items-center space-x-2">
+          {/* Toggle Sessions Side Panel Button (Icon Only) */}
+          <button
+            onClick={() => setShowSessionsDrawer(!showSessionsDrawer)}
+            className="p-2 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 text-slate-800 transition-all cursor-pointer border border-slate-200/60 group flex items-center justify-center"
+            title="Toggle history side panel"
+          >
+            <Icon icon="solar:sidebar-minimalistic-bold" className="w-4 h-4 text-slate-700 group-hover:text-slate-900 shrink-0" />
+          </button>
 
-        {/* Minimal Actions: Clean New Chat Icon Button */}
-        <div className="flex items-center space-x-1.5">
+          {/* Clean New Chat Icon Button (Moved to Left) */}
           <button
             onClick={handleStartNewChat}
-            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/50"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/60 flex items-center justify-center"
             title="Start fresh new chat session"
           >
-            <Icon icon="solar:pen-new-square-linear" className="w-4 h-4" />
+            <Icon icon="solar:pen-new-square-linear" className="w-4 h-4 text-slate-700 hover:text-slate-900 shrink-0" />
           </button>
         </div>
       </div>
