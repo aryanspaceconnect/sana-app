@@ -255,6 +255,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const triggerSurveySlide = (base64Image: string, faceBox?: FaceBox) => {
     setPendingCapturedPhoto(base64Image);
     setPendingFaceBox(faceBox || currentFaceBox || undefined);
+
+    // Auto-identify gender from user profile
+    const autoGender = userProfile?.gender?.toLowerCase().startsWith('m') ? 'male' : 'female';
+    setSurveyGender(autoGender);
+    setSurveyGenderFactor(autoGender === 'male' ? 'Clean Shaven & Smooth' : 'Bare Skin & SPF Only');
+
     setIsRedirectingToSurvey(true);
 
     setTimeout(() => {
@@ -373,65 +379,24 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="w-full flex-1 flex flex-col justify-between p-5 sm:p-6 rounded-[36px] bg-slate-950 border border-slate-800 text-white space-y-4 my-auto overflow-y-auto max-h-[80vh] no-scrollbar shadow-2xl"
+                className="w-full flex-1 flex flex-col justify-between space-y-4 my-auto overflow-y-auto max-h-[75vh] no-scrollbar pr-0.5"
               >
-                {/* Header & Gender Profile Switcher */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-800/80">
-                  <div>
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px] font-mono font-bold text-slate-300 tracking-wider uppercase">
-                        Step 2/2 • Daily Exposome Survey
-                      </span>
-                    </div>
-                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                      How does your skin feel today?
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Tailor SANA Clinical Agent's diagnosis with today's dynamic factors.
-                    </p>
-                  </div>
-
-                  {/* Gender Selector Toggle */}
-                  <div className="flex items-center space-x-1.5 p-1 rounded-2xl bg-slate-900 border border-slate-800 self-start sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSurveyGender('male');
-                        setSurveyGenderFactor('Clean Shaven & Smooth');
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
-                        surveyGender === 'male'
-                          ? 'bg-white text-slate-950 shadow-xs'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <Icon icon="solar:user-bold" className="w-3.5 h-3.5" />
-                      <span>Male Routine</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSurveyGender('female');
-                        setSurveyGenderFactor('Bare Skin & SPF Only');
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
-                        surveyGender === 'female'
-                          ? 'bg-white text-slate-950 shadow-xs'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <Icon icon="solar:user-heart-bold" className="w-3.5 h-3.5" />
-                      <span>Female / General</span>
-                    </button>
-                  </div>
+                {/* Header */}
+                <div className="pb-2 border-b border-slate-200">
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    How does your skin feel today?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tailor SANA Clinical Agent's diagnosis with today's dynamic factors.
+                  </p>
                 </div>
 
                 {/* Question Grid (Minimal List View Layout) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Q1: Sleep Quality */}
-                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
-                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
-                      <Icon icon="solar:moon-bold" className="w-3.5 h-3.5 text-slate-400" />
+                  <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-700 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:moon-bold" className="w-3.5 h-3.5 text-slate-500" />
                       <span>1. Sleep & Rest</span>
                     </div>
                     <div className="flex flex-col space-y-1">
@@ -449,13 +414,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                             onClick={() => setSurveySleep(opt)}
                             className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
                               isSelected
-                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
-                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-xs'
+                                : 'bg-white hover:bg-slate-100/80 text-slate-700 border-slate-200/80'
                             }`}
                           >
                             <span>{opt}</span>
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
-                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                              isSelected ? 'border-white bg-white text-slate-950' : 'border-slate-300 bg-transparent'
                             }`}>
                               {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
                             </div>
@@ -466,9 +431,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   </div>
 
                   {/* Q2: Hydration */}
-                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
-                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
-                      <Icon icon="solar:cup-bold" className="w-3.5 h-3.5 text-slate-400" />
+                  <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-700 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:cup-bold" className="w-3.5 h-3.5 text-slate-500" />
                       <span>2. Hydration & Diet</span>
                     </div>
                     <div className="flex flex-col space-y-1">
@@ -486,13 +451,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                             onClick={() => setSurveyHydration(opt)}
                             className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
                               isSelected
-                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
-                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-xs'
+                                : 'bg-white hover:bg-slate-100/80 text-slate-700 border-slate-200/80'
                             }`}
                           >
                             <span>{opt}</span>
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
-                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                              isSelected ? 'border-white bg-white text-slate-950' : 'border-slate-300 bg-transparent'
                             }`}>
                               {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
                             </div>
@@ -503,9 +468,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   </div>
 
                   {/* Q3: Environmental Exposome */}
-                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
-                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
-                      <Icon icon="solar:sun-bold" className="w-3.5 h-3.5 text-slate-400" />
+                  <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-700 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:sun-bold" className="w-3.5 h-3.5 text-slate-500" />
                       <span>3. Sun & Climate</span>
                     </div>
                     <div className="flex flex-col space-y-1">
@@ -523,13 +488,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                             onClick={() => setSurveyExposure(opt)}
                             className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
                               isSelected
-                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
-                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-xs'
+                                : 'bg-white hover:bg-slate-100/80 text-slate-700 border-slate-200/80'
                             }`}
                           >
                             <span>{opt}</span>
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
-                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                              isSelected ? 'border-white bg-white text-slate-950' : 'border-slate-300 bg-transparent'
                             }`}>
                               {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
                             </div>
@@ -539,14 +504,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Q4: Gender-Specific Factor */}
-                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
-                    <div className="flex items-center justify-between text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                  {/* Q4: Gender-Specific Factor (Auto-identified from user profile) */}
+                  <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between text-slate-700 text-xs font-bold uppercase tracking-wider px-0.5">
                       <div className="flex items-center space-x-2">
-                        <Icon icon="solar:user-bold" className="w-3.5 h-3.5 text-slate-400" />
+                        <Icon icon="solar:user-bold" className="w-3.5 h-3.5 text-slate-500" />
                         <span>4. {surveyGender === 'male' ? 'Shaving & Beard Routine' : 'Cycle & Makeup Factor'}</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-normal lowercase">({surveyGender})</span>
                     </div>
                     <div className="flex flex-col space-y-1">
                       {(surveyGender === 'male'
@@ -571,13 +535,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                             onClick={() => setSurveyGenderFactor(opt)}
                             className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
                               isSelected
-                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
-                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-xs'
+                                : 'bg-white hover:bg-slate-100/80 text-slate-700 border-slate-200/80'
                             }`}
                           >
                             <span>{opt}</span>
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
-                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                              isSelected ? 'border-white bg-white text-slate-950' : 'border-slate-300 bg-transparent'
                             }`}>
                               {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
                             </div>
@@ -589,20 +553,20 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 </div>
 
                 {/* Q5: Optional Notes Field */}
-                <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-1.5">
-                  <div className="flex items-center justify-between text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between text-slate-700 text-xs font-bold uppercase tracking-wider px-0.5">
                     <div className="flex items-center space-x-2">
-                      <Icon icon="solar:notes-bold" className="w-3.5 h-3.5 text-slate-400" />
+                      <Icon icon="solar:notes-bold" className="w-3.5 h-3.5 text-slate-500" />
                       <span>5. Today's Observations</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">Optional</span>
+                    <span className="text-[10px] text-slate-400 font-mono">Optional</span>
                   </div>
                   <input
                     type="text"
                     value={surveyOptionalNote}
                     onChange={(e) => setSurveyOptionalNote(e.target.value)}
                     placeholder="e.g., Slight tightness near nostrils, introduced new Vitamin C serum today..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-slate-600 transition-all"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:border-slate-400 transition-all"
                   />
                 </div>
 
@@ -611,7 +575,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSurveySkip}
-                    className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 text-xs font-semibold transition-all cursor-pointer"
                   >
                     Skip & View Direct Report
                   </button>
@@ -619,10 +583,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSurveySubmit}
-                    className="w-full sm:flex-1 py-3 px-6 rounded-2xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs tracking-wide transition-all shadow-lg active:scale-95 flex items-center justify-center space-x-2 border border-white/20 cursor-pointer"
+                    className="w-full sm:flex-1 py-3 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs tracking-wide transition-all shadow-md active:scale-95 flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <span>Complete & Generate Clinical Report</span>
-                    <Icon icon="solar:alt-arrow-right-bold" className="w-4 h-4 text-slate-950" />
+                    <Icon icon="solar:alt-arrow-right-bold" className="w-4 h-4 text-white" />
                   </button>
                 </div>
               </motion.div>
