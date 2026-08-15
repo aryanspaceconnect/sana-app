@@ -139,7 +139,7 @@ export interface FacialScanResult {
   id?: string;
   userId?: string;
   scanId?: string;
-  scanType?: 'daily_scan' | 'intermediate_scan';
+  scanType?: 'daily_scan' | 'intermediate_scan' | 'morning_scan' | 'evening_scan' | 'night_scan' | string;
   hydrationScore?: number | null;
   barrierScore?: number | null;
   clarityScore?: number | null;
@@ -148,6 +148,7 @@ export interface FacialScanResult {
   uvRecommendation?: string;
   timestamp?: any;
   capturedImage?: string;
+  capturedPhoto?: string;
   concernImages?: Record<string, ConcernImageDetail>;
   // Perfect Corp API & Context Manager Extensions
   rawPerfectCorpOutput?: PerfectCorpRawOutput;

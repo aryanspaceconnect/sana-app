@@ -8,6 +8,20 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { mapPerfectCorpError, ScanUiError } from '../utils/perfectCorpErrorMapper';
 import { assessFaceOnElement, FaceBox, FaceAssessmentResult } from '../lib/faceDetection';
 
+// Helper: Get scan title based on time or scan type
+function getScanTitle(scan: FacialScanResult | null): string {
+  if (scan?.scanType) {
+    if (scan.scanType === 'morning_scan') return 'Morning Scan';
+    if (scan.scanType === 'evening_scan') return 'Evening Scan';
+    if (scan.scanType === 'night_scan') return 'Night Scan';
+  }
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Morning Scan';
+  if (hour >= 12 && hour < 17) return 'Afternoon Scan';
+  if (hour >= 17 && hour < 21) return 'Evening Scan';
+  return 'Night Scan';
+}
+
 interface FacialScanModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -55,6 +69,24 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     initialGenderMode === 'male' ? 'Clean Shaven & Smooth' : 'Bare Skin & SPF Only'
   );
   const [surveyOptionalNote, setSurveyOptionalNote] = useState<string>('');
+
+  // Extract gallery images for horizontal slider
+  const galleryImages = scanResult ? extractGalleryImages(scanResult) : [];
+  const allReportImages: { type: string; url: string; score?: number }[] = [];
+  if (scanResult) {
+    const photoUrl = scanResult.capturedPhoto || scanResult.capturedImage || pendingCapturedPhoto;
+    if (photoUrl) {
+      allReportImages.push({
+        type: 'Captured Scan',
+        url: photoUrl,
+      });
+    }
+    galleryImages.forEach(img => {
+      if (img.url && !allReportImages.some(i => i.url === img.url)) {
+        allReportImages.push(img);
+      }
+    });
+  }
 
   const toggleFlashlight = async () => {
     if (!stream) {
@@ -788,138 +820,113 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               </div>
             </>
           )) : (
-            /* Clean User Skin Health Report View */
-            <div className="space-y-3.5 overflow-y-auto no-scrollbar max-h-[72vh] pr-1">
-              {/* Top Scores & Metrics Snapshot */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center font-bold text-lg">
-                      {(() => {
-                        const validScores = [scanResult.hydrationScore, scanResult.barrierScore, scanResult.clarityScore].filter(
-                          (s): s is number => typeof s === 'number' && !isNaN(s)
-                        );
-                        if (validScores.length > 0) {
-                          return Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length);
-                        }
-                        const overall = scanResult.scoreInfo?.all ?? scanResult.rawMetrics?.overallScore ?? scanResult.rawJson?.score_info?.all;
-                        return overall !== undefined && overall !== null ? Math.round(overall) : 'N/A';
-                      })()}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white tracking-tight">Clinical Skin Health Index</h4>
-                      <p className="text-[11px] text-slate-400">Verified Skin Metrics</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-500 uppercase font-mono block">EST. SKIN AGE</span>
-                    <span className="text-sm font-bold text-amber-400">
-                      {(() => {
-                        const age = scanResult.scoreInfo?.skin_age ?? scanResult.rawMetrics?.skinAge ?? scanResult.rawJson?.score_info?.skin_age ?? scanResult.rawJson?.skin_age;
-                        return age !== undefined && age !== null ? `${age} yrs` : 'Not provided by API';
-                      })()}
-                    </span>
-                  </div>
+            <div className="flex-1 flex flex-col justify-between space-y-4 overflow-y-auto no-scrollbar max-h-[78vh] pr-0.5">
+              {/* Top Title (Time-Aware: Morning Scan / Afternoon Scan / Evening Scan / Night Scan) */}
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                    {getScanTitle(scanResult)}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {new Date(scanResult.timestamp || Date.now()).toLocaleDateString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                >
+                  <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
+                </button>
+              </div>
 
-                {/* Score Progress Bars */}
-                <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
-                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Moisture</span>
-                      <span className="font-bold text-amber-400">
-                        {scanResult.hydrationScore !== undefined && scanResult.hydrationScore !== null ? `${scanResult.hydrationScore}%` : 'Not provided'}
-                      </span>
+              {/* Horizontal Image Slider (Images from API / Captured Scan) */}
+              <div className="w-full space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Scan Visuals</span>
+                  <span className="text-[11px] text-slate-400 font-mono">Swipe →</span>
+                </div>
+                <div className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar gap-3 py-1 -mx-1 px-1 touch-pan-x">
+                  {allReportImages.length > 0 ? (
+                    allReportImages.map((img, idx) => (
+                      <div
+                        key={idx}
+                        className="snap-center shrink-0 w-[220px] sm:w-[260px] h-[220px] sm:h-[260px] rounded-3xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs relative group transition-transform duration-300 hover:scale-[1.01]"
+                      >
+                        <img
+                          src={img.url}
+                          alt={img.type}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-2 left-2 right-2 px-3 py-1.5 rounded-xl bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold flex items-center justify-between">
+                          <span className="capitalize">{img.type.replace(/_/g, ' ')}</span>
+                          {img.score !== undefined && (
+                            <span className="text-amber-300 font-bold">{img.score}%</span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="w-full h-[200px] rounded-3xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
+                      No visual overlays available
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${scanResult.hydrationScore ?? 0}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Barrier</span>
-                      <span className="font-bold text-emerald-400">
-                        {scanResult.barrierScore !== undefined && scanResult.barrierScore !== null ? `${scanResult.barrierScore}%` : 'Not provided'}
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${scanResult.barrierScore ?? 0}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Clarity</span>
-                      <span className="font-bold text-blue-400">
-                        {scanResult.clarityScore !== undefined && scanResult.clarityScore !== null ? `${scanResult.clarityScore}%` : 'Not provided'}
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-blue-400 rounded-full" style={{ width: `${scanResult.clarityScore ?? 0}%` }} />
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* AI Report Card Status / Content */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-                  <div className="flex items-center space-x-2">
-                    <Icon icon="solar:stars-minimalistic-bold" className="w-4 h-4 text-amber-400" />
-                    <h4 className="text-xs font-bold text-white tracking-wide uppercase">SANA Clinical Agent Scan Report</h4>
-                  </div>
-
-                  {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-semibold border border-amber-400/30 flex items-center space-x-1.5 animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      <span>Generating Clinical Report...</span>
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 text-[10px] font-semibold border border-emerald-400/30 flex items-center space-x-1">
-                      <Icon icon="solar:check-circle-bold" className="w-3 h-3" />
-                      <span>Report Ready</span>
-                    </span>
-                  )}
-                </div>
-
+              {/* Report Area - Direct Text with Subtle Shimmer Loading Indicator (NO Containers/NO Dark Boxes) */}
+              <div className="flex-1 py-1 space-y-2 min-h-[120px]">
                 {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
-                  <div className="py-6 px-4 text-center space-y-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center mx-auto animate-spin">
-                      <Icon icon="solar:restart-circle-bold" className="w-5 h-5" />
+                  <div className="py-6 flex flex-col items-center justify-center space-y-2.5">
+                    <div className="flex items-center space-x-2.5 text-slate-500 font-medium text-xs sm:text-sm">
+                      <span className="w-2 h-2 rounded-full bg-slate-800 animate-ping" />
+                      <span className="bg-gradient-to-r from-slate-900 via-slate-500 to-slate-900 bg-clip-text text-transparent font-bold animate-pulse">
+                        Generating SANA Clinical Report...
+                      </span>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-slate-200">SANA Agent is analyzing scan metrics & past history...</p>
-                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
-                        Formulating 6-point clinical diagnosis, day-to-day score trends, and actionable morning & evening skin regimen.
-                      </p>
-                    </div>
+                    <p className="text-xs text-slate-400 text-center max-w-xs leading-relaxed">
+                      SANA Agent is synthesizing facial metrics with daily exposome inputs.
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-xs text-slate-300 leading-relaxed max-h-80 overflow-y-auto pr-1">
+                  <div className="text-xs sm:text-sm text-slate-800 leading-relaxed max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
                     <div className="markdown-body space-y-2">
-                      <Markdown>{scanResult.reportText || scanResult.summary || 'Clinical scan report generated successfully.'}</Markdown>
+                      <Markdown>
+                        {scanResult.reportText || scanResult.summary || 'Clinical scan report generated successfully.'}
+                      </Markdown>
                     </div>
                   </div>
                 )}
+              </div>
 
-                {/* Direct CTA Button to Discuss in Chat */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
-                      window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
-                        detail: { sessionId }
-                      }));
-                      onClose();
-                    }}
-                    className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
-                  >
-                    <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4" />
-                    <span>Discuss Report with SANA Agent →</span>
-                  </button>
-                </div>
+              {/* Bottom Action Buttons: Ask SANA and Done */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-200/80 mt-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
+                    window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
+                      detail: { sessionId, reportText: scanResult.reportText || scanResult.summary }
+                    }));
+                    onClose();
+                  }}
+                  className="flex-1 py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs border border-slate-200/80 transition-all cursor-pointer text-center active:scale-95 flex items-center justify-center space-x-1.5 shadow-xs"
+                >
+                  <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4 text-slate-800" />
+                  <span>Ask SANA</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer text-center active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
+                >
+                  <span>Done</span>
+                </button>
               </div>
             </div>
           )}
