@@ -308,13 +308,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-2xl rounded-[36px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-5 relative flex flex-col space-y-3.5 my-auto max-h-[94vh]"
+          className="w-full max-w-xl rounded-[40px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 relative flex flex-col space-y-4 my-auto"
         >
           {!scanResult ? (
             <>
-              {/* Guidance Advice Banner Above Camera Feed */}
-              <div className="w-full py-2.5 px-4 rounded-2xl bg-slate-100/90 border border-slate-200/80 text-center shadow-2xs">
-                <p className="text-xs font-bold text-slate-800 tracking-tight">
+              {/* Guidance Advice Text Above Camera Feed (Container removed) */}
+              <div className="w-full text-center py-1">
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight">
                   {faceAssessment.canShutter || faceAssessment.status === 'ready'
                     ? 'Look in camera'
                     : faceAssessment.hint || 'Align face inside outline'}
