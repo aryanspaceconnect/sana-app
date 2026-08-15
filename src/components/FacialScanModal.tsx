@@ -308,7 +308,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-xl rounded-[40px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 relative flex flex-col space-y-4 my-auto"
+          className="w-full max-w-2xl sm:max-w-3xl min-h-[84vh] rounded-[44px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 sm:p-8 relative flex flex-col justify-between space-y-4 my-auto"
         >
           {!scanResult ? (
             <>
@@ -322,7 +322,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               </div>
 
               {/* Squaricle Visual Camera Feed Viewport */}
-              <div className="relative w-full aspect-4/3 rounded-[32px] bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-200/80 shadow-inner">
+              <div className="relative w-full flex-1 min-h-[350px] sm:min-h-[420px] rounded-[36px] bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-200/80 shadow-inner">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -467,29 +467,29 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 )}
               </div>
 
-              {/* Shutter & Upload Controls - Single Thin Squaricle Container in Bottom Center */}
-              <div className="flex items-center justify-center pt-2 pb-1">
-                <div className="flex items-center space-x-3 p-2 px-4 rounded-3xl bg-slate-100/90 border border-slate-200/80 shadow-2xs">
-                  {/* Upload Photo Button (Squaricle) */}
-                  <label className="p-2.5 px-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-2xs active:scale-95">
-                    <Icon icon="solar:upload-square-bold" className="w-4 h-4 text-slate-800" />
-                    <span className="text-xs">Upload</span>
-                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                  </label>
+              {/* Shutter & Upload Controls - Centered without outer container */}
+              <div className="flex items-center justify-center space-x-3 pt-3 pb-1 relative">
+                {/* Upload Photo Icon Button on Left (No text label) */}
+                <label className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200/80 text-slate-800 transition-all cursor-pointer flex items-center justify-center shadow-xs active:scale-95" title="Upload Photo">
+                  <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-slate-800" />
+                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                </label>
 
-                  {/* Shutter Button (Squaricle) */}
-                  <button
-                    type="button"
-                    onClick={handleCapture}
-                    disabled={isAnalyzing}
-                    className={`p-2.5 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-bold shadow-md active:scale-95 ${
-                      isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    <Icon icon="solar:camera-bold" className="w-4 h-4 text-amber-400" />
-                    <span>Scan Face</span>
-                  </button>
-                </div>
+                {/* Scan Face Shutter Button in Center (Vibrant Amber/Yellow Color) */}
+                <button
+                  type="button"
+                  onClick={handleCapture}
+                  disabled={isAnalyzing}
+                  className={`py-3 px-7 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all cursor-pointer flex items-center space-x-2 text-xs font-bold shadow-md active:scale-95 ${
+                    isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  <Icon icon="solar:camera-bold" className="w-4 h-4 text-slate-950" />
+                  <span>Scan Face</span>
+                </button>
+
+                {/* Balance spacer so Scan Face is perfectly centered */}
+                <div className="w-11" aria-hidden="true" />
               </div>
 
             {/* Premium Notice Modal Popup */}
