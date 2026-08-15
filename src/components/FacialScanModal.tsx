@@ -955,45 +955,21 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
             </div>
           )}
 
-          {/* Action Controls */}
-          <div className="pt-2 flex items-center space-x-2 border-t border-slate-800">
-            {!scanResult ? (
-              <>
-                <button
-                  onClick={handleCapture}
-                  disabled={isAnalyzing || (!faceAssessment.canShutter && faceAssessment.status !== 'ready')}
-                  className={`flex-1 py-3 rounded-2xl text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md flex items-center justify-center space-x-2 ${
-                    faceAssessment.canShutter || faceAssessment.status === 'ready'
-                      ? 'bg-white hover:bg-slate-200 text-slate-950 shadow-lg'
-                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                  }`}
-                >
-                  <Icon icon="solar:camera-bold" className="w-4 h-4" />
-                  <span>
-                    {faceAssessment.canShutter || faceAssessment.status === 'ready'
-                      ? 'Scan Face Now'
-                      : faceAssessment.statusText || 'Position Face in Oval'}
-                  </span>
-                </button>
-
-                <label className="p-3 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center border border-slate-700">
-                  <Icon icon="solar:upload-linear" className="w-5 h-5" />
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                </label>
-              </>
-            ) : (
+          {/* Action Controls when viewing results */}
+          {scanResult && (
+            <div className="pt-2 flex items-center space-x-2 border-t border-slate-200">
               <button
                 onClick={() => {
                   setScanResult(null);
                   setCapturedImage(null);
                 }}
-                className="w-full py-2.5 rounded-2xl bg-slate-800 text-white text-xs font-semibold hover:bg-slate-700 transition-colors cursor-pointer flex items-center justify-center space-x-2 border border-slate-700"
+                className="w-full py-2.5 rounded-2xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center space-x-2 border border-slate-800"
               >
                 <Icon icon="solar:restart-bold" className="w-4 h-4 text-amber-400" />
                 <span>Retake Photo & Scan Again</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>
