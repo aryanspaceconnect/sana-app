@@ -39,6 +39,23 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   // Flashlight state
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
 
+  // Survey Slide & Interstitial State
+  const [isSurveySlideActive, setIsSurveySlideActive] = useState<boolean>(false);
+  const [isRedirectingToSurvey, setIsRedirectingToSurvey] = useState<boolean>(false);
+  const [pendingCapturedPhoto, setPendingCapturedPhoto] = useState<string | null>(null);
+  const [pendingFaceBox, setPendingFaceBox] = useState<FaceBox | undefined>(undefined);
+
+  // Daily Survey Questionnaire State
+  const initialGenderMode = userProfile?.gender?.toLowerCase().startsWith('m') ? 'male' : 'female';
+  const [surveyGender, setSurveyGender] = useState<'male' | 'female'>(initialGenderMode);
+  const [surveySleep, setSurveySleep] = useState<string>('7-9 hrs Restful');
+  const [surveyHydration, setSurveyHydration] = useState<string>('Optimal (>2.5L Water)');
+  const [surveyExposure, setSurveyExposure] = useState<string>('Indoor AC & Dry Air');
+  const [surveyGenderFactor, setSurveyGenderFactor] = useState<string>(
+    initialGenderMode === 'male' ? 'Clean Shaven & Smooth' : 'Bare Skin & SPF Only'
+  );
+  const [surveyOptionalNote, setSurveyOptionalNote] = useState<string>('');
+
   const toggleFlashlight = async () => {
     if (!stream) {
       setIsFlashlightOn(!isFlashlightOn);
@@ -163,7 +180,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     }
   };
 
-  const processScanImage = async (base64Image: string, faceBox?: FaceBox) => {
+  const processScanImage = async (base64Image: string, faceBox?: FaceBox, dailyContextData?: any) => {
     setCapturedImage(base64Image);
     setIsAnalyzing(true);
     setCameraError(null);
@@ -181,7 +198,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           faceBox: faceBox || currentFaceBox || undefined,
           scanType,
           scanId: formattedScanId,
-          responseStyle: userProfile?.settings?.responseStyle || 'professional_medical'
+          responseStyle: userProfile?.settings?.responseStyle || 'professional_medical',
+          dailyContext: dailyContextData
         })
       });
 
@@ -234,29 +252,42 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     }
   };
 
-  const handleBypass = () => {
-    // Generate dummy scan result to proceed directly to next screen without calling API
-    const dummyResult: FacialScanResult = {
-      id: `bypass_scan_${Date.now()}`,
-      userId: userProfile?.uid || 'guest_user',
-      scanId: `bypass_${Date.now()}`,
-      scanType: scanType || 'daily_scan',
-      hydrationScore: 88,
-      barrierScore: 92,
-      clarityScore: 85,
-      summary: 'Bypass scan preview - UI testing mode',
-      recommendations: ['Hydrate skin with hyaluronic acid', 'Apply SPF 50 sunscreen'],
-      s2sStepLogs: ['Bypass mode activated for UI/UX preview'],
-      rawResponseLog: 'Bypass Mode',
-      rawJson: { bypass: true },
-      reportStatus: 'ready',
-      reportText: '### Clinical Scan Diagnosis (Bypass Preview Mode)\n\n**Skin Health Overview:**\n- **Hydration Level:** 88% (Well Hydrated)\n- **Barrier Integrity:** 92% (Strong Skin Barrier)\n- **Clarity Score:** 85%\n\n**Actionable Recommendations:**\n1. Maintain morning hydration routine with lightweight barrier cream.\n2. Apply broad-spectrum SPF 50 before UV exposure.',
-      reportSessionId: `session_scan_report_bypass_${Date.now()}`,
-      timestamp: new Date().toISOString()
+  const triggerSurveySlide = (base64Image: string, faceBox?: FaceBox) => {
+    setPendingCapturedPhoto(base64Image);
+    setPendingFaceBox(faceBox || currentFaceBox || undefined);
+    setIsRedirectingToSurvey(true);
+
+    setTimeout(() => {
+      setIsRedirectingToSurvey(false);
+      setIsSurveySlideActive(true);
+    }, 500);
+  };
+
+  const handleSurveySubmit = async () => {
+    if (!pendingCapturedPhoto) return;
+    setIsSurveySlideActive(false);
+
+    const dailyContextPayload = {
+      gender: surveyGender,
+      sleep: surveySleep,
+      hydration: surveyHydration,
+      exposure: surveyExposure,
+      genderFactor: surveyGenderFactor,
+      optionalNote: surveyOptionalNote.trim()
     };
 
-    setScanResult(dummyResult);
-    setActiveTab('report');
+    await processScanImage(pendingCapturedPhoto, pendingFaceBox, dailyContextPayload);
+  };
+
+  const handleSurveySkip = async () => {
+    if (!pendingCapturedPhoto) return;
+    setIsSurveySlideActive(false);
+    await processScanImage(pendingCapturedPhoto, pendingFaceBox, null);
+  };
+
+  const handleBypass = () => {
+    const dummyPhoto = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/";
+    triggerSurveySlide(dummyPhoto, currentFaceBox || undefined);
   };
 
   const handleCapture = async () => {
@@ -285,7 +316,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       base64Image = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/";
     }
 
-    await processScanImage(base64Image, currentFaceBox || undefined);
+    triggerSurveySlide(base64Image, currentFaceBox || undefined);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,10 +332,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
       img.crossOrigin = 'anonymous';
       img.onload = async () => {
         const assessment = await assessFaceOnElement(img, img.width, img.height);
-        await processScanImage(base64Image, assessment.faceBox);
+        triggerSurveySlide(base64Image, assessment.faceBox);
       };
       img.onerror = async () => {
-        await processScanImage(base64Image);
+        triggerSurveySlide(base64Image);
       };
       img.src = base64Image;
     };
@@ -337,7 +368,266 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           className="w-full max-w-2xl sm:max-w-3xl min-h-[84vh] rounded-[44px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 sm:p-8 relative flex flex-col justify-between space-y-4 my-auto"
         >
           {!scanResult ? (
-            <>
+            isSurveySlideActive ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full flex-1 flex flex-col justify-between p-5 sm:p-6 rounded-[36px] bg-slate-950 border border-slate-800 text-white space-y-4 my-auto overflow-y-auto max-h-[80vh] no-scrollbar shadow-2xl"
+              >
+                {/* Header & Gender Profile Switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-800/80">
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px] font-mono font-bold text-slate-300 tracking-wider uppercase">
+                        Step 2/2 • Daily Exposome Survey
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                      How does your skin feel today?
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Tailor SANA Clinical Agent's diagnosis with today's dynamic factors.
+                    </p>
+                  </div>
+
+                  {/* Gender Selector Toggle */}
+                  <div className="flex items-center space-x-1.5 p-1 rounded-2xl bg-slate-900 border border-slate-800 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSurveyGender('male');
+                        setSurveyGenderFactor('Clean Shaven & Smooth');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                        surveyGender === 'male'
+                          ? 'bg-white text-slate-950 shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Icon icon="solar:user-bold" className="w-3.5 h-3.5" />
+                      <span>Male Routine</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSurveyGender('female');
+                        setSurveyGenderFactor('Bare Skin & SPF Only');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                        surveyGender === 'female'
+                          ? 'bg-white text-slate-950 shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Icon icon="solar:user-heart-bold" className="w-3.5 h-3.5" />
+                      <span>Female / General</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Question Grid (Minimal List View Layout) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Q1: Sleep Quality */}
+                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:moon-bold" className="w-3.5 h-3.5 text-slate-400" />
+                      <span>1. Sleep & Rest</span>
+                    </div>
+                    <div className="flex flex-col space-y-1">
+                      {[
+                        '7-9 hrs Restful',
+                        'Interrupted <6 hrs',
+                        'Late Shift & Stress',
+                        'Deep Sleep >8 hrs'
+                      ].map((opt) => {
+                        const isSelected = surveySleep === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setSurveySleep(opt)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
+                              isSelected
+                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
+                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                            }`}
+                          >
+                            <span>{opt}</span>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                            }`}>
+                              {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Q2: Hydration */}
+                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:cup-bold" className="w-3.5 h-3.5 text-slate-400" />
+                      <span>2. Hydration & Diet</span>
+                    </div>
+                    <div className="flex flex-col space-y-1">
+                      {[
+                        'Optimal (>2.5L Water)',
+                        'Moderate (~1.5L)',
+                        'Low & Dehydrated',
+                        'High Caffeine/Alcohol'
+                      ].map((opt) => {
+                        const isSelected = surveyHydration === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setSurveyHydration(opt)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
+                              isSelected
+                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
+                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                            }`}
+                          >
+                            <span>{opt}</span>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                            }`}>
+                              {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Q3: Environmental Exposome */}
+                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
+                    <div className="flex items-center space-x-2 text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <Icon icon="solar:sun-bold" className="w-3.5 h-3.5 text-slate-400" />
+                      <span>3. Sun & Climate</span>
+                    </div>
+                    <div className="flex flex-col space-y-1">
+                      {[
+                        'Direct Sun & High UV',
+                        'Indoor AC & Dry Air',
+                        'Urban Pollution & Sweat',
+                        'Shade / Controlled'
+                      ].map((opt) => {
+                        const isSelected = surveyExposure === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setSurveyExposure(opt)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
+                              isSelected
+                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
+                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                            }`}
+                          >
+                            <span>{opt}</span>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                            }`}>
+                              {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Q4: Gender-Specific Factor */}
+                  <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-2">
+                    <div className="flex items-center justify-between text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                      <div className="flex items-center space-x-2">
+                        <Icon icon="solar:user-bold" className="w-3.5 h-3.5 text-slate-400" />
+                        <span>4. {surveyGender === 'male' ? 'Shaving & Beard Routine' : 'Cycle & Makeup Factor'}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-normal lowercase">({surveyGender})</span>
+                    </div>
+                    <div className="flex flex-col space-y-1">
+                      {(surveyGender === 'male'
+                        ? [
+                            'Clean Shaven & Smooth',
+                            'Post-Shave Irritation',
+                            'Beard Care & Oil',
+                            'Stubble / Ingrowns'
+                          ]
+                        : [
+                            'Bare Skin & SPF Only',
+                            'Heavy Foundation',
+                            'PMS / Sensitivity',
+                            'Follicular Phase'
+                          ]
+                      ).map((opt) => {
+                        const isSelected = surveyGenderFactor === opt;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setSurveyGenderFactor(opt)}
+                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium text-left transition-all cursor-pointer flex items-center justify-between border ${
+                              isSelected
+                                ? 'bg-white text-slate-950 border-white font-semibold shadow-xs'
+                                : 'bg-slate-900/80 hover:bg-slate-800/80 text-slate-300 border-slate-800/80'
+                            }`}
+                          >
+                            <span>{opt}</span>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-700 bg-transparent'
+                            }`}>
+                              {isSelected && <Icon icon="solar:check-bold" className="w-2.5 h-2.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Q5: Optional Notes Field */}
+                <div className="p-3 rounded-2xl bg-slate-900/40 border border-slate-800/50 space-y-1.5">
+                  <div className="flex items-center justify-between text-slate-300 text-xs font-bold uppercase tracking-wider px-0.5">
+                    <div className="flex items-center space-x-2">
+                      <Icon icon="solar:notes-bold" className="w-3.5 h-3.5 text-slate-400" />
+                      <span>5. Today's Observations</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">Optional</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={surveyOptionalNote}
+                    onChange={(e) => setSurveyOptionalNote(e.target.value)}
+                    placeholder="e.g., Slight tightness near nostrils, introduced new Vitamin C serum today..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-slate-600 transition-all"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSurveySkip}
+                    className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    Skip & View Direct Report
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSurveySubmit}
+                    className="w-full sm:flex-1 py-3 px-6 rounded-2xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs tracking-wide transition-all shadow-lg active:scale-95 flex items-center justify-center space-x-2 border border-white/20 cursor-pointer"
+                  >
+                    <span>Complete & Generate Clinical Report</span>
+                    <Icon icon="solar:alt-arrow-right-bold" className="w-4 h-4 text-slate-950" />
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <>
               {/* Guidance Advice Text Above Camera Feed (Container removed) */}
               <div className="w-full text-center py-1">
                 <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight">
@@ -532,44 +822,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <span>Bypass</span>
                 </button>
               </div>
-
-            {/* Premium Notice Modal Popup */}
-            {showPremiumNotice && (
-              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 text-center space-y-4 shadow-2xl">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
-                    <Icon icon="solar:crown-minimalistic-bold" className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-slate-900 tracking-tight">Intermediate Scans are SANA Premium</h4>
-                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                      Intermediate scans allow instant on-demand skin checks throughout the day. Upgrade to SANA Premium to perform unlimited intermediate scans stored directly in your Agent Vault.
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPremiumNotice(false);
-                        setScanType('intermediate_scan');
-                      }}
-                      className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
-                    >
-                      Unlock for Demo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPremiumNotice(false)}
-                      className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-all cursor-pointer border border-slate-200"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-          ) : (
+            </>
+          )) : (
             /* Clean User Skin Health Report View */
             <div className="space-y-3.5 overflow-y-auto no-scrollbar max-h-[72vh] pr-1">
               {/* Top Scores & Metrics Snapshot */}

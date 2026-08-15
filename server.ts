@@ -578,7 +578,7 @@ app.post("/api/sana/execute", async (req, res) => {
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical" } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical", dailyContext } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
@@ -695,9 +695,21 @@ app.post("/api/facial-scan", async (req, res) => {
           responseStyle
         );
 
+        const dailyContextBlock = dailyContext ? `
+### USER DAILY EXPOSOME & LIFESTYLE SURVEY DATA
+- Gender Profile Mode: ${dailyContext.gender || 'General'}
+- Sleep & Rest Quality: ${dailyContext.sleep || 'Not provided'}
+- Hydration & Dietary Intake: ${dailyContext.hydration || 'Not provided'}
+- Sun & Exposome Exposure: ${dailyContext.exposure || 'Not provided'}
+- Gender/Routine Specific Factor: ${dailyContext.genderFactor || 'Not provided'}
+${dailyContext.optionalNote ? `- User Observation Note: "${dailyContext.optionalNote}"` : ''}
+` : '';
+
         const agentPrompt = `${contextPack}
+${dailyContextBlock}
 
 TASK: Generate a comprehensive, modular clinical skin report for this scan.
+Incorporate the user's daily exposome survey data (sleep quality, hydration, sun exposure, and gender routine factor) directly into your analysis and recommendations.
 Structure the report cleanly with Markdown:
 # DERMATOLOGICAL SKIN HEALTH REPORT
 
@@ -709,7 +721,7 @@ Structure the report cleanly with Markdown:
 - Compare current scores against past days' scans. Highlight what improved and what worsened.
 
 ## 3. CORE FOCUS AREAS & CLINICAL ANALYSIS
-- Detail active skin concerns (barrier status, pore clarity, redness level, moisture retention).
+- Detail active skin concerns (barrier status, pore clarity, redness level, moisture retention), directly factoring in today's sleep, hydration, exposure, and shaving/cycle routine.
 
 ## 4. ACTIONABLE MORNING & EVENING REGIMEN
 - Morning routine adjustments.
