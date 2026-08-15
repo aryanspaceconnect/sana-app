@@ -35,7 +35,7 @@ export const PopUpNotificationCard: React.FC<PopUpNotificationCardProps> = ({
       case 'droplet':
         return <Icon icon="solar:droplet-bold-duotone" className="w-5 h-5 text-cyan-500" />;
       case 'clock':
-        return <Icon icon="solar:clock-circle-bold-duotone" className="w-5 h-5 text-purple-500" />;
+        return <Icon icon="solar:clock-circle-bold-duotone" className="w-5 h-5 text-indigo-500" />;
       case 'alert':
       default:
         return <Icon icon="solar:danger-bold-duotone" className="w-5 h-5 text-rose-500" />;

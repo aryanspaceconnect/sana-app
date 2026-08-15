@@ -138,8 +138,8 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     <div className="w-full h-full min-h-screen bg-[#f8f9fb] flex flex-col justify-between p-6 overflow-y-auto select-none">
       {/* Top Header Branding */}
       <div className="w-full pt-4 pb-2 flex flex-col items-center text-center">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#121316] to-[#2d3139] flex items-center justify-center text-white shadow-md mb-3">
-          <SanaLogoIcon size={24} color="#ffffff" />
+        <div className="mb-3">
+          <SanaLogoIcon size={38} color="#121316" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-[#121316] lowercase">
           sana <span className="font-normal text-slate-500 tracking-normal">intelligence</span>

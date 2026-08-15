@@ -253,7 +253,7 @@ export const McpHub: React.FC = () => {
     switch (iconName) {
       case 'Database': return <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />;
       case 'Globe': return <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
-      case 'FileText': return <FileText className="w-5 h-5 text-purple-600 dark:text-purple-400" />;
+      case 'FileText': return <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />;
       case 'Activity': return <Activity className="w-5 h-5 text-rose-600 dark:text-rose-400" />;
       default: return <Server className="w-5 h-5 text-slate-600 dark:text-slate-400" />;
     }
@@ -319,7 +319,7 @@ export const McpHub: React.FC = () => {
           </div>
           <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
             <div className="text-xs text-slate-400 font-medium">Recorded Tool Trace Calls</div>
-            <div className="text-2xl font-bold text-purple-400 mt-1">{logs.length}</div>
+            <div className="text-2xl font-bold text-indigo-400 mt-1">{logs.length}</div>
           </div>
         </div>
       </div>
@@ -614,7 +614,7 @@ export const McpHub: React.FC = () => {
           {prompts.map((p) => (
             <div key={p.name} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-purple-600 dark:text-purple-400 font-semibold bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
                   {p.name}
                 </span>
                 <span className="text-xs text-slate-400">{p.serverName}</span>

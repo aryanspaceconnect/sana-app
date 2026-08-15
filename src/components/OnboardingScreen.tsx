@@ -684,9 +684,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
       <div className="w-full max-w-xl mx-auto pt-1 pb-3 flex items-center justify-between shrink-0 sticky top-0 bg-[#f8f9fb]/90 backdrop-blur-md z-20 py-2 mb-1">
         {step > 1 ? (
           <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#121316] flex items-center justify-center text-white shadow-xs">
-              <SanaLogoIcon size={18} color="#ffffff" />
-            </div>
+            <SanaLogoIcon size={24} color="#121316" />
             <div>
               <span className="text-sm font-bold tracking-tight text-[#121316] lowercase">sana</span>
               <span className="text-xs text-slate-400 ml-1.5 font-medium">Skin Discovery</span>
@@ -713,8 +711,8 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
         </div>
       </div>
 
-      {/* Main Container Card */}
-      <div className="w-full max-w-xl mx-auto bg-white rounded-3xl p-5 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/50 my-2 sm:my-auto shrink-0">
+      {/* Main Container */}
+      <div className="w-full max-w-xl mx-auto mt-8 sm:mt-12 mb-2 sm:mb-auto shrink-0">
         <AnimatePresence mode="wait">
           {/* STEP 1: WELCOME SCREEN */}
           {step === 1 && (
@@ -723,51 +721,54 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
-              className="space-y-6 text-center py-2"
+              className="space-y-8 text-center py-2"
             >
-              <div className="flex items-center justify-center mx-auto py-1">
-                <SanaLogoIcon size={38} color="#121316" />
-              </div>
-
-              <div className="space-y-2">
-                <span className="px-3 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase border border-slate-200/60">
-                  Step 1 of 5 • Welcome
-                </span>
-                <h1 className="text-2xl font-bold tracking-tight text-[#121316]">
-                  Welcome to SANA Intelligence
-                </h1>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  Your personal skin health & barrier companion. Before we gather any personal details, let's understand your skin first — because true skincare starts with self-awareness.
-                </p>
-              </div>
-
-              {/* Focus Pillars */}
-              <div className="grid grid-cols-3 gap-2.5 pt-2 text-left">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                  <Icon icon="solar:heart-bold-duotone" className="w-5 h-5 text-rose-500" />
-                  <p className="text-[11px] font-bold text-[#121316]">Empathy First</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">Judgment-free guidance tailored to your skin.</p>
+              {/* Logo and Name + Welcome Title block */}
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-center space-x-2.5 mx-auto">
+                  <SanaLogoIcon size={38} color="#121316" />
+                  <span className="text-3xl font-bold tracking-tight text-[#121316] lowercase">sana</span>
                 </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                  <Icon icon="solar:scanner-bold-duotone" className="w-5 h-5 text-indigo-500" />
-                  <p className="text-[11px] font-bold text-[#121316]">Dermal Vision</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">Powered by Perfect Corp skin analysis.</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                  <Icon icon="solar:cloud-sun-bold-duotone" className="w-5 h-5 text-amber-500" />
-                  <p className="text-[11px] font-bold text-[#121316]">Climate Defense</p>
-                  <p className="text-[10px] text-slate-500 leading-tight">Hyperlocal weather & UV barrier shielding.</p>
+
+                <div className="space-y-2 pt-1">
+                  <span className="px-3 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase border border-slate-200/60">
+                    Step 1 of 5 • Welcome
+                  </span>
+                  <h1 className="text-2xl font-bold tracking-tight text-[#121316]">
+                    Welcome
+                  </h1>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="w-full py-3.5 px-5 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-              >
-                <span>Begin Skin Discovery</span>
-                <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
-              </button>
+              {/* Focus Pillars & Action Button with generous top spacing */}
+              <div className="space-y-6 pt-4">
+                <div className="grid grid-cols-3 gap-2.5 text-left">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                    <Icon icon="solar:heart-bold-duotone" className="w-5 h-5 text-rose-500" />
+                    <p className="text-[11px] font-bold text-[#121316]">Empathy First</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Judgment-free guidance tailored to your skin.</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                    <Icon icon="solar:scanner-bold-duotone" className="w-5 h-5 text-indigo-500" />
+                    <p className="text-[11px] font-bold text-[#121316]">Dermal Vision</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Powered by Perfect Corp skin analysis.</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                    <Icon icon="solar:cloud-sun-bold-duotone" className="w-5 h-5 text-amber-500" />
+                    <p className="text-[11px] font-bold text-[#121316]">Climate Defense</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Hyperlocal weather & UV barrier shielding.</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                >
+                  <span>Begin Skin Discovery</span>
+                  <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
+                </button>
+              </div>
             </motion.div>
           )}
 
@@ -815,7 +816,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                         onClick={() => handleToggleChip(chip)}
                         className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer flex items-center space-x-1 ${
                           isSelected
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            ? 'bg-[#121316] text-white border-[#121316] shadow-xs'
                             : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
@@ -857,8 +858,8 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                         onClick={() => handleSelectHormonalOption(hOpt.text)}
                         className={`px-2.5 py-1 rounded-xl text-[10.5px] font-semibold border transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-purple-50/60 text-purple-900 border-purple-100 hover:bg-purple-100'
+                            ? 'bg-[#121316] text-white border-[#121316] shadow-xs'
+                            : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/60'
                         }`}
                       >
                         {isSelected ? '✓ ' : ''}{hOpt.label}
@@ -1306,12 +1307,6 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-
-      {/* Footer */}
-      <div className="w-full max-w-xl mx-auto pt-3 pb-2 text-center text-[10px] text-slate-400 flex items-center justify-center space-x-2 shrink-0">
-        <Icon icon="solar:shield-check-bold" className="w-3.5 h-3.5 text-emerald-600" />
-        <span>End-to-End Encrypted Skin Barrier Profile</span>
       </div>
     </div>
   );

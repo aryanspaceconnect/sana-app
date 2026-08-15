@@ -356,8 +356,8 @@ export default function App() {
   if (authInitializing) {
     return (
       <div className="w-full h-screen bg-[#f8f9fb] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#121316] flex items-center justify-center text-white mb-3 shadow-md animate-pulse">
-          <SanaLogoIcon size={24} color="#ffffff" />
+        <div className="mb-3 animate-pulse">
+          <SanaLogoIcon size={38} color="#121316" />
         </div>
         <h2 className="text-xl font-bold tracking-tight text-[#121316] lowercase">sana</h2>
         <p className="text-xs text-slate-400 mt-1">Initializing skin & health intelligence...</p>

@@ -334,7 +334,7 @@ export const VaultFileExplorer: React.FC<VaultFileExplorerProps> = ({
     if (ext === 'json') return { icon: 'solar:code-file-bold-duotone', color: 'text-amber-500' };
     if (ext === 'md' || ext === 'txt') return { icon: 'solar:document-text-bold-duotone', color: 'text-blue-500' };
     if (ext === 'ts' || ext === 'js' || ext === 'jsx' || ext === 'tsx') return { icon: 'solar:code-square-bold-duotone', color: 'text-cyan-500' };
-    if (fileType.includes('image')) return { icon: 'solar:gallery-wide-bold-duotone', color: 'text-purple-500' };
+    if (fileType.includes('image')) return { icon: 'solar:gallery-wide-bold-duotone', color: 'text-indigo-500' };
     return { icon: 'solar:file-text-bold-duotone', color: 'text-slate-500' };
   };
 
@@ -599,7 +599,7 @@ export const VaultFileExplorer: React.FC<VaultFileExplorerProps> = ({
                   { path: '/portals/skin_analysis', name: 'Skin Analysis Portal', icon: 'solar:face-scan-circle-bold-duotone', color: 'bg-emerald-50 text-emerald-900 border-emerald-200' },
                   { path: '/portals/routine_builder', name: 'Routine Protocols', icon: 'solar:calendar-mark-bold-duotone', color: 'bg-blue-50 text-blue-900 border-blue-200' },
                   { path: '/portals/documents', name: 'Agent Documents', icon: 'solar:document-text-bold-duotone', color: 'bg-amber-50 text-amber-900 border-amber-200' },
-                  { path: '/portals/notes', name: 'Vault Notes', icon: 'solar:notes-bold-duotone', color: 'bg-purple-50 text-purple-900 border-purple-200' },
+                  { path: '/portals/notes', name: 'Vault Notes', icon: 'solar:notes-bold-duotone', color: 'bg-indigo-50 text-indigo-900 border-indigo-200' },
                   { path: '/portals/sessions', name: 'Session Traces', icon: 'solar:chat-round-line-bold-duotone', color: 'bg-cyan-50 text-cyan-900 border-cyan-200' },
                 ].map(p => (
                   <button

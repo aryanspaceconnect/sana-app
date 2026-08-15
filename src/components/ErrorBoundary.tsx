@@ -46,8 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="w-full min-h-screen bg-[#f8f9fb] flex flex-col items-center justify-center p-6 text-center select-none font-sans">
-          <div className="w-14 h-14 rounded-2xl bg-[#121316] flex items-center justify-center text-white mb-4 shadow-lg shadow-slate-900/10">
-            <SanaLogoIcon size={28} color="#ffffff" />
+          <div className="mb-4">
+            <SanaLogoIcon size={40} color="#121316" />
           </div>
 
           <span className="text-xs font-bold uppercase tracking-wider text-rose-500 bg-rose-50 border border-rose-200/60 px-2.5 py-1 rounded-full mb-3">

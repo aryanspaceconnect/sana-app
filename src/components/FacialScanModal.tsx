@@ -303,40 +303,30 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-md overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-3xl rounded-[32px] bg-slate-900 border border-slate-800 text-white overflow-hidden shadow-2xl p-5 relative flex flex-col space-y-4 my-auto max-h-[94vh]"
+          className="w-full max-w-3xl rounded-[32px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-5 relative flex flex-col space-y-4 my-auto max-h-[94vh]"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-2xl bg-slate-800 text-amber-400 border border-slate-700">
-                <Icon icon="solar:code-scan-bold" className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight">Skin Analysis</h3>
-              </div>
-            </div>
-
+          {/* Header - Close Button Only */}
+          <div className="flex items-center justify-end border-b border-slate-100 pb-2">
             <button
               onClick={() => {
                 setScanResult(null);
                 setCapturedImage(null);
                 onClose();
               }}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
             >
-              <Icon icon="solar:close-circle-linear" className="w-5 h-5" />
+              <Icon icon="solar:close-circle-linear" className="w-6 h-6" />
             </button>
           </div>
 
           {!scanResult ? (
             <>
-              /* Camera Viewport */
-            <div className="relative w-full aspect-4/3 rounded-[24px] bg-black overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner">
+            <div className="relative w-full aspect-4/3 rounded-[24px] bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-200/80 shadow-inner">
               <video
                 ref={videoRef}
                 autoPlay
@@ -346,12 +336,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               />
               <canvas ref={canvasRef} className="hidden" />
 
-              {/* Fogged / Blurred Region Outside Custom Face Silhouette Viewport */}
+              {/* Fogged / Blurred / Soft White Fill Light Region Outside Custom Face Silhouette */}
               <div className="absolute inset-0 pointer-events-none z-10">
                 <svg className="w-full h-full absolute inset-0" viewBox="0 0 100 100" preserveAspectRatio="none">
                   <defs>
                     <mask id="face-silhouette-mask">
-                      {/* White fill keeps the frosted blur outside */}
+                      {/* White fill keeps the frosted blur / white light outside */}
                       <rect width="100%" height="100%" fill="white" />
                       {/* Black path cuts an organic custom human face shape hole */}
                       <path
@@ -361,9 +351,15 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     </mask>
                   </defs>
 
-                  {/* Frosted / Fogged Outside Layer */}
+                  {/* Frosted / Fogged Outside Layer - Softly turns glowing white when Fill Light is clicked */}
                   <foreignObject width="100%" height="100%" mask="url(#face-silhouette-mask)">
-                    <div className="w-full h-full backdrop-blur-md bg-slate-950/60" />
+                    <div
+                      className={`w-full h-full transition-all duration-700 ease-out ${
+                        isFlashlightOn
+                          ? 'bg-white/95 backdrop-blur-2xl shadow-[inset_0_0_120px_rgba(255,255,255,1)]'
+                          : 'bg-slate-950/60 backdrop-blur-md'
+                      }`}
+                    />
                   </foreignObject>
 
                   {/* Custom Face Silhouette Outline Stroke & Glow */}
@@ -377,20 +373,20 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   />
                 </svg>
 
-                {/* Top Bar Controls (Separated to Top-Left and Top-Right to Prevent Overlapping) */}
+                {/* Top Bar Controls */}
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-auto z-20">
-                  {/* Flashlight Pill Button (Top-Left) */}
+                  {/* Fill Light Pill Button (Top-Left) */}
                   <button
                     type="button"
                     onClick={toggleFlashlight}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
+                    className={`px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
                       isFlashlightOn
-                        ? 'bg-amber-400 text-slate-950 border-amber-300'
+                        ? 'bg-white text-slate-950 border-white shadow-lg ring-2 ring-white/60 font-bold'
                         : 'bg-slate-900/80 backdrop-blur-md text-slate-200 border-white/20 hover:bg-slate-800'
                     }`}
                   >
-                    <Icon icon={isFlashlightOn ? 'solar:flashlight-bold' : 'solar:flashlight-linear'} className="w-3.5 h-3.5" />
-                    <span>Flashlight</span>
+                    <Icon icon={isFlashlightOn ? 'solar:sun-2-bold' : 'solar:sun-2-linear'} className="w-4 h-4 text-amber-400" />
+                    <span>Fill Light</span>
                   </button>
 
                   {/* Live Face Ratio Indicator (Top-Right) */}
@@ -399,16 +395,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom Instruction Banner (Centered at Bottom without overlapping top controls) */}
+                {/* Bottom Instruction Banner (Clean text, no blinking dot) */}
                 <div className="absolute bottom-3 left-3 right-3 flex justify-center pointer-events-auto z-20">
-                  <div className="px-3.5 py-1.5 rounded-full bg-slate-900/90 backdrop-blur-md border border-white/20 text-xs font-semibold text-white shadow-xl flex items-center space-x-2 max-w-full truncate">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        faceAssessment.canShutter || faceAssessment.status === 'ready'
-                          ? 'bg-white animate-pulse'
-                          : 'bg-amber-400 animate-ping'
-                      }`}
-                    />
+                  <div className="px-4 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/20 text-xs font-semibold text-white shadow-xl flex items-center justify-center max-w-full truncate">
                     <span className="truncate">
                       {faceAssessment.canShutter || faceAssessment.status === 'ready'
                         ? 'Look in camera'
@@ -425,24 +414,21 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 </div>
               )}
 
-              {/* Section F: Recommended Error UI Pattern (Title + Instruction + Primary Action Button) */}
+              {/* Section F: Recommended Error UI Pattern */}
               {scanUiError && (
                 <div className="absolute inset-0 bg-slate-950/95 p-6 flex flex-col items-center justify-center text-center z-30 animate-fade-in">
                   <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
                     <Icon icon="solar:danger-circle-bold" className="w-7 h-7 text-rose-400" />
                   </div>
 
-                  {/* 1. Short title */}
                   <h3 className="text-base font-bold text-white mb-1.5 tracking-tight">
                     {scanUiError.title}
                   </h3>
 
-                  {/* 2. One instruction */}
                   <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-5">
                     {scanUiError.hint}
                   </p>
 
-                  {/* 3. Primary button */}
                   <div className="flex items-center space-x-2.5">
                     {scanUiError.action === 'retry' ? (
                       <button
@@ -490,100 +476,49 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
 
               {isAnalyzing && (
                 <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center space-y-3 z-20">
-                  <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs font-semibold text-white">Submitting Image to Perfect Corp S2S Server...</p>
-                  <p className="text-[11px] text-slate-400 font-mono">POST /s2s/v2.1/file ➔ PUT Binary ➔ POST Task ➔ Poll</p>
+                  <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                  <p className="text-xs font-semibold text-white">Analyzing Skin Image...</p>
                 </div>
               )}
             </div>
 
-            {/* Scan Mode & Shutter Action Controls Bar */}
-            <div className="flex flex-col space-y-3 pt-1">
-              {/* Scan Type Selector Tabs */}
-              <div className="flex items-center justify-center p-1 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setScanType('daily_scan')}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 ${
-                    scanType === 'daily_scan'
-                      ? 'bg-amber-400 text-slate-950 font-bold shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Icon icon="solar:sun-bold" className="w-4 h-4" />
-                  <span>Daily Ritual Scan</span>
-                </button>
+            {/* Shutter Action Controls Bar */}
+            <div className="flex items-center justify-between px-4 pt-2 pb-1">
+              {/* Upload File Option */}
+              <label className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold shadow-xs">
+                <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-slate-800" />
+                <span className="hidden sm:inline">Upload Photo</span>
+                <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+              </label>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!userProfile?.settings?.isPremium) {
-                      setShowPremiumNotice(true);
-                    } else {
-                      setScanType('intermediate_scan');
-                    }
-                  }}
-                  className={`flex-1 py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-2 ${
-                    scanType === 'intermediate_scan'
-                      ? 'bg-amber-400 text-slate-950 font-bold shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Icon icon="solar:bolt-bold" className="w-4 h-4 text-amber-500" />
-                  <span>Intermediate Check</span>
-                  {!userProfile?.settings?.isPremium && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono border border-amber-500/30">
-                      PRO
-                    </span>
-                  )}
-                </button>
-              </div>
+              {/* Frost Shutter Button */}
+              <button
+                type="button"
+                onClick={handleCapture}
+                disabled={isAnalyzing}
+                className={`w-16 h-16 rounded-full border-4 border-slate-100 bg-white/90 hover:bg-white backdrop-blur-md text-slate-900 flex items-center justify-center shadow-xl active:scale-95 transition-all cursor-pointer ring-4 ring-slate-200/60 group ${
+                  isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                <div className="w-12 h-12 rounded-full border-2 border-slate-900 flex items-center justify-center bg-slate-900 text-white group-hover:scale-105 transition-transform">
+                  <Icon icon="solar:camera-bold" className="w-5 h-5" />
+                </div>
+              </button>
 
-              {/* Shutter Capture Button & Upload Option */}
-              <div className="flex items-center justify-between px-2 pt-1">
-                {/* Upload File Input */}
-                <label className="p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold">
-                  <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-amber-400" />
-                  <span className="hidden sm:inline">Upload Image</span>
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                </label>
-
-                {/* Center Shutter Button */}
-                <button
-                  type="button"
-                  onClick={handleCapture}
-                  disabled={isAnalyzing}
-                  className={`w-16 h-16 rounded-full border-4 border-slate-800 bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer ${
-                    isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-full border-2 border-slate-950 flex items-center justify-center">
-                    <Icon icon="solar:camera-bold" className="w-6 h-6" />
-                  </div>
-                </button>
-
-                {/* Reset / Camera Toggle */}
-                <button
-                  type="button"
-                  onClick={startCamera}
-                  className="p-3 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold"
-                >
-                  <Icon icon="solar:restart-bold" className="w-5 h-5 text-amber-400" />
-                  <span className="hidden sm:inline">Reset Camera</span>
-                </button>
-              </div>
+              {/* Spacer for symmetry */}
+              <div className="w-24" />
             </div>
 
             {/* Premium Notice Modal Popup */}
             {showPremiumNotice && (
               <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 p-6 text-center space-y-4 shadow-2xl">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 text-center space-y-4 shadow-2xl">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
                     <Icon icon="solar:crown-minimalistic-bold" className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="text-base font-bold text-white tracking-tight">Intermediate Scans are SANA Premium</h4>
-                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                    <h4 className="text-base font-bold text-slate-900 tracking-tight">Intermediate Scans are SANA Premium</h4>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                       Intermediate scans allow instant on-demand skin checks throughout the day. Upgrade to SANA Premium to perform unlimited intermediate scans stored directly in your Agent Vault.
                     </p>
                   </div>
@@ -594,14 +529,14 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                         setShowPremiumNotice(false);
                         setScanType('intermediate_scan');
                       }}
-                      className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all cursor-pointer"
+                      className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
                     >
                       Unlock for Demo
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowPremiumNotice(false)}
-                      className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer border border-slate-700"
+                      className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-all cursor-pointer border border-slate-200"
                     >
                       Close
                     </button>

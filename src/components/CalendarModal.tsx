@@ -88,7 +88,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ userProfile, onOpe
   const getCategoryBadgeClass = (category: string) => {
     switch (category) {
       case 'scan':
-        return 'bg-purple-100 text-purple-700 border-purple-200';
+        return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       case 'treatment':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'habit':

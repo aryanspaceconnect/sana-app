@@ -910,10 +910,10 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
                 {/* Session Isolated Notepad Section */}
                 <div>
                   <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center space-x-1">
-                    <Icon icon="solar:pen-new-square-bold-duotone" className="w-4 h-4 text-purple-600" />
+                    <Icon icon="solar:pen-new-square-bold-duotone" className="w-4 h-4 text-indigo-600" />
                     <span>Session Notepad (Private to this Chat)</span>
                   </h4>
-                  <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-100 text-xs">
+                  <div className="p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-xs">
                     {sessionNotepadText ? (
                       <p className="text-slate-700 whitespace-pre-wrap">{sessionNotepadText}</p>
                     ) : (
