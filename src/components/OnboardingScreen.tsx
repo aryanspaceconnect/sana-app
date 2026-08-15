@@ -730,10 +730,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   <span className="text-3xl font-bold tracking-tight text-[#121316] lowercase">sana</span>
                 </div>
 
-                <div className="space-y-2 pt-1">
-                  <span className="px-3 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase border border-slate-200/60">
-                    Step 1 of 5 • Welcome
-                  </span>
+                <div className="pt-1">
                   <h1 className="text-2xl font-bold tracking-tight text-[#121316]">
                     Welcome
                   </h1>
@@ -782,10 +779,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               className="space-y-5"
             >
               <div>
-                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase">
-                  Step 2 of 5 • Skin Observation & Cycle
-                </span>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316] mt-2">
+                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
                   How much do you know about your skin right now?
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -906,10 +900,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               className="space-y-5"
             >
               <div>
-                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase">
-                  Step 3 of 5 • Scan Preparation
-                </span>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316] mt-2">
+                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
                   Let's see what your skin really says
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -975,10 +966,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               className="space-y-5"
             >
               <div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold tracking-wider uppercase border border-emerald-200">
-                  Step 4 of 5 • Onboarding Scan Analysis
-                </span>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316] mt-1.5">
+                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
                   Your Personalized Skin Companion Read
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -1079,10 +1067,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               className="space-y-4"
             >
               <div>
-                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-[#121316] text-[10px] font-semibold tracking-wider uppercase">
-                  Step 5 of 5 • Personal Profile Synchronization
-                </span>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316] mt-1.5">
+                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
                   Let's complete your profile
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">

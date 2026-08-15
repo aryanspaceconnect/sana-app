@@ -163,24 +163,83 @@ export default function App() {
     };
   }, []);
 
-  // Dynamic browser coords fallback
-  const [appBrowserCoords, setAppBrowserCoords] = useState<{ lat?: number; lon?: number }>({});
+  // Dynamic browser coords & client location acquisition with local storage caching
+  const [appBrowserCoords, setAppBrowserCoords] = useState<{ lat?: number; lon?: number; locationName?: string }>(() => {
+    try {
+      const cached = localStorage.getItem('sana_cached_location');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (typeof parsed.lat === 'number' && typeof parsed.lon === 'number') {
+          return { lat: parsed.lat, lon: parsed.lon, locationName: parsed.locationName };
+        }
+      }
+    } catch {
+      // Ignore cache parse error
+    }
+    return {};
+  });
 
   useEffect(() => {
-    if (userProfile?.settings?.latitude == null && typeof navigator !== 'undefined' && navigator.geolocation) {
+    if (userProfile?.settings?.latitude != null) return;
+
+    let isMounted = true;
+
+    const saveLocationCache = (lat: number, lon: number, locationName?: string) => {
+      try {
+        localStorage.setItem('sana_cached_location', JSON.stringify({
+          lat,
+          lon,
+          locationName,
+          timestamp: Date.now()
+        }));
+      } catch {
+        // Ignore quota error
+      }
+    };
+
+    // Helper: try IP Geolocation lookup if browser GPS fails or is blocked
+    const tryIpGeolocation = async () => {
+      try {
+        const res = await fetch('https://freeipapi.com/api/json');
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (typeof data.latitude === 'number' && typeof data.longitude === 'number' && !isNaN(data.latitude)) {
+            const locLabel = [data.cityName, data.regionName, data.countryName].filter(Boolean).join(', ');
+            setAppBrowserCoords({
+              lat: data.latitude,
+              lon: data.longitude,
+              locationName: locLabel
+            });
+            saveLocationCache(data.latitude, data.longitude, locLabel);
+          }
+        }
+      } catch (err) {
+        console.warn("Client IP Geolocation fallback failed:", err);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setAppBrowserCoords({
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude
-          });
+          if (!isMounted) return;
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          setAppBrowserCoords({ lat, lon });
+          saveLocationCache(lat, lon);
         },
         () => {
-          // Graceful fallback
+          // GPS failed or denied in iframe -> Fallback to IP Geolocation
+          if (isMounted) tryIpGeolocation();
         },
-        { timeout: 6000, maximumAge: 300000 }
+        { timeout: 5000, maximumAge: 300000 }
       );
+    } else {
+      tryIpGeolocation();
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [userProfile?.settings?.latitude]);
 
   // Fetch Daily Brief from Server Endpoint
@@ -194,7 +253,7 @@ export default function App() {
             temperatureUnit: userProfile?.settings?.temperatureUnit || 'C',
             latitude: userProfile?.settings?.latitude ?? appBrowserCoords.lat,
             longitude: userProfile?.settings?.longitude ?? appBrowserCoords.lon,
-            locationName: userProfile?.settings?.locationName || ''
+            locationName: userProfile?.settings?.locationName || appBrowserCoords.locationName || ''
           })
         });
         if (res.ok) {
@@ -213,7 +272,8 @@ export default function App() {
     userProfile?.settings?.longitude,
     userProfile?.settings?.locationName,
     appBrowserCoords.lat,
-    appBrowserCoords.lon
+    appBrowserCoords.lon,
+    appBrowserCoords.locationName
   ]);
 
   // Subscribe to Facial Scans in Firestore & Auto-Check Today's Scan Completion

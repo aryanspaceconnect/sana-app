@@ -167,10 +167,6 @@ interface WeatherCache {
 let baselineCache: WeatherCache | null = null;
 const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes in-memory cache
 
-// Global neutral coordinate reference (used only if location and GPS are completely undefined)
-const DEFAULT_LAT = 37.7749;
-const DEFAULT_LON = -122.4194;
-
 /**
  * Search locations via Open-Meteo Geocoding API
  */
@@ -254,7 +250,7 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
   let displayLocName = locationNameOverride?.trim();
 
   // If user specified a location name, prioritize geocoding it to match their configured city
-  if (displayLocName && displayLocName.length > 0 && displayLocName !== 'Local Atmosphere' && displayLocName !== 'Local Area') {
+  if (displayLocName && displayLocName.length > 0 && displayLocName !== 'Local Atmosphere' && displayLocName !== 'Local Area' && displayLocName !== 'Location Access Required') {
     try {
       const geoResults = await searchLocations(displayLocName);
       if (geoResults && geoResults.length > 0) {
@@ -267,8 +263,36 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     }
   }
 
-  const finalLat = targetLat ?? DEFAULT_LAT;
-  const finalLon = targetLon ?? DEFAULT_LON;
+  // If coordinates are missing and no location name resolved
+  if (targetLat === undefined || targetLon === undefined) {
+    return {
+      isLocationMissing: true,
+      tempC: 0,
+      feelsLikeC: 0,
+      humidity: 0,
+      dewPointC: 0,
+      vpdKpa: 0,
+      uvIndex: 0,
+      uvIndexClearSky: 0,
+      isDay: 1,
+      cloudCoverPercent: 0,
+      precipMm: 0,
+      precipProbPercent: 0,
+      weatherCode: 0,
+      weatherCondition: 'Location Access Needed',
+      windSpeedKmH: 0,
+      windGustsKmH: 0,
+      locationName: displayLocName || 'Location Access Required',
+      airQualityAqi: 0,
+      pm25: 0,
+      pm10: 0,
+      ozone: 0,
+      no2: 0
+    };
+  }
+
+  const finalLat = targetLat;
+  const finalLon = targetLon;
   const cacheKey = `${finalLat.toFixed(2)}_${finalLon.toFixed(2)}`;
   const now = Date.now();
   if (baselineCache && (now - baselineCache.timestamp) < CACHE_TTL_MS && baselineCache.cacheKey === cacheKey) {
@@ -312,10 +336,8 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
       currentUvIndex = Number((hourly.uv_index[idxToUse] ?? 0).toFixed(1));
       currentUvIndexClearSky = Number((hourly.uv_index_clear_sky?.[idxToUse] ?? currentUvIndex).toFixed(1));
       
-      // If it's daytime but UV was calculated as 0, or negative, ensure non-negative
       if (currentUvIndex < 0) currentUvIndex = 0.0;
     } else {
-      // Nighttime: UV is strictly 0.0
       currentUvIndex = 0.0;
       currentUvIndexClearSky = 0.0;
     }
@@ -343,59 +365,58 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     }
 
     const data = {
-      tempC: current.temperature_2m ?? 24,
-      feelsLikeC: current.apparent_temperature ?? (current.temperature_2m ?? 24),
-      humidity: current.relative_humidity_2m ?? 60,
-      dewPointC: current.dew_point_2m ?? 16,
-      vpdKpa: current.vapour_pressure_deficit ?? 0.85,
+      isLocationMissing: false,
+      tempC: current.temperature_2m ?? 0,
+      feelsLikeC: current.apparent_temperature ?? (current.temperature_2m ?? 0),
+      humidity: current.relative_humidity_2m ?? 0,
+      dewPointC: current.dew_point_2m ?? 0,
+      vpdKpa: current.vapour_pressure_deficit ?? 0,
       uvIndex: currentUvIndex,
       uvIndexClearSky: currentUvIndexClearSky,
       isDay: isDay ? 1 : 0,
-      cloudCoverPercent: current.cloud_cover ?? 30,
+      cloudCoverPercent: current.cloud_cover ?? 0,
       precipMm: current.precipitation ?? 0,
-      precipProbPercent: current.precipitation_probability ?? 10,
-      weatherCode: current.weather_code ?? 2,
+      precipProbPercent: current.precipitation_probability ?? 0,
+      weatherCode: current.weather_code ?? 0,
       weatherCondition: condName,
-      windSpeedKmH: current.wind_speed_10m ?? 10,
-      windGustsKmH: current.wind_gusts_10m ?? 18,
+      windSpeedKmH: current.wind_speed_10m ?? 0,
+      windGustsKmH: current.wind_gusts_10m ?? 0,
       locationName: displayLocName,
-      airQualityAqi: aqiVal ?? 45,
-      pm25: pm25Val ?? 12.0,
-      pm10: pm10Val ?? 22.0,
-      ozone: o3Val ?? 30.0,
-      no2: no2Val ?? 10.0
+      airQualityAqi: aqiVal ?? 0,
+      pm25: pm25Val ?? 0,
+      pm10: pm10Val ?? 0,
+      ozone: o3Val ?? 0,
+      no2: no2Val ?? 0
     };
 
     baselineCache = { timestamp: now, cacheKey, data };
     return data;
   } catch (err) {
-    console.warn('[WeatherAwarenessEngine] Failed to fetch live Open-Meteo baseline weather, using fallback:', err);
-    // Realist fallback: calculate night/day based on local time
-    const currentHour = new Date().getHours();
-    const isNight = currentHour < 6 || currentHour >= 20;
-
+    console.warn('[WeatherAwarenessEngine] Failed to fetch live Open-Meteo weather:', err);
     return {
-      tempC: isNight ? 19 : 23,
-      feelsLikeC: isNight ? 19 : 24,
-      humidity: isNight ? 70 : 55,
-      dewPointC: 15,
-      vpdKpa: 0.80,
-      uvIndex: isNight ? 0.0 : 3.5,
-      uvIndexClearSky: isNight ? 0.0 : 4.2,
-      isDay: isNight ? 0 : 1,
-      cloudCoverPercent: 25,
+      isLocationMissing: false,
+      isFetchError: true,
+      tempC: 0,
+      feelsLikeC: 0,
+      humidity: 0,
+      dewPointC: 0,
+      vpdKpa: 0,
+      uvIndex: 0,
+      uvIndexClearSky: 0,
+      isDay: 1,
+      cloudCoverPercent: 0,
       precipMm: 0,
-      precipProbPercent: 10,
-      weatherCode: 2,
-      weatherCondition: isNight ? 'Clear Night' : 'Partly Sunny',
-      windSpeedKmH: 8,
-      windGustsKmH: 14,
+      precipProbPercent: 0,
+      weatherCode: 0,
+      weatherCondition: 'Weather Connection Offline',
+      windSpeedKmH: 0,
+      windGustsKmH: 0,
       locationName: displayLocName || `${finalLat.toFixed(2)}°N, ${finalLon.toFixed(2)}°E`,
-      airQualityAqi: 45,
-      pm25: 12.0,
-      pm10: 22.0,
-      ozone: 30.0,
-      no2: 10.0
+      airQualityAqi: 0,
+      pm25: 0,
+      pm10: 0,
+      ozone: 0,
+      no2: 0
     };
   }
 }
@@ -403,9 +424,15 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
 /**
  * Generates rich baseline prompt header string for LLM system prompt
  */
-export async function getBaselineWeatherPromptHeader(lat: number = DEFAULT_LAT, lon: number = DEFAULT_LON): Promise<string> {
+export async function getBaselineWeatherPromptHeader(lat?: number, lon?: number, locationName?: string): Promise<string> {
+  if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
+    return `[ENVIRONMENT & EXPOSOME] Location not specified. Prompt user for city if routine depends on climate/UV.`;
+  }
   try {
-    const w = await getBaselineWeatherData(lat, lon);
+    const w = await getBaselineWeatherData(lat, lon, locationName);
+    if ((w as any).isLocationMissing) {
+      return `[ENVIRONMENT & EXPOSOME] Location access pending user selection.`;
+    }
     const condName = getWmoConditionName(w.weatherCode);
     
     let uvCategory = 'Low';
@@ -416,8 +443,8 @@ export async function getBaselineWeatherPromptHeader(lat: number = DEFAULT_LAT, 
 
     return `[ENVIRONMENT & EXPOSOME - ${w.locationName}] Temp: ${w.tempC}°C (Feels ${w.feelsLikeC}°C) | Hum: ${w.humidity}% | Dew Pt: ${w.dewPointC}°C | VPD: ${w.vpdKpa} kPa | UV: ${w.uvIndex} (${uvCategory}, ClearSkyMax: ${w.uvIndexClearSky}) | Clouds: ${w.cloudCoverPercent}% | Precip Prob (12h): ${w.precipProbPercent}% | Wind: ${w.windSpeedKmH} km/h (Gusts: ${w.windGustsKmH} km/h) | AQI: ${w.airQualityAqi} (PM2.5: ${w.pm25}, PM10: ${w.pm10}, O3: ${w.ozone}, NO2: ${w.no2})`;
   } catch (err) {
-    console.warn('[WeatherAwarenessEngine] Header error, using baseline fallback:', err);
-    return `[ENVIRONMENT & EXPOSOME] Temp: 28°C | Hum: 65% | Dew Pt: 21°C | VPD: 0.85 kPa | UV: 6.5 (High) | Clouds: 40% | Precip Prob: 20% | AQI: 65 (PM2.5: 18.5) | Condition: Partly Sunny`;
+    console.warn('[WeatherAwarenessEngine] Header error:', err);
+    return `[ENVIRONMENT & EXPOSOME] Environmental data service temporarily unavailable.`;
   }
 }
 
@@ -443,9 +470,9 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
     }
   }
 
-  // Fallback coordinates if still null
-  const finalLat = lat ?? DEFAULT_LAT;
-  const finalLon = lon ?? DEFAULT_LON;
+  // Ensure valid coordinates
+  const finalLat = lat ?? 0;
+  const finalLon = lon ?? 0;
   const fetchedAtIso = new Date().toISOString();
 
   if (!cityLabel) {

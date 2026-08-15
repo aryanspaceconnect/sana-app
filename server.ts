@@ -848,11 +848,66 @@ app.post("/api/daily-brief", async (req, res) => {
   try {
     const { temperatureUnit = "C", latitude, longitude, locationName } = req.body;
     
-    const weather = await getBaselineWeatherData(
-      typeof latitude === 'number' && !isNaN(latitude) ? latitude : undefined,
-      typeof longitude === 'number' && !isNaN(longitude) ? longitude : undefined,
-      locationName
-    );
+    let reqLat = typeof latitude === 'number' && !isNaN(latitude) ? latitude : undefined;
+    let reqLon = typeof longitude === 'number' && !isNaN(longitude) ? longitude : undefined;
+    let reqLocName = locationName?.trim();
+
+    // If coordinates were not sent from client, attempt IP geolocation fallback
+    if (reqLat === undefined || reqLon === undefined) {
+      if (!reqLocName || reqLocName === 'Local Area' || reqLocName === 'Local Atmosphere' || reqLocName === 'Location Access Required') {
+        try {
+          const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress;
+          let ipRes = await fetch(`https://freeipapi.com/api/json/${clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1' ? clientIp : ''}`);
+          if (!ipRes.ok) {
+            ipRes = await fetch('https://freeipapi.com/api/json');
+          }
+          if (ipRes.ok) {
+            const ipData = await ipRes.json();
+            if (typeof ipData.latitude === 'number' && typeof ipData.longitude === 'number' && !isNaN(ipData.latitude)) {
+              reqLat = ipData.latitude;
+              reqLon = ipData.longitude;
+              reqLocName = [ipData.cityName, ipData.regionName, ipData.countryName].filter(Boolean).join(', ');
+            }
+          }
+        } catch (ipErr) {
+          console.warn("IP Geolocation lookup warning:", ipErr);
+        }
+      }
+    }
+
+    const weather = await getBaselineWeatherData(reqLat, reqLon, reqLocName);
+
+    if ((weather as any).isLocationMissing) {
+      return res.json({
+        isLocationMissing: true,
+        greeting: "Welcome to SANA",
+        temperature: "--",
+        feelsLike: "--",
+        weatherCondition: "Location Access Needed",
+        uvIndex: 0,
+        uvLevel: "None",
+        humidity: "--",
+        dewPoint: "--",
+        locationName: "Location Access Needed",
+        waterTargetLiters: "2.4L",
+        airQualityAqi: 0,
+        pm25: 0,
+        pm10: 0,
+        ozone: 0,
+        no2: 0,
+        cloudCover: 0,
+        precipProb: 0,
+        windSpeed: 0,
+        windGusts: 0,
+        vpdKpa: 0,
+        uvIndexClearSky: 0,
+        primaryReminders: [
+          "Set your location in Settings to receive real-time UV & climate barrier alerts.",
+          "Hydration target: 2.4L throughout the day",
+          "Scheduled evening facial barrier check at 9:00 PM"
+        ]
+      });
+    }
 
     const isFahrenheit = temperatureUnit === "F";
     const displayTemp = isFahrenheit 
@@ -871,9 +926,10 @@ app.post("/api/daily-brief", async (req, res) => {
     else if (weather.uvIndex < 11) uvLevel = "Very High";
     else uvLevel = "Extreme";
 
-    const displayLocation = locationName || weather.locationName || "Local Area";
+    const displayLocation = reqLocName || weather.locationName || "Local Area";
 
     res.json({
+      isLocationMissing: false,
       greeting: weather.uvIndex > 0 ? "Morning, sunshine" : "Evening, serene skin",
       temperature: displayTemp,
       feelsLike: displayFeelsLike,
@@ -904,7 +960,7 @@ app.post("/api/daily-brief", async (req, res) => {
       ]
     });
   } catch (error: any) {
-    console.warn("Daily brief generation fallback:", error);
+    console.warn("Daily brief generation error:", error);
     res.status(500).json({ error: "Failed to generate daily brief" });
   }
 });

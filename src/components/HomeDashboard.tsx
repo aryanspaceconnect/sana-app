@@ -342,8 +342,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   };
 
   const uvVal = dailyBrief.uvIndex !== undefined && dailyBrief.uvIndex !== null ? Number(dailyBrief.uvIndex) : 0;
-  const aqiVal = dailyBrief.airQualityAqi ?? 67;
-  const locationText = userProfile?.settings?.locationName || dailyBrief.locationName || 'Local Atmosphere';
+  const aqiVal = dailyBrief.airQualityAqi ?? 0;
+  const locationText = userProfile?.settings?.locationName || dailyBrief.locationName || 'Location Access Required';
 
   return (
     <div className="w-full h-full px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">
@@ -404,12 +404,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           >
             <div className="flex items-baseline justify-between">
               <span className="text-[21px] font-bold text-[#1a1c20] tracking-tight leading-none">
-                {dailyBrief.temperature || "29°C"}
+                {dailyBrief.temperature || "--"}
               </span>
             </div>
             <p className="text-[10px] font-medium text-[#64748b] truncate mt-1.5 flex items-center space-x-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#94a3b8]" />
-              <span className="truncate">{dailyBrief.weatherCondition || "Overcast"}</span>
+              <span className="truncate">{dailyBrief.weatherCondition || "--"}</span>
             </p>
           </div>
 
@@ -435,7 +435,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               AQI {aqiVal}
             </span>
             <span className="text-[10px] font-semibold text-[#166534]/80 mt-1.5 truncate">
-              {aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
+              {aqiVal <= 0 ? "Pending" : aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
             </span>
           </div>
 
@@ -445,10 +445,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f7fbfe] border border-[#dbeafe]/60 hover:bg-[#eff6ff] transition-all duration-200 cursor-pointer group"
           >
             <span className="text-[12px] font-bold leading-none text-[#0284c7] tracking-tight truncate">
-              {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '78%'}
+              {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '--'}
             </span>
             <span className="text-[9.5px] font-semibold text-[#0369a1]/80 mt-1.5 truncate">
-              {dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% rain` : '81% rain'}
+              {dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% rain` : '0% rain'}
             </span>
           </div>
         </div>
@@ -479,7 +479,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <span className="truncate">Feels Like</span>
                   </span>
                   <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
-                    {dailyBrief.feelsLike || dailyBrief.temperature || "30°C"}
+                    {dailyBrief.feelsLike || dailyBrief.temperature || "--"}
                   </span>
                 </div>
 
@@ -493,7 +493,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <span className="truncate">Wind</span>
                   </span>
                   <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
-                    {dailyBrief.windSpeed ?? 13.9} <span className="text-[9.5px] font-normal text-[#64748b]">km/h</span>
+                    {dailyBrief.windSpeed ?? 0} <span className="text-[9.5px] font-normal text-[#64748b]">km/h</span>
                   </span>
                 </div>
 
@@ -507,7 +507,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <span className="truncate">Clouds</span>
                   </span>
                   <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
-                    {dailyBrief.cloudCover ?? 87}%
+                    {dailyBrief.cloudCover ?? 0}%
                   </span>
                 </div>
 
@@ -521,7 +521,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <span className="truncate">Dew Pt</span>
                   </span>
                   <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
-                    {dailyBrief.dewPoint ?? "24.6°C"}
+                    {dailyBrief.dewPoint ?? "--"}
                   </span>
                 </div>
 

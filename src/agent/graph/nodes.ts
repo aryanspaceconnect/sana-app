@@ -12,9 +12,13 @@ import { touchSession } from '../sessionManager.js';
 import { getTemporalPromptHeader } from '../services/TemporalEngine.js';
 import { getBaselineWeatherPromptHeader } from '../services/WeatherAwarenessEngine.js';
 
-export async function buildSystemPrompt(userId: string, sessionNotepadContent?: string): Promise<string> {
+export async function buildSystemPrompt(
+  userId: string,
+  sessionNotepadContent?: string,
+  userLocation?: { lat?: number; lon?: number; locationName?: string }
+): Promise<string> {
   const temporalHeader = getTemporalPromptHeader();
-  const weatherHeader = await getBaselineWeatherPromptHeader();
+  const weatherHeader = await getBaselineWeatherPromptHeader(userLocation?.lat, userLocation?.lon, userLocation?.locationName);
   const notepadStr = sessionNotepadContent && sessionNotepadContent.trim().length > 0
     ? sessionNotepadContent
     : '(Empty - use `update_session_notepad` tool to save working notes, user constraints, or key findings for this session)';
@@ -159,7 +163,13 @@ export async function reasoningNode(state: AgentState) {
 
   const currentIterations = state.iterations + 1;
   const currentNotepad = (await getSessionNotepad(state.sessionId, state.userId)) || state.sessionNotepad || '';
-  const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad);
+  const profileSettings = (state.context as any)?.profile?.settings || (state.context as any)?.userProfile?.settings;
+  const userLoc = {
+    lat: profileSettings?.latitude,
+    lon: profileSettings?.longitude,
+    locationName: profileSettings?.locationName
+  };
+  const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad, userLoc);
   
   // Refresh active MCP tools before generating declarations
   await refreshMcpToolsCache();
