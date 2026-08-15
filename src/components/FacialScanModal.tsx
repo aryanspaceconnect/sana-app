@@ -308,206 +308,189 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-3xl rounded-[32px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-5 relative flex flex-col space-y-4 my-auto max-h-[94vh]"
+          className="w-full max-w-2xl rounded-[36px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-5 relative flex flex-col space-y-3.5 my-auto max-h-[94vh]"
         >
-          {/* Header - Close Button Only */}
-          <div className="flex items-center justify-end border-b border-slate-100 pb-2">
-            <button
-              onClick={() => {
-                setScanResult(null);
-                setCapturedImage(null);
-                onClose();
-              }}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <Icon icon="solar:close-circle-linear" className="w-6 h-6" />
-            </button>
-          </div>
-
           {!scanResult ? (
             <>
-            <div className="relative w-full aspect-4/3 rounded-[24px] bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-200/80 shadow-inner">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover transform -scale-x-100"
-              />
-              <canvas ref={canvasRef} className="hidden" />
-
-              {/* Fogged / Blurred / Soft White Fill Light Region Outside Custom Face Silhouette */}
-              <div className="absolute inset-0 pointer-events-none z-10">
-                <svg className="w-full h-full absolute inset-0" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <defs>
-                    <mask id="face-silhouette-mask">
-                      {/* White fill keeps the frosted blur / white light outside */}
-                      <rect width="100%" height="100%" fill="white" />
-                      {/* Black path cuts an organic custom human face shape hole */}
-                      <path
-                        d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
-                        fill="black"
-                      />
-                    </mask>
-                  </defs>
-
-                  {/* Frosted / Fogged Outside Layer - Softly turns glowing white when Fill Light is clicked */}
-                  <foreignObject width="100%" height="100%" mask="url(#face-silhouette-mask)">
-                    <div
-                      className={`w-full h-full transition-all duration-700 ease-out ${
-                        isFlashlightOn
-                          ? 'bg-white/95 backdrop-blur-2xl shadow-[inset_0_0_120px_rgba(255,255,255,1)]'
-                          : 'bg-slate-950/60 backdrop-blur-md'
-                      }`}
-                    />
-                  </foreignObject>
-
-                  {/* Custom Face Silhouette Outline Stroke & Glow */}
-                  <path
-                    d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
-                    fill="none"
-                    stroke={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(245, 158, 11, 0.85)'}
-                    strokeWidth="0.8"
-                    strokeDasharray={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'none' : '2 1'}
-                    className="transition-all duration-300"
-                  />
-                </svg>
-
-                {/* Top Bar Controls */}
-                <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-auto z-20">
-                  {/* Fill Light Pill Button (Top-Left) */}
-                  <button
-                    type="button"
-                    onClick={toggleFlashlight}
-                    className={`px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
-                      isFlashlightOn
-                        ? 'bg-white text-slate-950 border-white shadow-lg ring-2 ring-white/60 font-bold'
-                        : 'bg-slate-900/80 backdrop-blur-md text-slate-200 border-white/20 hover:bg-slate-800'
-                    }`}
-                  >
-                    <Icon icon={isFlashlightOn ? 'solar:sun-2-bold' : 'solar:sun-2-linear'} className="w-4 h-4 text-amber-400" />
-                    <span>Fill Light</span>
-                  </button>
-
-                  {/* Live Face Ratio Indicator (Top-Right) */}
-                  <div className="px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 shadow-md">
-                    FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
-                  </div>
-                </div>
-
-                {/* Bottom Instruction Banner (Clean text, no blinking dot) */}
-                <div className="absolute bottom-3 left-3 right-3 flex justify-center pointer-events-auto z-20">
-                  <div className="px-4 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/20 text-xs font-semibold text-white shadow-xl flex items-center justify-center max-w-full truncate">
-                    <span className="truncate">
-                      {faceAssessment.canShutter || faceAssessment.status === 'ready'
-                        ? 'Look in camera'
-                        : faceAssessment.hint || 'Align face inside outline'}
-                    </span>
-                  </div>
-                </div>
+              {/* Guidance Advice Banner Above Camera Feed */}
+              <div className="w-full py-2.5 px-4 rounded-2xl bg-slate-100/90 border border-slate-200/80 text-center shadow-2xs">
+                <p className="text-xs font-bold text-slate-800 tracking-tight">
+                  {faceAssessment.canShutter || faceAssessment.status === 'ready'
+                    ? 'Look in camera'
+                    : faceAssessment.hint || 'Align face inside outline'}
+                </p>
               </div>
 
-              {cameraError && (
-                <div className="absolute inset-0 bg-slate-950/90 p-4 flex flex-col items-center justify-center text-center space-y-2 z-10">
-                  <Icon icon="solar:camera-square-bold" className="w-10 h-10 text-rose-400" />
-                  <p className="text-xs text-rose-200 font-semibold">{cameraError}</p>
-                </div>
-              )}
+              {/* Squaricle Visual Camera Feed Viewport */}
+              <div className="relative w-full aspect-4/3 rounded-[32px] bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-200/80 shadow-inner">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover transform -scale-x-100"
+                />
+                <canvas ref={canvasRef} className="hidden" />
 
-              {/* Section F: Recommended Error UI Pattern */}
-              {scanUiError && (
-                <div className="absolute inset-0 bg-slate-950/95 p-6 flex flex-col items-center justify-center text-center z-30 animate-fade-in">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
-                    <Icon icon="solar:danger-circle-bold" className="w-7 h-7 text-rose-400" />
+                {/* Fogged / Blurred / Soft White Fill Light Region Outside Custom Face Silhouette */}
+                <div className="absolute inset-0 pointer-events-none z-10">
+                  <svg className="w-full h-full absolute inset-0" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                      <mask id="face-silhouette-mask">
+                        {/* White fill keeps the frosted blur / white light outside */}
+                        <rect width="100%" height="100%" fill="white" />
+                        {/* Black path cuts an organic custom human face shape hole */}
+                        <path
+                          d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
+                          fill="black"
+                        />
+                      </mask>
+                    </defs>
+
+                    {/* Frosted / Fogged Outside Layer - Softly turns glowing white when Fill Light is clicked */}
+                    <foreignObject width="100%" height="100%" mask="url(#face-silhouette-mask)">
+                      <div
+                        className={`w-full h-full transition-all duration-700 ease-out ${
+                          isFlashlightOn
+                            ? 'bg-white/95 backdrop-blur-2xl shadow-[inset_0_0_120px_rgba(255,255,255,1)]'
+                            : 'bg-slate-950/60 backdrop-blur-md'
+                        }`}
+                      />
+                    </foreignObject>
+
+                    {/* Custom Face Silhouette Outline Stroke & Glow */}
+                    <path
+                      d="M 50 10 C 74 10, 80 24, 80 44 C 80 65, 70 82, 50 90 C 30 82, 20 65, 20 44 C 20 24, 26 10, 50 10 Z"
+                      fill="none"
+                      stroke={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(245, 158, 11, 0.85)'}
+                      strokeWidth="0.8"
+                      strokeDasharray={faceAssessment.canShutter || faceAssessment.status === 'ready' ? 'none' : '2 1'}
+                      className="transition-all duration-300"
+                    />
+                  </svg>
+
+                  {/* Top Bar Controls Inside Camera Viewport */}
+                  <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-auto z-20">
+                    {/* Fill Light Pill Button (Top-Left) */}
+                    <button
+                      type="button"
+                      onClick={toggleFlashlight}
+                      className={`px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
+                        isFlashlightOn
+                          ? 'bg-white text-slate-950 border-white shadow-lg ring-2 ring-white/60 font-bold'
+                          : 'bg-slate-900/80 backdrop-blur-md text-slate-200 border-white/20 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Icon icon={isFlashlightOn ? 'solar:sun-2-bold' : 'solar:sun-2-linear'} className="w-4 h-4 text-amber-400" />
+                      <span>Fill Light</span>
+                    </button>
+
+                    {/* Live Face Ratio Indicator (Top-Right) */}
+                    <div className="px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 shadow-md">
+                      FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
+                    </div>
                   </div>
+                </div>
 
-                  <h3 className="text-base font-bold text-white mb-1.5 tracking-tight">
-                    {scanUiError.title}
-                  </h3>
+                {cameraError && (
+                  <div className="absolute inset-0 bg-slate-950/90 p-4 flex flex-col items-center justify-center text-center space-y-2 z-10">
+                    <Icon icon="solar:camera-square-bold" className="w-10 h-10 text-rose-400" />
+                    <p className="text-xs text-rose-200 font-semibold">{cameraError}</p>
+                  </div>
+                )}
 
-                  <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-5">
-                    {scanUiError.hint}
-                  </p>
+                {/* Section F: Recommended Error UI Pattern */}
+                {scanUiError && (
+                  <div className="absolute inset-0 bg-slate-950/95 p-6 flex flex-col items-center justify-center text-center z-30 animate-fade-in">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
+                      <Icon icon="solar:danger-circle-bold" className="w-7 h-7 text-rose-400" />
+                    </div>
 
-                  <div className="flex items-center space-x-2.5">
-                    {scanUiError.action === 'retry' ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setScanUiError(null);
-                          if (capturedImage) {
-                            processScanImage(capturedImage);
-                          } else {
+                    <h3 className="text-base font-bold text-white mb-1.5 tracking-tight">
+                      {scanUiError.title}
+                    </h3>
+
+                    <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-5">
+                      {scanUiError.hint}
+                    </p>
+
+                    <div className="flex items-center space-x-2.5">
+                      {scanUiError.action === 'retry' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScanUiError(null);
+                            if (capturedImage) {
+                              processScanImage(capturedImage);
+                            } else {
+                              startCamera();
+                            }
+                          }}
+                          className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                        >
+                          <Icon icon="solar:restart-bold" className="w-4 h-4" />
+                          <span>Try Again</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScanUiError(null);
+                            setCapturedImage(null);
                             startCamera();
-                          }
-                        }}
-                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
-                      >
-                        <Icon icon="solar:restart-bold" className="w-4 h-4" />
-                        <span>Try Again</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setScanUiError(null);
-                          setCapturedImage(null);
-                          startCamera();
-                        }}
-                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
-                      >
-                        <Icon icon="solar:camera-bold" className="w-4 h-4" />
-                        <span>Retake Photo</span>
-                      </button>
-                    )}
+                          }}
+                          className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                        >
+                          <Icon icon="solar:camera-bold" className="w-4 h-4" />
+                          <span>Retake Photo</span>
+                        </button>
+                      )}
 
-                    {scanUiError.action === 'wait' && (
-                      <button
-                        type="button"
-                        onClick={() => setScanUiError(null)}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all border border-slate-700 cursor-pointer"
-                      >
-                        Dismiss
-                      </button>
-                    )}
+                      {scanUiError.action === 'wait' && (
+                        <button
+                          type="button"
+                          onClick={() => setScanUiError(null)}
+                          className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all border border-slate-700 cursor-pointer"
+                        >
+                          Dismiss
+                        </button>
+                      )}
+                    </div>
                   </div>
+                )}
+
+                {isAnalyzing && (
+                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center space-y-3 z-20">
+                    <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                    <p className="text-xs font-semibold text-white">Analyzing Skin Image...</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Shutter & Upload Controls - Single Thin Squaricle Container in Bottom Center */}
+              <div className="flex items-center justify-center pt-2 pb-1">
+                <div className="flex items-center space-x-3 p-2 px-4 rounded-3xl bg-slate-100/90 border border-slate-200/80 shadow-2xs">
+                  {/* Upload Photo Button (Squaricle) */}
+                  <label className="p-2.5 px-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-2xs active:scale-95">
+                    <Icon icon="solar:upload-square-bold" className="w-4 h-4 text-slate-800" />
+                    <span className="text-xs">Upload</span>
+                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  </label>
+
+                  {/* Shutter Button (Squaricle) */}
+                  <button
+                    type="button"
+                    onClick={handleCapture}
+                    disabled={isAnalyzing}
+                    className={`p-2.5 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white transition-all cursor-pointer flex items-center space-x-2 text-xs font-bold shadow-md active:scale-95 ${
+                      isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <Icon icon="solar:camera-bold" className="w-4 h-4 text-amber-400" />
+                    <span>Scan Face</span>
+                  </button>
                 </div>
-              )}
-
-              {isAnalyzing && (
-                <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center space-y-3 z-20">
-                  <div className="w-10 h-10 border-3 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
-                  <p className="text-xs font-semibold text-white">Analyzing Skin Image...</p>
-                </div>
-              )}
-            </div>
-
-            {/* Shutter Action Controls Bar */}
-            <div className="flex items-center justify-between px-4 pt-2 pb-1">
-              {/* Upload File Option */}
-              <label className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 transition-all cursor-pointer flex items-center space-x-2 text-xs font-semibold shadow-xs">
-                <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-slate-800" />
-                <span className="hidden sm:inline">Upload Photo</span>
-                <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-              </label>
-
-              {/* Frost Shutter Button */}
-              <button
-                type="button"
-                onClick={handleCapture}
-                disabled={isAnalyzing}
-                className={`w-16 h-16 rounded-full border-4 border-slate-100 bg-white/90 hover:bg-white backdrop-blur-md text-slate-900 flex items-center justify-center shadow-xl active:scale-95 transition-all cursor-pointer ring-4 ring-slate-200/60 group ${
-                  isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                <div className="w-12 h-12 rounded-full border-2 border-slate-900 flex items-center justify-center bg-slate-900 text-white group-hover:scale-105 transition-transform">
-                  <Icon icon="solar:camera-bold" className="w-5 h-5" />
-                </div>
-              </button>
-
-              {/* Spacer for symmetry */}
-              <div className="w-24" />
-            </div>
+              </div>
 
             {/* Premium Notice Modal Popup */}
             {showPremiumNotice && (
