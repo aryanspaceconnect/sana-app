@@ -379,15 +379,15 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                       className={`px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer border ${
                         isFlashlightOn
                           ? 'bg-white text-slate-950 border-white shadow-lg ring-2 ring-white/60 font-bold'
-                          : 'bg-slate-900/80 backdrop-blur-md text-slate-200 border-white/20 hover:bg-slate-800'
+                          : 'bg-zinc-900/90 backdrop-blur-md text-zinc-100 border-white/20 hover:bg-zinc-800'
                       }`}
                     >
-                      <Icon icon={isFlashlightOn ? 'solar:sun-2-bold' : 'solar:sun-2-linear'} className="w-4 h-4 text-amber-400" />
+                      <Icon icon={isFlashlightOn ? 'solar:sun-2-bold' : 'solar:sun-2-linear'} className={`w-4 h-4 ${isFlashlightOn ? 'text-amber-500' : 'text-zinc-300'}`} />
                       <span>Fill Light</span>
                     </button>
 
                     {/* Live Face Ratio Indicator (Top-Right) */}
-                    <div className="px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 text-[10px] font-mono text-white/90 shadow-md">
+                    <div className="px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-[10px] font-mono text-zinc-100 shadow-md">
                       FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
                     </div>
                   </div>
@@ -476,7 +476,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
 
-                {/* Scan Face Shutter Button in Center (Vibrant Amber/Yellow Color when ready, muted disabled when validating) */}
+                {/* Scan Face Shutter Button in Center (Vibrant Emerald Color when ready, muted disabled when validating) */}
                 {(() => {
                   const isReadyToCapture = faceAssessment.canShutter || faceAssessment.status === 'ready';
                   return (
@@ -486,7 +486,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                       disabled={isAnalyzing || !isReadyToCapture}
                       className={`py-3 px-7 rounded-2xl transition-all flex items-center space-x-2 text-xs font-bold shadow-md ${
                         isReadyToCapture && !isAnalyzing
-                          ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer active:scale-95'
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer active:scale-95 shadow-emerald-500/20'
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-70 shadow-none border border-slate-200'
                       }`}
                     >
