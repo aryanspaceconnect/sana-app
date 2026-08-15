@@ -22,6 +22,35 @@ function getScanTitle(scan: FacialScanResult | null): string {
   return 'Night Scan';
 }
 
+// Helper: Format raw concern types to simple, clean max 2-word labels
+function formatTagLabel(typeStr: string): string {
+  if (!typeStr) return 'Skin Area';
+  const cleaned = typeStr
+    .replace(/^hd[_\s]*/i, '')
+    .replace(/_mask$/i, '')
+    .replace(/_score$/i, '')
+    .replace(/_/g, ' ')
+    .trim();
+
+  const lower = cleaned.toLowerCase();
+  if (lower.includes('droopy') || lower.includes('eyelid') || lower.includes('eye')) return 'Eye Area';
+  if (lower.includes('crow') || lower.includes('wrinkle') || lower.includes('line')) return 'Fine Lines';
+  if (lower.includes('redness') || lower.includes('barrier') || lower.includes('flush')) return 'Skin Barrier';
+  if (lower.includes('acne') || lower.includes('blemish') || lower.includes('spot') || lower.includes('pimple')) return 'Clear Skin';
+  if (lower.includes('pore')) return 'Pore Zone';
+  if (lower.includes('moisture') || lower.includes('hydration') || lower.includes('dry')) return 'Hydration Zone';
+  if (lower.includes('radiance') || lower.includes('glow') || lower.includes('shine')) return 'Skin Glow';
+  if (lower.includes('texture') || lower.includes('rough')) return 'Skin Texture';
+  if (lower.includes('dark') || lower.includes('circle')) return 'Under Eye';
+  if (lower.includes('captured') || lower.includes('photo') || lower.includes('scan')) return 'Original Photo';
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length <= 2) {
+    return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  }
+  return words.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
+
 interface FacialScanModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -69,23 +98,26 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     initialGenderMode === 'male' ? 'Clean Shaven & Smooth' : 'Bare Skin & SPF Only'
   );
   const [surveyOptionalNote, setSurveyOptionalNote] = useState<string>('');
+  const [hideImages, setHideImages] = useState<boolean>(false);
 
-  // Extract gallery images for horizontal slider
+  // Extract gallery images for horizontal slider (Concern overlays FIRST, original photo LAST)
   const galleryImages = scanResult ? extractGalleryImages(scanResult) : [];
   const allReportImages: { type: string; url: string; score?: number }[] = [];
   if (scanResult) {
-    const photoUrl = scanResult.capturedPhoto || scanResult.capturedImage || pendingCapturedPhoto;
-    if (photoUrl) {
-      allReportImages.push({
-        type: 'Captured Scan',
-        url: photoUrl,
-      });
-    }
+    // 1. API concern images / mask overlays first
     galleryImages.forEach(img => {
       if (img.url && !allReportImages.some(i => i.url === img.url)) {
         allReportImages.push(img);
       }
     });
+    // 2. Real camera captured photo LAST
+    const photoUrl = scanResult.capturedPhoto || scanResult.capturedImage || pendingCapturedPhoto;
+    if (photoUrl && !allReportImages.some(i => i.url === photoUrl)) {
+      allReportImages.push({
+        type: 'Original Photo',
+        url: photoUrl,
+      });
+    }
   }
 
   const toggleFlashlight = async () => {
@@ -795,7 +827,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                       type="button"
                       onClick={handleCapture}
                       disabled={isAnalyzing || !isReadyToCapture}
-                      className={`py-3 px-7 rounded-2xl transition-all flex items-center space-x-2 text-xs font-bold shadow-md ${
+                      className={`py-3 px-8 rounded-2xl transition-all flex items-center space-x-2 text-xs font-bold shadow-md ${
                         isReadyToCapture && !isAnalyzing
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer active:scale-95 shadow-emerald-500/20'
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-70 shadow-none border border-slate-200'
@@ -806,23 +838,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     </button>
                   );
                 })()}
-
-                {/* Bypass Button on Right (Takes user directly to next screen without calling API) */}
-                <button
-                  type="button"
-                  onClick={handleBypass}
-                  className="py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-800 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-xs active:scale-95"
-                  title="Bypass API call & view next screen"
-                >
-                  <Icon icon="solar:alt-arrow-right-bold-duotone" className="w-4 h-4 text-amber-500" />
-                  <span>Bypass</span>
-                </button>
               </div>
             </>
           )) : (
-            <div className="flex-1 flex flex-col justify-between space-y-4 overflow-y-auto no-scrollbar max-h-[78vh] pr-0.5">
+            /* Clean User Skin Health Report View - Matching Hand-Drawn Sketch Design */
+            <div className="w-full flex-1 flex flex-col space-y-4 overflow-y-auto max-h-[78vh] no-scrollbar pr-0.5 pb-2">
               {/* Top Title (Time-Aware: Morning Scan / Afternoon Scan / Evening Scan / Night Scan) */}
-              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 shrink-0">
                 <div>
                   <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                     {getScanTitle(scanResult)}
@@ -835,51 +857,54 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     })}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                >
-                  <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
-                </button>
               </div>
 
-              {/* Horizontal Image Slider (Images from API / Captured Scan) */}
-              <div className="w-full space-y-1.5">
+              {/* Horizontal Image Slider Section with Hide Images Toggle */}
+              <div className="w-full space-y-2 shrink-0">
                 <div className="flex items-center justify-between px-0.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Scan Visuals</span>
-                  <span className="text-[11px] text-slate-400 font-mono">Swipe →</span>
+                  
+                  {/* Hide / Show Images Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => setHideImages(!hideImages)}
+                    className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center space-x-1.5 py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200/80 active:scale-95 shadow-2xs"
+                  >
+                    <Icon icon={hideImages ? "solar:eye-bold" : "solar:eye-closed-bold"} className="w-3.5 h-3.5 text-slate-700" />
+                    <span>{hideImages ? "Show Images" : "Hide Images"}</span>
+                  </button>
                 </div>
-                <div className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar gap-3 py-1 -mx-1 px-1 touch-pan-x">
-                  {allReportImages.length > 0 ? (
-                    allReportImages.map((img, idx) => (
-                      <div
-                        key={idx}
-                        className="snap-center shrink-0 w-[220px] sm:w-[260px] h-[220px] sm:h-[260px] rounded-3xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs relative group transition-transform duration-300 hover:scale-[1.01]"
-                      >
-                        <img
-                          src={img.url}
-                          alt={img.type}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-2 left-2 right-2 px-3 py-1.5 rounded-xl bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold flex items-center justify-between">
-                          <span className="capitalize">{img.type.replace(/_/g, ' ')}</span>
-                          {img.score !== undefined && (
-                            <span className="text-amber-300 font-bold">{img.score}%</span>
-                          )}
+
+                {!hideImages && (
+                  <div className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar gap-3 py-1 -mx-1 px-1 touch-pan-x overscroll-x-contain select-none">
+                    {allReportImages.length > 0 ? (
+                      allReportImages.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className="snap-center shrink-0 w-[220px] sm:w-[260px] h-[220px] sm:h-[260px] rounded-3xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-xs relative group transition-transform duration-300 hover:scale-[1.01]"
+                        >
+                          <img
+                            src={img.url}
+                            alt={img.type}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Frosted tag badge in bottom-right corner, max 2 simple words, no percentage */}
+                          <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-xl bg-white/35 backdrop-blur-md text-white text-[11px] font-semibold border border-white/20 shadow-xs pointer-events-none tracking-wide">
+                            <span>{formatTagLabel(img.type)}</span>
+                          </div>
                         </div>
+                      ))
+                    ) : (
+                      <div className="w-full h-[200px] rounded-3xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
+                        No visual overlays available
                       </div>
-                    ))
-                  ) : (
-                    <div className="w-full h-[200px] rounded-3xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
-                      No visual overlays available
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Report Area - Direct Text with Subtle Shimmer Loading Indicator (NO Containers/NO Dark Boxes) */}
-              <div className="flex-1 py-1 space-y-2 min-h-[120px]">
+              {/* Report Area - Direct Text with Subtle Shimmer Loading Indicator (Expanded naturally inside outer scroll) */}
+              <div className="w-full py-1 space-y-2 min-h-[120px]">
                 {scanResult.reportStatus === 'running' && !scanResult.reportText ? (
                   <div className="py-6 flex flex-col items-center justify-center space-y-2.5">
                     <div className="flex items-center space-x-2.5 text-slate-500 font-medium text-xs sm:text-sm">
@@ -893,7 +918,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="text-xs sm:text-sm text-slate-800 leading-relaxed max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
+                  <div className="text-xs sm:text-sm text-slate-800 leading-relaxed">
                     <div className="markdown-body space-y-2">
                       <Markdown>
                         {scanResult.reportText || scanResult.summary || 'Clinical scan report generated successfully.'}
@@ -903,8 +928,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 )}
               </div>
 
-              {/* Bottom Action Buttons: Ask SANA and Done */}
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-200/80 mt-auto">
+              {/* Bottom Action Buttons: Ask SANA and Done (At the end of the scrollable flow) */}
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200/80 shrink-0 mt-auto">
                 <button
                   type="button"
                   onClick={() => {
