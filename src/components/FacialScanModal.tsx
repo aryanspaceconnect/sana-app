@@ -234,6 +234,31 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
     }
   };
 
+  const handleBypass = () => {
+    // Generate dummy scan result to proceed directly to next screen without calling API
+    const dummyResult: FacialScanResult = {
+      id: `bypass_scan_${Date.now()}`,
+      userId: userProfile?.uid || 'guest_user',
+      scanId: `bypass_${Date.now()}`,
+      scanType: scanType || 'daily_scan',
+      hydrationScore: 88,
+      barrierScore: 92,
+      clarityScore: 85,
+      summary: 'Bypass scan preview - UI testing mode',
+      recommendations: ['Hydrate skin with hyaluronic acid', 'Apply SPF 50 sunscreen'],
+      s2sStepLogs: ['Bypass mode activated for UI/UX preview'],
+      rawResponseLog: 'Bypass Mode',
+      rawJson: { bypass: true },
+      reportStatus: 'ready',
+      reportText: '### Clinical Scan Diagnosis (Bypass Preview Mode)\n\n**Skin Health Overview:**\n- **Hydration Level:** 88% (Well Hydrated)\n- **Barrier Integrity:** 92% (Strong Skin Barrier)\n- **Clarity Score:** 85%\n\n**Actionable Recommendations:**\n1. Maintain morning hydration routine with lightweight barrier cream.\n2. Apply broad-spectrum SPF 50 before UV exposure.',
+      reportSessionId: `session_scan_report_bypass_${Date.now()}`,
+      timestamp: new Date().toISOString()
+    };
+
+    setScanResult(dummyResult);
+    setActiveTab('report');
+  };
+
   const handleCapture = async () => {
     const isReadyToCapture = faceAssessment.canShutter || faceAssessment.status === 'ready';
     if (!canvasRef.current || isAnalyzing || !isReadyToCapture) return;
@@ -496,8 +521,16 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   );
                 })()}
 
-                {/* Balance spacer so Scan Face is perfectly centered */}
-                <div className="w-11" aria-hidden="true" />
+                {/* Bypass Button on Right (Takes user directly to next screen without calling API) */}
+                <button
+                  type="button"
+                  onClick={handleBypass}
+                  className="py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-800 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-xs active:scale-95"
+                  title="Bypass API call & view next screen"
+                >
+                  <Icon icon="solar:alt-arrow-right-bold-duotone" className="w-4 h-4 text-amber-500" />
+                  <span>Bypass</span>
+                </button>
               </div>
 
             {/* Premium Notice Modal Popup */}
