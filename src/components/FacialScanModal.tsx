@@ -235,7 +235,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   };
 
   const handleCapture = async () => {
-    if (!canvasRef.current || isAnalyzing) return;
+    const isReadyToCapture = faceAssessment.canShutter || faceAssessment.status === 'ready';
+    if (!canvasRef.current || isAnalyzing || !isReadyToCapture) return;
 
     let base64Image = '';
 
@@ -475,18 +476,25 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
 
-                {/* Scan Face Shutter Button in Center (Vibrant Amber/Yellow Color) */}
-                <button
-                  type="button"
-                  onClick={handleCapture}
-                  disabled={isAnalyzing}
-                  className={`py-3 px-7 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 transition-all cursor-pointer flex items-center space-x-2 text-xs font-bold shadow-md active:scale-95 ${
-                    isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <Icon icon="solar:camera-bold" className="w-4 h-4 text-slate-950" />
-                  <span>Scan Face</span>
-                </button>
+                {/* Scan Face Shutter Button in Center (Vibrant Amber/Yellow Color when ready, muted disabled when validating) */}
+                {(() => {
+                  const isReadyToCapture = faceAssessment.canShutter || faceAssessment.status === 'ready';
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleCapture}
+                      disabled={isAnalyzing || !isReadyToCapture}
+                      className={`py-3 px-7 rounded-2xl transition-all flex items-center space-x-2 text-xs font-bold shadow-md ${
+                        isReadyToCapture && !isAnalyzing
+                          ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer active:scale-95'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-70 shadow-none border border-slate-200'
+                      }`}
+                    >
+                      <Icon icon="solar:camera-bold" className="w-4 h-4" />
+                      <span>Scan Face</span>
+                    </button>
+                  );
+                })()}
 
                 {/* Balance spacer so Scan Face is perfectly centered */}
                 <div className="w-11" aria-hidden="true" />
