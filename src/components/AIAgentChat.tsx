@@ -17,6 +17,15 @@ import { ThinkingReasoning, TraceRow } from './ThinkingReasoning';
 import { LoadingState } from './LoadingState';
 import { WebSearch } from './WebSearch';
 import { PlusMenu } from './PlusMenu';
+import { SanaLogoIcon } from './SanaLogoIcon';
+
+const WELCOME_TITLES = [
+  "How can SANA assist your skin today?",
+  "Ready to review your daily routine?",
+  "Hello! What skin goal are we focusing on?",
+  "Your AI Skincare Advisor is active.",
+  "Welcome! Let's optimize your skin barrier."
+];
 
 interface AIAgentChatProps {
   userProfile: UserProfile | null;
@@ -261,6 +270,12 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showSessionsDrawer, setShowSessionsDrawer] = useState(false);
   const [sessionNotepadText, setSessionNotepadText] = useState<string>('');
+  const [welcomeIndex, setWelcomeIndex] = useState<number>(0);
+
+  // Rotate welcome prompt index whenever a new chat session is started / selected
+  useEffect(() => {
+    setWelcomeIndex(Math.floor(Math.random() * WELCOME_TITLES.length));
+  }, [activeSessionId]);
 
   // Input & Stream state
   const [inputText, setInputText] = useState('');
@@ -639,18 +654,34 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1">
-        {/* Active Messages List */}
-        {messages.map((msg) => (
-          <ChatMessageBubble
-            key={msg.id}
-            msg={msg}
-            userProfile={userProfile}
-            sessionId={activeSessionId}
-            setMessages={setMessages}
-            onSendMessage={handleSendMessage}
-          />
-        ))}
+      <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1 flex flex-col">
+        {messages.length === 0 ? (
+          <motion.div
+            key={`welcome_${activeSessionId}`}
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="my-auto py-8 px-4 flex flex-col items-center text-center max-w-sm mx-auto"
+          >
+            {/* Dynamic Welcome Title Only */}
+            <h2 className="text-[19px] font-bold text-[#121316] tracking-tight leading-snug">
+              {WELCOME_TITLES[welcomeIndex] || WELCOME_TITLES[0]}
+            </h2>
+          </motion.div>
+        ) : (
+          /* Active Messages List */
+          messages.map((msg) => (
+            <ChatMessageBubble
+              key={msg.id}
+              msg={msg}
+              userProfile={userProfile}
+              sessionId={activeSessionId}
+              setMessages={setMessages}
+              onSendMessage={handleSendMessage}
+            />
+          ))
+        )}
 
         {/* Initial Loading Indicator (Before LLM output begins) */}
         {processingStatus === 'loading' && (
@@ -669,8 +700,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         <div ref={chatEndRef} />
       </div>
 
-      {/* Quick Suggestion Chips - Minimal Squaricle Options */}
-      {messages.length < 3 && (
+      {/* Quick Suggestion Chips - Minimal Options for active chats */}
+      {messages.length > 0 && messages.length < 3 && (
         <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1 px-1 shrink-0 opacity-90 hover:opacity-100 transition-opacity">
           {suggestionChips.map((chip, i) => (
             <button
