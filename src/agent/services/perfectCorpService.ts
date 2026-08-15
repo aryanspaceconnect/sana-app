@@ -372,42 +372,92 @@ export async function analyzeSkinWithPerfectCorp(
   };
 }
 
-function extractConcernScore(
-  resultsData: any,
-  concernKeys: string[],
-  defaultScore: number
-): { raw: number; ui: number; maskUrls?: string[] } {
-  if (!resultsData) return { raw: defaultScore, ui: defaultScore };
+function findNumericValue(obj: any, keys: string[]): number | undefined {
+  if (!obj || typeof obj !== 'object') return undefined;
 
-  // 1. Check if resultsData.output is an array (standard format=json S2S response schema)
-  const outputArr = Array.isArray(resultsData.output)
-    ? resultsData.output
-    : Array.isArray(resultsData.results?.output)
-    ? resultsData.results.output
-    : null;
+  const keySet = new Set(keys.map(k => k.toLowerCase()));
 
-  if (outputArr) {
-    for (const item of outputArr) {
-      if (item && item.type) {
-        const itemType = String(item.type).toLowerCase();
-        for (const key of concernKeys) {
-          if (itemType.includes(key.toLowerCase()) || key.toLowerCase().includes(itemType)) {
-            const raw = item.raw_score ?? item.score ?? defaultScore;
-            const ui = item.ui_score ?? item.score ?? raw;
-            const maskUrls = Array.isArray(item.mask_urls)
-              ? item.mask_urls
-              : typeof item.mask_url === 'string'
-              ? [item.mask_url]
-              : undefined;
-            return { raw: Math.round(raw), ui: Math.round(ui), maskUrls };
+  // Direct check on current level
+  for (const k of Object.keys(obj)) {
+    if (keySet.has(k.toLowerCase())) {
+      const val = obj[k];
+      if (typeof val === 'number' && !isNaN(val)) return Math.round(val);
+      if (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '') return Math.round(Number(val));
+      if (typeof val === 'object' && val !== null) {
+        const inner = val.score ?? val.raw_score ?? val.ui_score ?? val.value ?? val.age;
+        if (typeof inner === 'number' && !isNaN(inner)) return Math.round(inner);
+        if (typeof inner === 'string' && !isNaN(Number(inner)) && inner.trim() !== '') return Math.round(Number(inner));
+      }
+    }
+  }
+
+  // Array check (e.g. output array)
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      if (item && typeof item === 'object') {
+        const itemType = String(item.type || item.action || item.key || '').toLowerCase();
+        for (const targetKey of keys) {
+          if (itemType === targetKey.toLowerCase() || itemType.includes(targetKey.toLowerCase())) {
+            const val = item.score ?? item.raw_score ?? item.ui_score ?? item.value ?? item.age;
+            if (typeof val === 'number' && !isNaN(val)) return Math.round(val);
+            if (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '') return Math.round(Number(val));
           }
         }
       }
     }
   }
 
-  // 2. Object property candidate search fallback
-  const scoreInfoData = resultsData.score_info || resultsData;
+  // Common nested keys check
+  const subKeys = ['score_info', 'results', 'data', 'output', 'concerns', 'task_data', 'task_result'];
+  for (const sub of subKeys) {
+    if (obj[sub] && typeof obj[sub] === 'object') {
+      const res = findNumericValue(obj[sub], keys);
+      if (res !== undefined) return res;
+    }
+  }
+
+  return undefined;
+}
+
+function extractConcernScore(
+  resultsData: any,
+  concernKeys: string[]
+): { raw?: number; ui?: number; maskUrls?: string[] } {
+  if (!resultsData) return { raw: undefined, ui: undefined };
+
+  // 1. Check if resultsData.output is an array (standard format=json S2S response schema)
+  const outputArr = Array.isArray(resultsData.output)
+    ? resultsData.output
+    : Array.isArray(resultsData.results?.output)
+    ? resultsData.results.output
+    : Array.isArray(resultsData.data?.output)
+    ? resultsData.data.output
+    : null;
+
+  if (outputArr) {
+    for (const item of outputArr) {
+      if (item && (item.type || item.action)) {
+        const itemType = String(item.type || item.action).toLowerCase();
+        for (const key of concernKeys) {
+          if (itemType.includes(key.toLowerCase()) || key.toLowerCase().includes(itemType)) {
+            const rawVal = item.raw_score ?? item.score;
+            const uiVal = item.ui_score ?? item.score ?? rawVal;
+            const raw = rawVal !== undefined && rawVal !== null ? Math.round(Number(rawVal)) : undefined;
+            const ui = uiVal !== undefined && uiVal !== null ? Math.round(Number(uiVal)) : undefined;
+            const maskUrls = Array.isArray(item.mask_urls)
+              ? item.mask_urls
+              : typeof item.mask_url === 'string'
+              ? [item.mask_url]
+              : undefined;
+            return { raw, ui, maskUrls };
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Object property candidate search
+  const scoreInfoData = resultsData.score_info || resultsData.data?.score_info || resultsData;
   const concernsObj = scoreInfoData.concerns || scoreInfoData;
 
   for (const key of concernKeys) {
@@ -426,20 +476,22 @@ function extractConcernScore(
           return { raw: Math.round(val), ui: Math.round(val) };
         }
         if (typeof val === 'object') {
-          const raw = val.raw_score ?? val.score ?? val.value ?? defaultScore;
-          const ui = val.ui_score ?? val.score ?? raw;
+          const rawVal = val.raw_score ?? val.score ?? val.value;
+          const uiVal = val.ui_score ?? val.score ?? rawVal;
+          const raw = rawVal !== undefined && rawVal !== null ? Math.round(Number(rawVal)) : undefined;
+          const ui = uiVal !== undefined && uiVal !== null ? Math.round(Number(uiVal)) : undefined;
           const maskUrls = Array.isArray(val.mask_urls)
             ? val.mask_urls
             : typeof val.mask_url === 'string'
             ? [val.mask_url]
             : undefined;
-          return { raw: Math.round(raw), ui: Math.round(ui), maskUrls };
+          return { raw, ui, maskUrls };
         }
       }
     }
   }
 
-  return { raw: defaultScore, ui: defaultScore };
+  return { raw: undefined, ui: undefined };
 }
 
 function parseAndNormalizePerfectCorpResponse(params: {
@@ -454,25 +506,22 @@ function parseAndNormalizePerfectCorpResponse(params: {
 }): PerfectCorpRawOutput {
   const { scanId, taskId, fileId, timestamp, provider, results, s2sStepLogs, rawJson } = params;
 
-  const scoreInfoData = results?.score_info || results || {};
+  const skinAge = findNumericValue(results, ['skin_age', 'age', 'skinAge', 'skin_age_value'])
+    ?? findNumericValue(rawJson, ['skin_age', 'age', 'skinAge', 'skin_age_value']);
 
-  const overallScore = Math.round(
-    scoreInfoData.all ?? scoreInfoData.overall_score ?? scoreInfoData.overall ?? 85
-  );
-  const skinAge = Math.round(
-    scoreInfoData.skin_age ?? scoreInfoData.age ?? scoreInfoData.skinAge ?? 24
-  );
+  const overallScore = findNumericValue(results, ['all', 'overall_score', 'overall', 'overallScore'])
+    ?? findNumericValue(rawJson, ['all', 'overall_score', 'overall', 'overallScore']);
 
-  const poreData = extractConcernScore(results, ['pore', 'pores'], 82);
-  const darkCircleData = extractConcernScore(results, ['dark_circle', 'dark_circle_v2', 'dark_circles'], 78);
-  const rednessData = extractConcernScore(results, ['redness', 'barrier_redness'], 86);
-  const acneData = extractConcernScore(results, ['acne', 'blemish', 'acne_spots'], 89);
-  const moistureData = extractConcernScore(results, ['moisture', 'hydration'], 84);
-  const firmnessData = extractConcernScore(results, ['firmness', 'elasticity'], 87);
+  const poreData = extractConcernScore(results, ['pore', 'pores']);
+  const darkCircleData = extractConcernScore(results, ['dark_circle', 'dark_circle_v2', 'dark_circles']);
+  const rednessData = extractConcernScore(results, ['redness', 'barrier_redness']);
+  const acneData = extractConcernScore(results, ['acne', 'blemish', 'acne_spots']);
+  const moistureData = extractConcernScore(results, ['moisture', 'hydration']);
+  const firmnessData = extractConcernScore(results, ['firmness', 'elasticity']);
 
   const scoreInfo: PerfectCorpScoreInfo = {
-    all: overallScore,
-    skin_age: skinAge,
+    all: overallScore ?? null,
+    skin_age: skinAge ?? null,
     concerns: {
       pore: {
         concernName: 'Pore Structure',
@@ -507,8 +556,10 @@ function parseAndNormalizePerfectCorpResponse(params: {
     }
   };
 
-  const annotatedRegions: PerfectCorpRegionOverlay[] = [
-    {
+  const annotatedRegions: PerfectCorpRegionOverlay[] = [];
+
+  if (poreData.raw !== undefined) {
+    annotatedRegions.push({
       regionId: `reg_pores_${scanId}`,
       regionName: 'pores',
       label: 'Cheek & Nose Pore Zone',
@@ -517,8 +568,11 @@ function parseAndNormalizePerfectCorpResponse(params: {
       bbox: [38, 28, 44, 26],
       colorHex: '#3b82f6',
       description: 'Pore dilatation analysis from live Perfect Corp S2S v2.1 engine.'
-    },
-    {
+    });
+  }
+
+  if (darkCircleData.raw !== undefined) {
+    annotatedRegions.push({
       regionId: `reg_darkcircles_${scanId}`,
       regionName: 'dark_circles',
       label: 'Infraorbital Dark Circles',
@@ -527,8 +581,11 @@ function parseAndNormalizePerfectCorpResponse(params: {
       bbox: [28, 24, 52, 16],
       colorHex: '#8b5cf6',
       description: 'Periorbital infraorbital pigment shadow mask.'
-    },
-    {
+    });
+  }
+
+  if (rednessData.raw !== undefined) {
+    annotatedRegions.push({
       regionId: `reg_redness_${scanId}`,
       regionName: 'redness_barrier',
       label: 'Malar Erythema Zone',
@@ -537,8 +594,11 @@ function parseAndNormalizePerfectCorpResponse(params: {
       bbox: [42, 20, 60, 30],
       colorHex: '#ef4444',
       description: 'Capillary flushing & erythema analysis.'
-    },
-    {
+    });
+  }
+
+  if (acneData.raw !== undefined) {
+    annotatedRegions.push({
       regionId: `reg_acne_${scanId}`,
       regionName: 'acne_spots',
       label: 'Perioral Acne Zone',
@@ -547,8 +607,8 @@ function parseAndNormalizePerfectCorpResponse(params: {
       bbox: [62, 35, 30, 22],
       colorHex: '#f59e0b',
       description: 'Papular acne & comedone mapping.'
-    }
-  ];
+    });
+  }
 
   return {
     scanId,

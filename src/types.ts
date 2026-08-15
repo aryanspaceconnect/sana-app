@@ -83,15 +83,15 @@ export interface PerfectCorpRegionOverlay {
 
 export interface PerfectCorpConcernDetail {
   concernName: string;
-  raw_score: number;
-  ui_score: number;
+  raw_score?: number;
+  ui_score?: number;
   mask_urls?: string[];
   mask_url?: string;
 }
 
 export interface PerfectCorpScoreInfo {
-  all: number; // Overall skin score (1-100)
-  skin_age: number; // AI estimated skin age
+  all?: number | null; // Overall skin score (1-100)
+  skin_age?: number | null; // AI estimated skin age
   concerns: Record<string, PerfectCorpConcernDetail>;
 }
 
@@ -102,14 +102,14 @@ export interface PerfectCorpRawOutput {
   timestamp: string;
   provider: 'PerfectCorp_S2S_v2.1_Live' | 'PerfectCorp_S2S_v2.1_Simulator' | 'PerfectCorp_S2S_v2.0_Live' | 'PerfectCorp_S2S_v2.0_Simulator' | string;
   rawMetrics: {
-    poresScore: number;
-    darkCirclesScore: number;
-    barrierRednessScore: number;
-    acneBlemishScore: number;
-    moistureScore: number;
-    skinAge: number;
-    firmnessScore: number;
-    overallScore: number;
+    poresScore?: number | null;
+    darkCirclesScore?: number | null;
+    barrierRednessScore?: number | null;
+    acneBlemishScore?: number | null;
+    moistureScore?: number | null;
+    skinAge?: number | null;
+    firmnessScore?: number | null;
+    overallScore?: number | null;
   };
   scoreInfo: PerfectCorpScoreInfo;
   s2sStepLogs: string[];
@@ -128,10 +128,10 @@ export interface SkinAnalysisIntegrityLog {
 
 export interface SkinTrendGraphPoint {
   date: string; // YYYY-MM-DD
-  hydrationScore: number;
-  barrierScore: number;
-  clarityScore: number;
-  acneIndex: number;
+  hydrationScore?: number | null;
+  barrierScore?: number | null;
+  clarityScore?: number | null;
+  acneIndex?: number | null;
   notes?: string;
 }
 
@@ -140,9 +140,9 @@ export interface FacialScanResult {
   userId?: string;
   scanId?: string;
   scanType?: 'daily_scan' | 'intermediate_scan';
-  hydrationScore: number;
-  barrierScore: number;
-  clarityScore: number;
+  hydrationScore?: number | null;
+  barrierScore?: number | null;
+  clarityScore?: number | null;
   summary: string;
   recommendations: string[];
   uvRecommendation?: string;

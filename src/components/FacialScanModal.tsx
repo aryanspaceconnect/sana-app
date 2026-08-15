@@ -199,9 +199,9 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         userId: userProfile?.uid || 'guest_user',
         scanId: data.scanId || formattedScanId,
         scanType: data.scanType || scanType,
-        hydrationScore: data.rawMetrics?.moistureScore || 85,
-        barrierScore: data.rawMetrics?.barrierRednessScore || 88,
-        clarityScore: data.rawMetrics?.acneBlemishScore || 90,
+        hydrationScore: data.rawMetrics?.moistureScore ?? data.scoreInfo?.concerns?.moisture?.ui_score ?? null,
+        barrierScore: data.rawMetrics?.barrierRednessScore ?? data.scoreInfo?.concerns?.redness?.ui_score ?? null,
+        clarityScore: data.rawMetrics?.acneBlemishScore ?? data.scoreInfo?.concerns?.acne?.ui_score ?? null,
         summary: 'Direct response from Perfect Corp S2S API',
         recommendations: [],
         rawPerfectCorpOutput: data.rawPerfectCorpOutput,
@@ -577,7 +577,16 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center font-bold text-lg">
-                      {Math.round(((scanResult.hydrationScore || 85) + (scanResult.barrierScore || 88) + (scanResult.clarityScore || 90)) / 3)}
+                      {(() => {
+                        const validScores = [scanResult.hydrationScore, scanResult.barrierScore, scanResult.clarityScore].filter(
+                          (s): s is number => typeof s === 'number' && !isNaN(s)
+                        );
+                        if (validScores.length > 0) {
+                          return Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length);
+                        }
+                        const overall = scanResult.scoreInfo?.all ?? scanResult.rawMetrics?.overallScore ?? scanResult.rawJson?.score_info?.all;
+                        return overall !== undefined && overall !== null ? Math.round(overall) : 'N/A';
+                      })()}
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-white tracking-tight">Clinical Skin Health Index</h4>
@@ -587,7 +596,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <div className="text-right">
                     <span className="text-[10px] text-slate-500 uppercase font-mono block">EST. SKIN AGE</span>
                     <span className="text-sm font-bold text-amber-400">
-                      {scanResult.scoreInfo?.skin_age || scanResult.rawJson?.score_info?.skin_age || '24 yrs'}
+                      {(() => {
+                        const age = scanResult.scoreInfo?.skin_age ?? scanResult.rawMetrics?.skinAge ?? scanResult.rawJson?.score_info?.skin_age ?? scanResult.rawJson?.skin_age;
+                        return age !== undefined && age !== null ? `${age} yrs` : 'Not provided by API';
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -597,30 +609,36 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400">
                       <span>Moisture</span>
-                      <span className="font-bold text-amber-400">{scanResult.hydrationScore}%</span>
+                      <span className="font-bold text-amber-400">
+                        {scanResult.hydrationScore !== undefined && scanResult.hydrationScore !== null ? `${scanResult.hydrationScore}%` : 'Not provided'}
+                      </span>
                     </div>
                     <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${scanResult.hydrationScore}%` }} />
+                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${scanResult.hydrationScore ?? 0}%` }} />
                     </div>
                   </div>
 
                   <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400">
                       <span>Barrier</span>
-                      <span className="font-bold text-emerald-400">{scanResult.barrierScore}%</span>
+                      <span className="font-bold text-emerald-400">
+                        {scanResult.barrierScore !== undefined && scanResult.barrierScore !== null ? `${scanResult.barrierScore}%` : 'Not provided'}
+                      </span>
                     </div>
                     <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${scanResult.barrierScore}%` }} />
+                      <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${scanResult.barrierScore ?? 0}%` }} />
                     </div>
                   </div>
 
                   <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                     <div className="flex justify-between text-[10px] text-slate-400">
                       <span>Clarity</span>
-                      <span className="font-bold text-blue-400">{scanResult.clarityScore}%</span>
+                      <span className="font-bold text-blue-400">
+                        {scanResult.clarityScore !== undefined && scanResult.clarityScore !== null ? `${scanResult.clarityScore}%` : 'Not provided'}
+                      </span>
                     </div>
                     <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-blue-400 rounded-full" style={{ width: `${scanResult.clarityScore}%` }} />
+                      <div className="h-full bg-blue-400 rounded-full" style={{ width: `${scanResult.clarityScore ?? 0}%` }} />
                     </div>
                   </div>
                 </div>

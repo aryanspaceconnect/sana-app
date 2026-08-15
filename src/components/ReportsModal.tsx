@@ -32,12 +32,15 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
 
   // Calculate real average metrics from historical scans
   const totalScans = scanHistory.length;
-  const avgHydration = totalScans > 0
-    ? Math.round(scanHistory.reduce((acc, s) => acc + (s.hydrationScore || 85), 0) / totalScans)
-    : 86;
-  const avgBarrier = totalScans > 0
-    ? Math.round(scanHistory.reduce((acc, s) => acc + (s.barrierScore || 88), 0) / totalScans)
-    : 89;
+  const validHydrationScans = scanHistory.filter(s => typeof s.hydrationScore === 'number' && !isNaN(s.hydrationScore as number));
+  const avgHydration = validHydrationScans.length > 0
+    ? Math.round(validHydrationScans.reduce((acc, s) => acc + (s.hydrationScore as number), 0) / validHydrationScans.length)
+    : null;
+
+  const validBarrierScans = scanHistory.filter(s => typeof s.barrierScore === 'number' && !isNaN(s.barrierScore as number));
+  const avgBarrier = validBarrierScans.length > 0
+    ? Math.round(validBarrierScans.reduce((acc, s) => acc + (s.barrierScore as number), 0) / validBarrierScans.length)
+    : null;
 
   return (
     <AnimatePresence>
@@ -72,11 +75,11 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
           <div className="grid grid-cols-3 gap-2">
             <div className="p-3 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] text-center">
               <span className="text-[10px] uppercase font-bold text-[#64748b]">Avg Hydration</span>
-              <p className="text-[18px] font-bold text-amber-600">{avgHydration}%</p>
+              <p className="text-[18px] font-bold text-amber-600">{avgHydration !== null ? `${avgHydration}%` : 'N/A'}</p>
             </div>
             <div className="p-3 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] text-center">
               <span className="text-[10px] uppercase font-bold text-[#64748b]">Barrier Health</span>
-              <p className="text-[18px] font-bold text-emerald-600">{avgBarrier}%</p>
+              <p className="text-[18px] font-bold text-emerald-600">{avgBarrier !== null ? `${avgBarrier}%` : 'N/A'}</p>
             </div>
             <div className="p-3 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] text-center">
               <span className="text-[10px] uppercase font-bold text-[#64748b]">Total Scans</span>
