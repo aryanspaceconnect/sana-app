@@ -25,23 +25,24 @@ export interface LLMRouterResult {
 }
 
 /**
- * Descending cascade of Gemini models by intelligence, capability, and throughput:
- * 1. gemini-3.6-flash (Default primary: state-of-the-art Flash intelligence)
- * 2. gemini-2.5-flash (High intelligence fallback)
- * 3. gemini-2.0-flash (Fast, reliable high-throughput fallback)
- * 4. gemini-2.0-flash-lite (Ultra-fast, high quota availability fallback)
- * 5. gemma-4-31b-it (Google Gemma 4 31B instruction-tuned dense multimodal model)
- * 6. gemma-4-26b-moe (Google Gemma 4 26B Mixture-of-Experts)
- * 7. gemma-3-27b-it (Google Gemma 3 27B instruction-tuned open weights model tier)
- * 8. gemma-2-27b-it (Google Gemma 2 27B open weights model tier)
- * 9. gemma-2-9b-it (Google Gemma 2 9B lightweight fast tier)
- * 10. gemini-2.5-pro (Pro tier fallback)
+ * Production-grade Gemini Model Cascade:
+ * 1. gemini-3.7-flash (Default primary: next-gen Flash intelligence)
+ * 2. gemini-3.6-flash (Primary Tier 2)
+ * 3. gemini-3.5-flash (Primary Tier 3)
+ * 4. gemini-3.1-pro (High intelligence Pro Tier)
+ * 5. gemini-3.1-flash-lite (High quota tier: 15 RPM, 500 RPD)
+ * 6. gemini-2.5-flash (Standard Flash tier: 5 RPM, 20 RPD)
+ * 7. gemini-2.0-flash (Fast throughput tier: 15 RPM, 500 RPD)
+ * 8. gemini-2.5-pro (Deep reasoning fallback tier)
  */
 export const GEMINI_MODEL_CASCADE = [
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-pro',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
   'gemini-2.5-pro'
 ];
 
@@ -64,7 +65,7 @@ export class SlidingWindowRateLimiter {
     this.windowMs = windowMs;
   }
 
-  public async acquire(maxWaitMs: number = 10000): Promise<void> {
+  public async acquire(maxWaitMs: number = 3000): Promise<void> {
     const startTime = Date.now();
     while (true) {
       const now = Date.now();
@@ -83,9 +84,8 @@ export class SlidingWindowRateLimiter {
       }
 
       const oldest = this.timestamps[0];
-      const waitMs = Math.min((oldest + this.windowMs) - now + 100, maxWaitMs - elapsed);
+      const waitMs = Math.min((oldest + this.windowMs) - now + 50, maxWaitMs - elapsed);
       if (waitMs > 0) {
-        console.log(`[RateLimiter:${this.name}] Active limit reached (${this.timestamps.length}/${this.maxRequests} req/min). Pacing request, waiting ${Math.ceil(waitMs)}ms...`);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
     }
@@ -97,12 +97,91 @@ export class SlidingWindowRateLimiter {
   }
 }
 
-// Global rate limiters configured to user thresholds:
-// Google Gemini API: Max 120 RPM to support multi-turn reasoning loops
-export const googleRateLimiter = new SlidingWindowRateLimiter('GoogleGemini', 120, 60000);
+// Global Sliding Window Limiters
+export const googleRateLimiter = new SlidingWindowRateLimiter('GoogleGeminiGlobal', 40, 60000);
+export const nvidiaRateLimiter = new SlidingWindowRateLimiter('NvidiaGLM', 32, 60000);
 
-// NVIDIA API Endpoint (z-ai/glm-5.2): Max 35 RPM
-export const nvidiaRateLimiter = new SlidingWindowRateLimiter('NvidiaGLM', 35, 60000);
+export interface ModelLimitSpec {
+  maxRpm: number;
+  maxRpd: number;
+}
+
+// Exact Free Tier specifications derived from user API dashboard, configured with safe buffers
+const MODEL_LIMIT_MAP: Record<string, ModelLimitSpec> = {
+  'gemini-3.7-flash': { maxRpm: 4, maxRpd: 18 },
+  'gemini-3.6-flash': { maxRpm: 4, maxRpd: 18 },
+  'gemini-3.5-flash': { maxRpm: 4, maxRpd: 18 },
+  'gemini-3.1-pro': { maxRpm: 4, maxRpd: 18 },
+  'gemini-3.1-flash-lite': { maxRpm: 12, maxRpd: 450 },
+  'gemini-2.5-flash': { maxRpm: 4, maxRpd: 18 },
+  'gemini-2.0-flash': { maxRpm: 12, maxRpd: 450 },
+  'gemini-2.5-pro': { maxRpm: 4, maxRpd: 18 },
+  'z-ai/glm-5.2': { maxRpm: 32, maxRpd: 100000 }
+};
+
+export class ModelQuotaTracker {
+  private rpmTimestamps: Map<string, number[]> = new Map();
+  private rpdTimestamps: Map<string, number[]> = new Map();
+  private cooldownUntil: Map<string, number> = new Map();
+
+  private getSpec(model: string): ModelLimitSpec {
+    return MODEL_LIMIT_MAP[model] || { maxRpm: 4, maxRpd: 18 };
+  }
+
+  public canUseModel(model: string): boolean {
+    const now = Date.now();
+    const cooldown = this.cooldownUntil.get(model) || 0;
+    if (now < cooldown) {
+      return false;
+    }
+
+    const spec = this.getSpec(model);
+
+    // Filter RPM timestamps older than 60s
+    const rpmList = (this.rpmTimestamps.get(model) || []).filter(ts => now - ts < 60000);
+    this.rpmTimestamps.set(model, rpmList);
+    if (rpmList.length >= spec.maxRpm) {
+      return false;
+    }
+
+    // Filter RPD timestamps older than 24 hours
+    const rpdList = (this.rpdTimestamps.get(model) || []).filter(ts => now - ts < 86400000);
+    this.rpdTimestamps.set(model, rpdList);
+    if (rpdList.length >= spec.maxRpd) {
+      return false;
+    }
+
+    return true;
+  }
+
+  public recordUsage(model: string): void {
+    const now = Date.now();
+    const rpmList = (this.rpmTimestamps.get(model) || []).filter(ts => now - ts < 60000);
+    rpmList.push(now);
+    this.rpmTimestamps.set(model, rpmList);
+
+    const rpdList = (this.rpdTimestamps.get(model) || []).filter(ts => now - ts < 86400000);
+    rpdList.push(now);
+    this.rpdTimestamps.set(model, rpdList);
+  }
+
+  public markCooldown(model: string, reason: 'RPM' | 'RPD' | 'ERROR'): void {
+    const now = Date.now();
+    let durationMs = 60000; // 60 seconds for RPM or transient limit
+    if (reason === 'RPD') {
+      durationMs = 24 * 60 * 60 * 1000; // 24 hours for daily quota
+    }
+    this.cooldownUntil.set(model, now + durationMs);
+    console.warn(`[QuotaTracker] Model '${model}' placed on ${reason} cooldown for ${Math.round(durationMs / 1000)}s.`);
+  }
+
+  public getActiveRpm(model: string): number {
+    const now = Date.now();
+    return (this.rpmTimestamps.get(model) || []).filter(ts => now - ts < 60000).length;
+  }
+}
+
+export const modelQuotaTracker = new ModelQuotaTracker();
 
 let globalAIClient: GoogleGenAI | null = null;
 
@@ -115,7 +194,7 @@ export function getGenAIClient(): GoogleGenAI | null {
       apiKey,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build'
+          'User-Agent': 'aistudio-sana-agent'
         }
       }
     });
@@ -133,8 +212,7 @@ export class AllModelsExhaustedError extends Error {
 }
 
 /**
- * Helper to convert arbitrary contents & systemInstruction into OpenAI chat messages format
- * for ChatNVIDIA / NVIDIA AI Foundation Endpoints.
+ * Format messages into OpenAI chat structure for ChatNVIDIA (z-ai/glm-5.2)
  */
 export function formatContentsForNvidia(contents: any, systemInstruction?: string) {
   const messages: { role: string; content: string }[] = [];
@@ -169,58 +247,29 @@ export function formatContentsForNvidia(contents: any, systemInstruction?: strin
 }
 
 /**
- * Helper to determine if a query is a straightforward/simple turn (e.g., time, greetings, lookups)
+ * NVIDIA Endpoint client for z-ai/glm-5.2 (Deep Reasoning Model, 35 RPM)
  */
-export function isSimpleTurn(contents: any): boolean {
-  if (!contents) return true;
-  let text = '';
-  if (typeof contents === 'string') {
-    text = contents;
-  } else if (Array.isArray(contents)) {
-    const last = contents[contents.length - 1];
-    if (typeof last === 'string') text = last;
-    else if (last?.parts) {
-      text = last.parts.map((p: any) => (typeof p === 'string' ? p : p.text || '')).join(' ');
-    } else if (last?.content) {
-      text = String(last.content);
-    }
-  }
+export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLMRouterResult> {
+  await nvidiaRateLimiter.acquire(5000);
+  modelQuotaTracker.recordUsage('z-ai/glm-5.2');
 
-  const trimmed = text.trim().toLowerCase();
-  if (trimmed.length < 150) return true;
-  if (/time|date|today|hello|hi|what is|clock|hour|minute|status|weather/i.test(trimmed)) return true;
-  return false;
-}
-
-/**
- * Execute NVIDIA API call with AbortController timeout protection to prevent hanging requests.
- */
-async function fetchNvidiaCompletion(
-  model: string,
-  messages: any[],
-  options: LLMRouterOptions,
-  timeoutMs = 25000,
-  enableThinking = true
-) {
   const apiKey = process.env.GAMMA_API_KEY || process.env.GAMMA_DIFFUSION_API_KEY || process.env.NVIDIA_API_KEY || "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";
+  const messages = formatContentsForNvidia(options.contents, options.systemInstruction);
+
+  console.log(`[LLMRouter] Executing GLM-5.2 via NVIDIA Endpoint (z-ai/glm-5.2)...`);
+
   const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || 25000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const bodyPayload: any = {
-      model,
+      model: "z-ai/glm-5.2",
       messages,
-      temperature: options.temperature !== undefined ? options.temperature : 1,
-      top_p: model.includes('diffusiongemma') ? 0.95 : 1,
-      max_tokens: model.includes('diffusiongemma') ? 4096 : 16384,
-      seed: 42
+      temperature: options.temperature !== undefined ? options.temperature : 0.7,
+      max_tokens: 16384
     };
 
-    if (enableThinking && model.includes('diffusiongemma')) {
-      bodyPayload.chat_template_kwargs = { enable_thinking: true };
-    }
-
-    // Convert Gemini tools to OpenAI function format for Nvidia endpoints
     if (options.tools && options.tools.length > 0) {
       const openAiTools: any[] = [];
       for (const t of options.tools) {
@@ -257,17 +306,17 @@ async function fetchNvidiaCompletion(
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`NVIDIA API call failed [HTTP ${response.status}] for model '${model}': ${errText}`);
+      if (response.status === 429) {
+        modelQuotaTracker.markCooldown('z-ai/glm-5.2', 'RPM');
+      }
+      throw new Error(`NVIDIA GLM API call failed [HTTP ${response.status}]: ${errText}`);
     }
 
     const data = await response.json();
     const choice = data.choices?.[0];
     const responseText = choice?.message?.content || "";
-    const reasoningContent = choice?.message?.reasoning_content || data.additional_kwargs?.reasoning_content;
-
     const functionCalls: LLMFunctionCall[] = [];
 
-    // Parse native OpenAI tool calls if present
     if (choice?.message?.tool_calls && Array.isArray(choice.message.tool_calls)) {
       for (const tc of choice.message.tool_calls) {
         if (tc.function?.name) {
@@ -285,231 +334,93 @@ async function fetchNvidiaCompletion(
       }
     }
 
-    // Monologue Fallback Parser: If text describes tool invocation (e.g. "I'll call access_file with /daily_scans/...")
-    if (functionCalls.length === 0 && responseText) {
-      const accessFileMatch = responseText.match(/(?:access_file|path|read)\s*(?:with\s*)?(?:\/|path\s*:?\s*)?((?:\/daily_scans|\/intermediate_scans|\/)[a-zA-Z0-9_\-\.\/]+)/i);
-      if (accessFileMatch) {
-        functionCalls.push({
-          name: 'access_file',
-          args: { filePathOrId: accessFileMatch[1].trim() }
-        });
-      } else if (/retrieve_skin_scan_vault|facial scan record|latest scan|face scan data/i.test(responseText)) {
-        functionCalls.push({
-          name: 'retrieve_skin_scan_vault',
-          args: { scanType: 'all', limit: 5 }
-        });
-      }
-    }
-
     return {
       text: responseText,
       functionCalls,
-      data,
-      reasoningContent
+      modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)",
+      attemptsCount: 1,
+      thoughts: ["[GLM-5.2 Deep Reasoning Active]"],
+      rawResponse: data
     };
   } catch (err: any) {
     clearTimeout(timer);
     if (err.name === 'AbortError') {
-      throw new Error(`NVIDIA API call timed out after ${timeoutMs}ms on model '${model}'`);
+      throw new Error(`NVIDIA GLM API call timed out after ${timeoutMs}ms`);
     }
     throw err;
   }
 }
 
 /**
- * NVIDIA AI Endpoint fallback client using Cascade:
- * 1. google/diffusiongemma-26b-a4b-it (Fast Diffusion Model)
- * 2. z-ai/glm-5.2 (Deep Reasoning Model for complex turns)
- */
-export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLMRouterResult> {
-  await nvidiaRateLimiter.acquire();
-  const messages = formatContentsForNvidia(options.contents, options.systemInstruction);
-  const simpleQuery = isSimpleTurn(options.contents);
-
-  console.log(`[LLMRouter] Activating NVIDIA fallback (Simple query: ${simpleQuery})...`);
-
-  // Step 1: Try Fast Google Diffusion Gemma model first for simple/routine queries or initial attempt
-  try {
-    console.log("[LLMRouter] Attempting fast diffusion model (google/diffusiongemma-26b-a4b-it)...");
-    const res = await fetchNvidiaCompletion("google/diffusiongemma-26b-a4b-it", messages, options, 20000, true);
-
-    if (res.text || res.functionCalls.length > 0) {
-      console.log("[LLMRouter] Successfully served via fast model google/diffusiongemma-26b-a4b-it!");
-      return {
-        text: res.text,
-        functionCalls: res.functionCalls,
-        modelUsed: "google/diffusiongemma-26b-a4b-it (NVIDIA AI Endpoint)",
-        attemptsCount: 1,
-        thoughts: res.reasoningContent ? [res.reasoningContent] : ["[Fast Diffusion Model Active] Served via google/diffusiongemma-26b-a4b-it"],
-        rawResponse: res.data
-      };
-    }
-  } catch (diffusionErr: any) {
-    console.warn(`[LLMRouter] Diffusion Gemma model failed or timed out (${diffusionErr?.message || String(diffusionErr)}). Funneling down to z-ai/glm-5.2...`);
-  }
-
-  // Step 2: Funnel down to GLM deep reasoning model (z-ai/glm-5.2) with strict 30s timeout
-  console.log("[LLMRouter] Funneling down to deep reasoning model (z-ai/glm-5.2)...");
-  try {
-    const res = await fetchNvidiaCompletion("z-ai/glm-5.2", messages, options, 30000, false);
-    return {
-      text: res.text,
-      functionCalls: res.functionCalls,
-      modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)",
-      attemptsCount: 2,
-      thoughts: ["[Deep Thinking GLM Active] Served via z-ai/glm-5.2 model"],
-      rawResponse: res.data
-    };
-  } catch (glmErr: any) {
-    console.error("[LLMRouter] Deep reasoning model z-ai/glm-5.2 failed:", glmErr?.message || glmErr);
-    throw glmErr;
-  }
-}
-
-/**
- * NVIDIA AI Endpoint streaming fallback client using Diffusion Gemma -> GLM-5.2 cascade
+ * Streaming client for z-ai/glm-5.2
  */
 export async function* streamNvidiaFallback(options: LLMRouterOptions) {
-  await nvidiaRateLimiter.acquire();
+  await nvidiaRateLimiter.acquire(5000);
+  modelQuotaTracker.recordUsage('z-ai/glm-5.2');
+
   const apiKey = process.env.GAMMA_API_KEY || process.env.GAMMA_DIFFUSION_API_KEY || process.env.NVIDIA_API_KEY || "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";
   const messages = formatContentsForNvidia(options.contents, options.systemInstruction);
 
-  const modelToUse = "google/diffusiongemma-26b-a4b-it";
-  console.log(`[LLMRouter Stream] Activating NVIDIA streaming fallback (model: ${modelToUse})...`);
+  console.log(`[LLMRouter Stream] Streaming via z-ai/glm-5.2...`);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "z-ai/glm-5.2",
+      messages,
+      temperature: options.temperature !== undefined ? options.temperature : 0.7,
+      max_tokens: 16384,
+      stream: true
+    })
+  });
 
-  try {
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: modelToUse,
-        messages,
-        temperature: options.temperature !== undefined ? options.temperature : 1,
-        top_p: 0.95,
-        max_tokens: 4096,
-        seed: 42,
-        stream: true,
-        chat_template_kwargs: {
-          enable_thinking: true
-        }
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timer);
-
-    if (!response.ok || !response.body) {
-      throw new Error(`NVIDIA Stream API call failed [HTTP ${response.status}]`);
+  if (!response.ok || !response.body) {
+    const errText = await response.text();
+    if (response.status === 429) {
+      modelQuotaTracker.markCooldown('z-ai/glm-5.2', 'RPM');
     }
+    throw new Error(`NVIDIA GLM Stream failed [HTTP ${response.status}]: ${errText}`);
+  }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
-        if (trimmed === 'data: [DONE]') return;
-        if (trimmed.startsWith('data: ')) {
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            const deltaText = json.choices?.[0]?.delta?.content;
-            if (deltaText) {
-              yield {
-                chunk: {
-                  candidates: [
-                    {
-                      content: {
-                        parts: [{ text: deltaText }]
-                      }
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(':')) continue;
+      if (trimmed === 'data: [DONE]') return;
+      if (trimmed.startsWith('data: ')) {
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const deltaText = json.choices?.[0]?.delta?.content;
+          if (deltaText) {
+            yield {
+              chunk: {
+                candidates: [
+                  {
+                    content: {
+                      parts: [{ text: deltaText }]
                     }
-                  ]
-                },
-                modelUsed: `${modelToUse} (NVIDIA AI Endpoint)`
-              };
-            }
-          } catch {
-            // ignore chunk parse error
+                  }
+                ]
+              },
+              modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)"
+            };
           }
-        }
-      }
-    }
-  } catch (streamErr: any) {
-    clearTimeout(timer);
-    console.warn("[LLMRouter Stream] Diffusion Gemma streaming failed, falling back to GLM-5.2 stream...");
-
-    // Streaming Fallback to GLM-5.2
-    const glmResponse = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "z-ai/glm-5.2",
-        messages,
-        temperature: options.temperature !== undefined ? options.temperature : 1,
-        top_p: 1,
-        max_tokens: 16384,
-        seed: 42,
-        stream: true
-      })
-    });
-
-    if (!glmResponse.ok || !glmResponse.body) {
-      const errText = await glmResponse.text();
-      throw new Error(`NVIDIA GLM Stream failed [HTTP ${glmResponse.status}]: ${errText}`);
-    }
-
-    const reader = glmResponse.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
-        if (trimmed === 'data: [DONE]') return;
-        if (trimmed.startsWith('data: ')) {
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            const deltaText = json.choices?.[0]?.delta?.content;
-            if (deltaText) {
-              yield {
-                chunk: {
-                  candidates: [
-                    {
-                      content: {
-                        parts: [{ text: deltaText }]
-                      }
-                    }
-                  ]
-                },
-                modelUsed: "z-ai/glm-5.2 (NVIDIA AI Endpoint)"
-              };
-            }
-          } catch {
-            // ignore chunk parse error
-          }
+        } catch {
+          // ignore chunk parse
         }
       }
     }
@@ -517,16 +428,16 @@ export async function* streamNvidiaFallback(options: LLMRouterOptions) {
 }
 
 /**
- * Executes a Gemini content generation request through a paranoid fallback router.
- * Automatically tries descending models if quota, rate-limit (429), timeouts, or model errors occur.
- * If all Gemini models run out of tokens/quota, seamlessly falls back to ChatNVIDIA (z-ai/glm-5.2).
+ * Generates content using a paranoid quota-aware Model Cascade.
+ * Validates RPM/RPD limits per model before making calls.
+ * Automatically marks model cooldowns on 429/quota errors and cascades instantly.
  */
 export async function generateContentWithRouter(
   options: LLMRouterOptions
 ): Promise<LLMRouterResult> {
   const ai = getGenAIClient();
   if (!ai) {
-    console.warn("[LLMRouter] GEMINI_API_KEY is missing. Directly falling back to ChatNVIDIA (z-ai/glm-5.2).");
+    console.warn("[LLMRouter] GEMINI_API_KEY is missing. Directly routing to z-ai/glm-5.2.");
     return callNvidiaFallback(options);
   }
 
@@ -534,18 +445,31 @@ export async function generateContentWithRouter(
   let attemptsCount = 0;
   let lastError: any = null;
 
-  let googleQuotaExhausted = false;
+  // Filter available Gemini models based on quota buffers & cooldown states
+  const candidateModels = GEMINI_MODEL_CASCADE.filter(m => modelQuotaTracker.canUseModel(m));
 
-  for (const model of GEMINI_MODEL_CASCADE) {
-    if (googleQuotaExhausted) break;
+  if (candidateModels.length === 0) {
+    console.warn("[LLMRouter] All Gemini models are on RPM/RPD cooldown or quota buffer. Funneling to GLM-5.2...");
+    try {
+      return await callNvidiaFallback(options);
+    } catch (nvErr) {
+      // If NVIDIA also fails, wait 1s and try primary model as emergency attempt
+      candidateModels.push('gemini-3.7-flash', 'gemini-3.6-flash');
+    }
+  }
+
+  for (const model of candidateModels) {
+    if (!modelQuotaTracker.canUseModel(model)) continue;
 
     attemptsCount++;
     let modelRetries = 0;
-    const maxModelRetries = 2; // Retry up to 2 times on transient 503/429/500 errors per model
+    const maxModelRetries = 1;
 
     while (modelRetries <= maxModelRetries) {
       try {
-        await googleRateLimiter.acquire();
+        await googleRateLimiter.acquire(2000);
+        modelQuotaTracker.recordUsage(model);
+
         const result = await Promise.race([
           (async () => {
             const config: any = {};
@@ -559,9 +483,7 @@ export async function generateContentWithRouter(
               config.temperature = options.temperature;
             }
             if (options.includeThoughts) {
-              config.thinkingConfig = {
-                includeThoughts: true
-              };
+              config.thinkingConfig = { includeThoughts: true };
             }
             if (options.tools && options.tools.length > 0) {
               config.tools = options.tools;
@@ -628,7 +550,7 @@ export async function generateContentWithRouter(
         ]);
 
         if (result.text || (result.functionCalls && result.functionCalls.length > 0)) {
-          console.log(`[LLMRouter] Successfully generated content using model '${model}' (attempt #${attemptsCount}, functionCalls: ${result.functionCalls.length})`);
+          console.log(`[LLMRouter] Successfully generated content using model '${model}' (attempt #${attemptsCount})`);
           return {
             text: result.text,
             functionCalls: result.functionCalls,
@@ -637,56 +559,69 @@ export async function generateContentWithRouter(
             rawResponse: result.rawResponse
           };
         }
-        break; // If executed without throwing but gave no content, break out to next model
+        break; // If call succeeded without content, move to next model
       } catch (err: any) {
         const errMsg = err?.message || String(err);
-        console.warn(`[LLMRouter] Model '${model}' failed (attempt #${attemptsCount}, retry #${modelRetries}):`, errMsg);
+        console.warn(`[LLMRouter] Model '${model}' failed:`, errMsg);
         lastError = err;
 
+        const isRpdExhausted = /per day|RPD|daily quota/i.test(errMsg);
         const isQuotaExceeded = err instanceof RateLimiterTimeoutError || /429|RESOURCE_EXHAUSTED|RATE_LIMIT|quota|limit/i.test(errMsg);
         const isTransient = /503|UNAVAILABLE|500|high demand/i.test(errMsg);
 
-        if (isQuotaExceeded) {
-          console.warn(`[LLMRouter] Model '${model}' hit quota/rate-limit. Trying next Gemini model in cascade...`);
-          break; // Move to next model in GEMINI_MODEL_CASCADE
+        if (isQuotaExceeded || isRpdExhausted) {
+          modelQuotaTracker.markCooldown(model, isRpdExhausted ? 'RPD' : 'RPM');
+          break; // Cascade to next available model immediately
         }
 
         if (isTransient && modelRetries < maxModelRetries) {
           modelRetries++;
-          const delayMs = 300 * Math.pow(2, modelRetries) + Math.floor(Math.random() * 100);
-          console.log(`[LLMRouter] Backing off for ${delayMs}ms before retrying '${model}' (retry #${modelRetries})`);
+          const delayMs = 300 * Math.pow(2, modelRetries) + Math.floor(Math.random() * 50);
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
-        break; // Move to next model in cascade
+        break;
       }
     }
   }
 
-  console.warn(`[LLMRouter] All Gemini models in cascade failed. Activating ChatNVIDIA (z-ai/glm-5.2) fallback...`);
+  console.warn(`[LLMRouter] All available Gemini models failed or reached quota. Seamlessly executing GLM-5.2 fallback...`);
   try {
     return await callNvidiaFallback(options);
   } catch (nvidiaErr: any) {
     throw new AllModelsExhaustedError(
-      `All Gemini models and NVIDIA fallback failed in router. Gemini last error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
+      `All Gemini models and GLM-5.2 fallback failed in router. Gemini last error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
       lastError
     );
   }
 }
 
+/**
+ * Streaming content generation using quota-aware cascade
+ */
 export async function* generateContentStreamWithRouter(options: LLMRouterOptions) {
   const ai = getGenAIClient();
   if (!ai) {
-    console.warn("[LLMRouter Stream] GEMINI_API_KEY is missing. Streaming via ChatNVIDIA (z-ai/glm-5.2) fallback.");
+    console.warn("[LLMRouter Stream] GEMINI_API_KEY is missing. Streaming via GLM-5.2.");
     yield* streamNvidiaFallback(options);
     return;
   }
 
   let lastError: any = null;
+  const candidateModels = GEMINI_MODEL_CASCADE.filter(m => modelQuotaTracker.canUseModel(m));
 
-  for (const model of GEMINI_MODEL_CASCADE) {
+  if (candidateModels.length === 0) {
+    yield* streamNvidiaFallback(options);
+    return;
+  }
+
+  for (const model of candidateModels) {
+    if (!modelQuotaTracker.canUseModel(model)) continue;
+
     try {
-      await googleRateLimiter.acquire();
+      await googleRateLimiter.acquire(2000);
+      modelQuotaTracker.recordUsage(model);
+
       const config: any = {};
       if (options.systemInstruction) {
         config.systemInstruction = options.systemInstruction;
@@ -695,9 +630,7 @@ export async function* generateContentStreamWithRouter(options: LLMRouterOptions
         config.temperature = options.temperature;
       }
       if (options.includeThoughts) {
-        config.thinkingConfig = {
-          includeThoughts: true
-        };
+        config.thinkingConfig = { includeThoughts: true };
       }
 
       const responseStream = await ai.models.generateContentStream({
@@ -711,20 +644,21 @@ export async function* generateContentStreamWithRouter(options: LLMRouterOptions
       }
       return;
     } catch (err: any) {
-      console.warn(`[LLMRouter Stream] Model '${model}' stream failed:`, err?.message || err);
+      const errMsg = err?.message || String(err);
+      console.warn(`[LLMRouter Stream] Model '${model}' stream failed:`, errMsg);
       lastError = err;
-      // Fallback to next model in cascade
+      const isRpdExhausted = /per day|RPD|daily quota/i.test(errMsg);
+      modelQuotaTracker.markCooldown(model, isRpdExhausted ? 'RPD' : 'RPM');
     }
   }
 
-  console.warn(`[LLMRouter Stream] All Gemini models in stream cascade failed. Streaming via ChatNVIDIA (z-ai/glm-5.2)...`);
+  console.warn(`[LLMRouter Stream] All Gemini models stream failed. Falling back to GLM-5.2 stream...`);
   try {
     yield* streamNvidiaFallback(options);
   } catch (nvidiaErr: any) {
     throw new AllModelsExhaustedError(
-      `All Gemini models and NVIDIA stream fallback failed. Gemini error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
+      `All Gemini models and GLM-5.2 stream fallback failed. Gemini error: ${lastError?.message || String(lastError)}. NVIDIA error: ${nvidiaErr?.message || String(nvidiaErr)}`,
       lastError
     );
   }
 }
-
