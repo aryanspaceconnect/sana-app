@@ -477,6 +477,23 @@ export const updateSessionNotepadInDb = async (
   }
 };
 
+const parseMsgTime = (msg: any): number => {
+  if (msg?.createdAt) {
+    const t = new Date(msg.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (typeof msg?.timestamp === 'number') return msg.timestamp;
+  if (typeof msg?.timestamp === 'string') {
+    const t = new Date(msg.timestamp).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (msg?.id) {
+    const match = String(msg.id).match(/\d{10,}/);
+    if (match) return parseInt(match[0], 10);
+  }
+  return 0;
+};
+
 export const getChatSession = async (userId: string, sessionId: string) => {
   if (!sessionId) return null;
   const safeUid = userId || 'guest_user';
@@ -489,7 +506,7 @@ export const getChatSession = async (userId: string, sessionId: string) => {
       const msgsSnap = await getDocs(msgsColRef);
       if (!msgsSnap.empty) {
         const msgs = msgsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        msgs.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+        msgs.sort((a: any, b: any) => parseMsgTime(a) - parseMsgTime(b));
         data.messages = msgs;
       }
       return data;
@@ -637,11 +654,7 @@ export const subscribeChatSession = (
   const unsubMsgs = onSnapshot(messagesColRef, (msgSnap) => {
     if (!msgSnap.empty) {
       const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a: any, b: any) => {
-        const tA = new Date(a.timestamp || 0).getTime();
-        const tB = new Date(b.timestamp || 0).getTime();
-        return tA - tB;
-      });
+      msgs.sort((a: any, b: any) => parseMsgTime(a) - parseMsgTime(b));
       subcollectionMessages = msgs;
       updateAndEmit();
     }

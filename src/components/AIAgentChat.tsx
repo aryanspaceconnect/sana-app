@@ -520,6 +520,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       role: 'user',
       text: text.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toISOString(),
       attachments: currentAttachments.length > 0 ? currentAttachments : undefined
     };
 
@@ -672,6 +673,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         role: 'model',
         text: data.text || "I am processing your skincare query with SanaAgent.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toISOString(),
         actionProposal: data.actionProposal,
         passOnTrace: data.passOnTrace,
         sessionId: activeSessionId,
@@ -703,7 +705,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           id: `aborted_${Date.now()}`,
           role: 'model',
           text: "Response generation was terminated by user.",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toISOString()
         };
         const finalMessages = [...updatedMessages, cancelMsg];
         setMessages(finalMessages);
@@ -717,12 +720,13 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         id: `fallback_${Date.now()}`,
         role: 'model',
         text: fallbackText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toISOString()
       };
 
       const finalMessages = [...updatedMessages, errorMsg];
       setMessages(finalMessages);
-      await saveChatSessionData(userId, activeSessionId, { messages: finalMessages });
+      await saveChatSessionData(userId, activeSessionId, { messages: [errorMsg] });
     } finally {
       setProcessingStatus('idle');
     }

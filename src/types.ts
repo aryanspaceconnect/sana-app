@@ -195,6 +195,7 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  createdAt?: string;
   attachments?: ChatAttachment[];
   thinkingMeta?: ThinkingMeta;
   actionProposal?: any;
