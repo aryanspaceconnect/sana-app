@@ -23,7 +23,8 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     finalText: null,
     actionProposal: null,
     iterations: 0,
-    onProgress: params.onProgress
+    onProgress: params.onProgress,
+    systemPrompt: params.systemPrompt
   };
 
   const config = { configurable: { thread_id: sessionId } };

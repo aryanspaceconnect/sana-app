@@ -205,7 +205,10 @@ export async function reasoningNode(state: AgentState) {
     lon: profileSettings?.longitude,
     locationName: profileSettings?.locationName
   };
-  const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad, userLoc);
+  const defaultSystemPrompt = await buildSystemPrompt(state.userId, currentNotepad, userLoc);
+  const systemPrompt = state.systemPrompt
+    ? `${state.systemPrompt}\n\n=== GENERAL WORKSPACE CONTEXT ===\n${defaultSystemPrompt}`
+    : defaultSystemPrompt;
   
   // Refresh active MCP tools before generating declarations
   await refreshMcpToolsCache();

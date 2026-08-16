@@ -121,6 +121,7 @@ export interface AgentRunParams {
   userId: string;
   message: string;
   sessionId?: string;
+  systemPrompt?: string;
   attachments?: Array<{ id: string; name: string; type: 'image' | 'document'; url: string; mimeType?: string; textContent?: string }>;
   history?: Array<{ role: 'user' | 'model'; text: string; attachments?: any[] }>;
   onProgress?: (interimText: string) => void;

@@ -61,6 +61,10 @@ export const AgentStateAnnotation = Annotation.Root({
   onProgress: Annotation<((text: string) => void) | undefined>({
     value: (x, y) => (y !== undefined ? y : x),
     default: () => undefined
+  }),
+  systemPrompt: Annotation<string | undefined>({
+    value: (x, y) => (y !== undefined ? y : x),
+    default: () => undefined
   })
 });
 

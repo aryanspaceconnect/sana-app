@@ -18,6 +18,7 @@ import { saveFacialScan, updateFacialScanReport, getPastScansForUser, saveChatMe
 import { getUniversalNotepad } from "./src/agent/universalNotepad.js";
 import { saveSkinScanToVault } from "./src/agent/agentVault.js";
 import { getOrGenerateCompanionSignals } from "./src/agent/services/companionSignalsService.js";
+import { POST_SCAN_REPORT_SYSTEM_PROMPT, ONBOARDING_REPORT_SYSTEM_PROMPT } from "./src/agent/prompts/scanReportPrompt.js";
 
 dotenv.config();
 
@@ -580,7 +581,7 @@ app.post("/api/sana/execute", async (req, res) => {
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
-    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical", dailyContext } = req.body;
+    const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical", dailyContext, onboardingResponses } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
     }
@@ -588,7 +589,7 @@ app.post("/api/facial-scan", async (req, res) => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const timeStampStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const scanTypeClean = scanType === 'intermediate_scan' ? 'intermediate_scan' : 'daily_scan';
+    const scanTypeClean = scanType === 'intermediate_scan' ? 'intermediate_scan' : scanType === 'onboarding_scan' ? 'onboarding_scan' : 'daily_scan';
     const formattedScanId = reqScanId || `${scanTypeClean}_${timeStampStr}`;
     const reportSessionId = `session_scan_report_${timeStampStr}`;
 
@@ -707,34 +708,25 @@ app.post("/api/facial-scan", async (req, res) => {
 ${dailyContext.optionalNote ? `- User Observation Note: "${dailyContext.optionalNote}"` : ''}
 ` : '';
 
+        const isOnboarding = scanTypeClean === 'onboarding_scan' || scanType === 'onboarding' || (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0);
+        const selectedPrompt = isOnboarding ? ONBOARDING_REPORT_SYSTEM_PROMPT : POST_SCAN_REPORT_SYSTEM_PROMPT;
+
+        const onboardingBlock = (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0) ? `
+### ONBOARDING SURVEY QUESTIONS & USER ANSWERS (TAGGED CONTEXT)
+${onboardingResponses.map((item: any) => `- [QUESTION: ${item.question || item.q}] -> [USER ANSWER: ${item.answer || item.a}]`).join('\n')}
+` : '';
+
         const agentPrompt = `${contextPack}
 ${dailyContextBlock}
+${onboardingBlock}
 
-TASK: Generate a comprehensive, modular clinical skin report for this scan.
-Incorporate the user's daily exposome survey data (sleep quality, hydration, sun exposure, and gender routine factor) directly into your analysis and recommendations.
-Structure the report cleanly with Markdown:
-# DERMATOLOGICAL SKIN HEALTH REPORT
-
-## 1. OVERALL SNAPSHOT & SCORE MATRIX
-- State overall skin health score (${scoreSnapshot.overall}/100) and estimated skin age (${scoreSnapshot.skinAge} yrs).
-- Summarize 6-point metrics: Moisture, Barrier Redness, Acne/Blemish, Pores, Dark Circles, Firmness.
-
-## 2. COMPARISON vs PAST 2 DAYS
-- Compare current scores against past days' scans. Highlight what improved and what worsened.
-
-## 3. CORE FOCUS AREAS & CLINICAL ANALYSIS
-- Detail active skin concerns (barrier status, pore clarity, redness level, moisture retention), directly factoring in today's sleep, hydration, exposure, and shaving/cycle routine.
-
-## 4. ACTIONABLE MORNING & EVENING REGIMEN
-- Morning routine adjustments.
-- Evening barrier recovery steps.
-
-DO NOT output raw image URLs or base64 data. Maintain a professional, clear, empathetic medical tone without emojis.`;
+TASK: Generate a post-scan skin report according to your system prompt rules. Respond directly to the user following all length, voice, style adherence, and content priority rules.`;
 
         const agentRes = await runSanaAgent({
           userId,
           sessionId: reportSessionId,
-          message: agentPrompt
+          message: agentPrompt,
+          systemPrompt: selectedPrompt
         });
 
         const reportText = agentRes.text || `## Dermatological Facial Scan Report\n\n**Overall Health Score:** ${scoreSnapshot.overall}/100\n- **Estimated Skin Age:** ${scoreSnapshot.skinAge} years\n- **Barrier Redness:** ${scoreSnapshot.barrierRedness}/100\n- **Moisture Retention:** ${scoreSnapshot.moisture}/100\n\nMaintain gentle morning and evening routines with daily SPF 50.`;
