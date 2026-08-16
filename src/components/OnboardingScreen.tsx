@@ -264,8 +264,8 @@ const UNIFIED_SKIN_DESCRIPTORS = [
 ];
 
 export function OnboardingScreen({ userProfile, onCompleteOnboarding }: OnboardingScreenProps) {
-  // Step State: 1: Welcome, 2: Self-Perception & Hormonal Factors, 3: Scan Preparation, 4: Scan & Ranked Cascade + 15s Read, 5: Particulars & Goals
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  // Step State: 1: Welcome, 2: Self-Perception & Hormonal Factors, 3: Scan Preparation, 4: Particulars & Goals
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
 
   // Step 2 State
@@ -713,7 +713,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
 
         {/* Step Progress Bar */}
         <div className="flex items-center space-x-1.5">
-          {[1, 2, 3, 4, 5].map(s => (
+          {[1, 2, 3, 4].map(s => (
             <div
               key={s}
               className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -943,111 +943,10 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
             </motion.div>
           )}
 
-          {/* STEP 4: FACIAL SCAN ANALYSIS, RANKED IMAGE CASCADE & COMPANION READ */}
+          {/* STEP 4: PARTICULARS & PERSONAL DETAILS ("Let's complete your profile") */}
           {step === 4 && (
             <motion.div
               key="step4"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              className="space-y-5"
-            >
-              <div>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
-                  Your Personalized Skin Companion Read
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Synthesizing your self-described observations with live micro-scan metrics.
-                </p>
-              </div>
-
-              {isScanning ? (
-                <div className="p-8 text-center space-y-3 bg-slate-50 rounded-2xl border border-slate-200">
-                  <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-xs font-bold text-[#121316]">Analyzing facial skin texture & barrier metrics...</p>
-                  <p className="text-[11px] text-slate-500">Ranking educational skin condition cards matching your observations.</p>
-                </div>
-              ) : (
-                <>
-                  {/* Scores Bar */}
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2.5 rounded-2xl bg-amber-50 border border-amber-200/60">
-                      <span className="text-[10px] text-amber-800 uppercase font-bold block">Hydration</span>
-                      <span className="text-base font-bold text-amber-700">{scanResultData?.hydrationScore}%</span>
-                    </div>
-                    <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200/60">
-                      <span className="text-[10px] text-emerald-800 uppercase font-bold block">Barrier</span>
-                      <span className="text-base font-bold text-emerald-700">{scanResultData?.barrierScore}%</span>
-                    </div>
-                    <div className="p-2.5 rounded-2xl bg-blue-50 border border-blue-200/60">
-                      <span className="text-[10px] text-blue-800 uppercase font-bold block">Clarity</span>
-                      <span className="text-base font-bold text-blue-700">{scanResultData?.clarityScore}%</span>
-                    </div>
-                  </div>
-
-                  {/* 10-15s Personalized Companion Read Box */}
-                  <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-2 relative overflow-hidden shadow-md">
-                    <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold border-b border-slate-800 pb-2">
-                      <Icon icon="solar:stars-minimalistic-bold-duotone" className="w-4 h-4" />
-                      <span>SANA Personal Read (For You)</span>
-                    </div>
-                    <p className="text-xs text-slate-200 leading-relaxed font-normal">
-                      {companionReadText}
-                    </p>
-                  </div>
-
-                  {/* Ranked Educational Image Cascade */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-[#121316] uppercase tracking-wider">
-                        Educational Skin Cards (Ranked for You)
-                      </span>
-                      <span className="text-[10px] text-indigo-600 font-semibold">
-                        {rankedCards.length} Condition Profiles
-                      </span>
-                    </div>
-
-                    <div
-                      ref={cascadeRef}
-                      className="flex space-x-3 overflow-x-auto pb-2 no-scrollbar"
-                    >
-                      {rankedCards.map((card, cIdx) => (
-                        <div
-                          key={card.id}
-                          className="shrink-0 w-44 rounded-2xl bg-slate-50 border border-slate-200/80 overflow-hidden shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
-                        >
-                          <div className="h-24 w-full relative bg-slate-200">
-                            <img src={card.imageUrl} alt={card.title} className="w-full h-full object-cover" />
-                            <span className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                              #{cIdx + 1} {card.category}
-                            </span>
-                          </div>
-                          <div className="p-2.5 space-y-1 flex-1 flex flex-col justify-between">
-                            <h4 className="text-[11.5px] font-bold text-[#121316] leading-tight">{card.title}</h4>
-                            <p className="text-[10px] text-slate-500 leading-snug line-clamp-2">{card.shortDesc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setStep(5)}
-                    className="w-full py-3.5 px-4 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                  >
-                    <span>Continue to Personal Details</span>
-                    <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
-                  </button>
-                </>
-              )}
-            </motion.div>
-          )}
-
-          {/* STEP 5: PARTICULARS & PERSONAL DETAILS ("Let's know you better") */}
-          {step === 5 && (
-            <motion.div
-              key="step5"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
@@ -1255,7 +1154,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               <div className="flex items-center space-x-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(3)}
                   className="px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
                 >
                   Back
