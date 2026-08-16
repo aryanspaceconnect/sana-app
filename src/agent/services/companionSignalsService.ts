@@ -1,8 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
 import { getUniversalNotepad } from "../universalNotepad.js";
 import { fetchAdvancedEnvironmentalData } from "./WeatherAwarenessEngine.js";
 import { getPastScansForUser, db, sanitizeForFirestore } from "../../lib/firebase.js";
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { generateContentWithRouter } from "../llmRouter.js";
 
 export interface CompanionSignalResponse {
   id: string;
@@ -181,12 +181,6 @@ const DIURNAL_MEMORY_CACHE: Record<string, {
   windows: Partial<Record<DiurnalWindowKey, CompanionSignalResponse>>;
   lastUpdated: number;
 }> = {};
-
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
-}
 
 function parseToDate(val: any): Date | null {
   if (!val) return null;
@@ -568,34 +562,30 @@ Generate 2 to 3 concise lines (each under 80 chars, absolute max 90). JSON array
 
   let rawLines: string[] = [];
   try {
-    const ai = getGeminiClient();
-    if (ai) {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: promptContent,
-        config: {
-          systemInstruction,
-          temperature: 0.65,
-          responseMimeType: "application/json"
-        }
-      });
+    const routerResult = await generateContentWithRouter({
+      contents: promptContent,
+      systemInstruction,
+      temperature: 0.65,
+      responseMimeType: "application/json"
+    });
 
-      const responseText = response.text || '';
+    const responseText = routerResult.text || '';
+    try {
+      const parsed = JSON.parse(responseText);
+      if (Array.isArray(parsed)) {
+        rawLines = parsed.map(s => String(s).trim()).filter(Boolean);
+      }
+    } catch {
+      const cleanJsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
       try {
-        const parsed = JSON.parse(responseText);
-        if (Array.isArray(parsed)) {
-          rawLines = parsed.map(s => String(s).trim()).filter(Boolean);
-        }
-      } catch {
-        const cleanJsonStr = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
         const fallbackArray = JSON.parse(cleanJsonStr);
         if (Array.isArray(fallbackArray)) {
           rawLines = fallbackArray.map(s => String(s).trim()).filter(Boolean);
         }
-      }
+      } catch {}
     }
   } catch (llmErr) {
-    console.warn("[CompassionSignalsService] LLM error:", llmErr);
+    console.warn("[CompassionSignalsService] LLM router error:", llmErr);
   }
 
   // Run Programmatic Post-LLM Guard

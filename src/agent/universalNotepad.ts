@@ -14,6 +14,14 @@ export async function getUniversalNotepad(userId: string): Promise<string> {
     return memoryCache[safeUid];
   }
 
+  // Try LocalStorage first as local backup cache
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const local = localStorage.getItem(`sana_notepad_${safeUid}`);
+    if (local) {
+      memoryCache[safeUid] = local;
+    }
+  }
+
   try {
     if (db) {
       const docRef = doc(db, 'users', safeUid, 'vault', 'universal_notepad');
@@ -21,11 +29,17 @@ export async function getUniversalNotepad(userId: string): Promise<string> {
       if (snap.exists()) {
         const text = snap.data()?.content || '';
         memoryCache[safeUid] = text;
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(`sana_notepad_${safeUid}`, text);
+        }
         return text;
       }
     }
-  } catch (err) {
-    console.warn("[UniversalNotepad] Firestore read warning:", err);
+  } catch (err: any) {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("[UniversalNotepad] Firestore read warning:", err?.message || err);
+    }
   }
 
   return memoryCache[safeUid] || '';
@@ -47,6 +61,9 @@ export async function updateUniversalNotepad(
   }
 
   memoryCache[safeUid] = newContent;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.setItem(`sana_notepad_${safeUid}`, newContent);
+  }
 
   try {
     if (db) {
@@ -57,8 +74,11 @@ export async function updateUniversalNotepad(
         updatedAtDate: new Date().toISOString().split('T')[0]
       }), { merge: true });
     }
-  } catch (err) {
-    console.warn("[UniversalNotepad] Firestore write warning:", err);
+  } catch (err: any) {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("[UniversalNotepad] Firestore write warning:", err?.message || err);
+    }
   }
 
   return newContent;

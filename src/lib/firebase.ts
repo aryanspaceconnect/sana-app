@@ -307,16 +307,35 @@ export const updateFacialScanReport = async (docId: string, updatePayload: { rep
 
 // Get Past Scans for User (Promise)
 export const getPastScansForUser = async (userId: string, limitCount: number = 20): Promise<any[]> => {
+  const safeUid = userId || 'guest_user';
   try {
     const q = query(
       collection(db, "facial_scans"),
-      where("userId", "==", userId || 'guest_user'),
+      where("userId", "==", safeUid),
       orderBy("timestamp", "desc")
     );
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, limitCount);
-  } catch (err) {
-    console.warn("getPastScansForUser error:", err);
+    const scans = snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, limitCount);
+    if (typeof window !== 'undefined' && window.localStorage && scans.length > 0) {
+      try {
+        localStorage.setItem(`sana_scans_${safeUid}`, JSON.stringify(scans));
+      } catch {}
+    }
+    return scans;
+  } catch (err: any) {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("getPastScansForUser error:", err?.message || err);
+    }
+    // Fallback to local storage if available
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const cached = localStorage.getItem(`sana_scans_${safeUid}`);
+        if (cached) {
+          return JSON.parse(cached);
+        }
+      } catch {}
+    }
     return [];
   }
 };
