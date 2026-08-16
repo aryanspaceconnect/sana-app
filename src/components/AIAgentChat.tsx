@@ -43,46 +43,54 @@ const ProductImageCard: React.FC<{ src?: string; alt?: string }> = ({ src, alt }
   if (!src) return null;
 
   return (
-    <div className="my-3 inline-block w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden transition-all hover:shadow-md">
-      <div
-        className="relative bg-slate-50/70 overflow-hidden group cursor-pointer min-h-[160px] flex items-center justify-center p-2"
-        onClick={() => !imgError && setShowPreview(true)}
-      >
-        {!isLoaded && !imgError && (
-          <div className="absolute inset-0 bg-slate-100/80 animate-pulse flex flex-col items-center justify-center">
-            <Icon icon="solar:gallery-wide-linear" className="w-6 h-6 text-slate-300 animate-bounce mb-1" />
-            <span className="text-[11px] text-slate-400 font-medium">Loading product image...</span>
-          </div>
-        )}
-        {imgError ? (
-          <div className="w-full h-36 bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
-            <Icon icon="solar:gallery-wide-broken-linear" className="w-7 h-7 text-slate-300 mb-1" />
-            <span className="text-[12px] font-medium text-slate-600 line-clamp-1">{alt || 'Product Image'}</span>
-            <span className="text-[10.5px] text-slate-400 mt-0.5">Image preview unavailable</span>
-          </div>
-        ) : (
-          <img
-            src={src}
-            alt={alt || 'Skincare Product'}
-            className={`w-full max-h-64 object-contain mx-auto transition-transform duration-300 group-hover:scale-105 ${isLoaded ? 'block' : 'hidden'}`}
-            onLoad={() => setIsLoaded(true)}
-            onError={() => setImgError(true)}
-            referrerPolicy="no-referrer"
-            loading="lazy"
-          />
-        )}
-      </div>
-      {alt && (
-        <div className="px-3.5 py-2 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold text-slate-800 truncate">{alt}</span>
-          <span className="text-[9.5px] uppercase font-bold tracking-wider text-slate-400 shrink-0 bg-slate-200/60 px-1.5 py-0.5 rounded-xs">Verified Item</span>
+    <div
+      onClick={() => !imgError && setShowPreview(true)}
+      className="relative my-3 inline-block max-w-sm w-auto rounded-2xl border border-slate-200/90 bg-slate-50/50 shadow-xs overflow-hidden cursor-pointer group hover:shadow-md hover:border-slate-300 transition-all"
+    >
+      {/* Loading Skeleton */}
+      {!isLoaded && !imgError && (
+        <div className="absolute inset-0 bg-slate-100/90 animate-pulse flex flex-col items-center justify-center min-h-[160px] z-10 pointer-events-none">
+          <Icon icon="solar:gallery-wide-linear" className="w-6 h-6 text-slate-300 animate-bounce mb-1" />
+          <span className="text-[11px] text-slate-400 font-medium">Loading image...</span>
+        </div>
+      )}
+
+      {/* Main Image */}
+      {imgError ? (
+        <div className="w-72 h-36 bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
+          <Icon icon="solar:gallery-wide-broken-linear" className="w-7 h-7 text-slate-300 mb-1" />
+          <span className="text-[12px] font-medium text-slate-600 line-clamp-1">{alt || 'Product Image'}</span>
+          <span className="text-[10.5px] text-slate-400 mt-0.5">Preview unavailable</span>
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={alt || 'Product Image'}
+          className="w-full max-h-72 object-contain block mx-auto transition-transform duration-300 group-hover:scale-[1.02]"
+          onLoad={() => setIsLoaded(true)}
+          onError={() => setImgError(true)}
+          referrerPolicy="no-referrer"
+        />
+      )}
+
+      {/* Frosted Title Badge positioned at Bottom-Right directly ON the image */}
+      {alt && !imgError && (
+        <div className="absolute bottom-2.5 right-2.5 max-w-[85%] px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border border-white/50 dark:border-slate-700/60 shadow-xs flex items-center gap-1.5 pointer-events-none transition-all group-hover:bg-white/85">
+          <Icon icon="solar:box-minimalistic-bold" className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 shrink-0" />
+          <span className="text-[11.5px] font-semibold text-slate-800 dark:text-slate-100 truncate tracking-tight">{alt}</span>
         </div>
       )}
 
       {/* Lightbox Preview */}
       {showPreview && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setShowPreview(false)}>
-          <div className="relative max-w-xl max-h-[85vh] bg-white rounded-2xl p-4 overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowPreview(false);
+          }}
+        >
+          <div className="relative max-w-xl max-h-[85vh] bg-white rounded-2xl p-4 overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setShowPreview(false)}
               className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
@@ -160,7 +168,15 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
     }
 
     // Clean text by removing raw [SEARCH: "..."] tags if any
-    const displayText = (msg.text || '').replace(/\[SEARCH:\s*["']?([^"']+)["']?\]/gi, '').trim();
+    const rawText = msg.text || '';
+    const isOffTopic = rawText.includes('[[OFF_TOPIC_REJECT]]') || rawText.includes('OFF_TOPIC_REJECT');
+    const OFF_TOPIC_MESSAGE = `I am SANA, your dedicated AI companion for skin health and dermatology. I am specialized to assist you with skin barrier analysis, routine advice, product recommendations, ingredient safety, and climate exposome protection.
+
+I am unable to assist with unrelated topics like software coding, automobile purchases, or general trivia, but I would be delighted to help you with any questions about your skin, routine, or diagnostic reports!`;
+
+    const displayText = isOffTopic
+      ? OFF_TOPIC_MESSAGE
+      : rawText.replace(/\[SEARCH:\s*["']?([^"']+)["']?\]/gi, '').trim();
     const { rows: traceRows, elapsed: traceElapsed } = extractTraceRows(msg);
 
     return (
