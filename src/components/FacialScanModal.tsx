@@ -701,13 +701,32 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               </motion.div>
             ) : (
               <>
-              {/* Guidance Advice Text Above Camera Feed (Container removed) */}
-              <div className="w-full text-center py-1">
-                <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight">
+              {/* Guidance Advice Text & Back Button Above Camera Feed (Back button only on Ritual Scan cam feed page) */}
+              <div className="w-full flex items-center justify-between py-1 relative min-h-[36px]">
+                {mode === 'ritual' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      onClose();
+                    }}
+                    className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95 border border-slate-200/80 shadow-2xs z-20"
+                  >
+                    <Icon icon="solar:alt-arrow-left-linear" className="w-4 h-4 text-slate-700" />
+                    <span>Back</span>
+                  </button>
+                ) : (
+                  <div className="w-16 shrink-0" />
+                )}
+
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight text-center flex-1 px-2">
                   {faceAssessment.canShutter || faceAssessment.status === 'ready'
                     ? 'Look in camera'
                     : faceAssessment.hint || 'Align face inside outline'}
                 </p>
+
+                {/* Balancing spacer so the guidance text stays strictly centered */}
+                <div className="w-16 shrink-0" />
               </div>
 
               {/* Squaricle Visual Camera Feed Viewport */}
@@ -774,25 +793,8 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                       <span>Fill Light</span>
                     </button>
 
-                    {/* Live Face Ratio Indicator & Skip Scan Button (Top-Right) */}
+                    {/* Live Face Ratio Indicator (Top-Right) */}
                     <div className="flex items-center space-x-2">
-                      {mode === 'onboarding' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            stopCamera();
-                            if (onContinueOnboarding) {
-                              onContinueOnboarding();
-                            } else {
-                              onClose();
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-full bg-amber-500/90 hover:bg-amber-500 backdrop-blur-md border border-amber-300/40 text-[11px] font-bold text-slate-950 shadow-md transition-all active:scale-95 cursor-pointer flex items-center space-x-1"
-                        >
-                          <span>Skip Scan</span>
-                          <Icon icon="solar:double-alt-arrow-right-bold" className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                       <div className="px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-[10px] font-mono text-zinc-100 shadow-md">
                         FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
                       </div>

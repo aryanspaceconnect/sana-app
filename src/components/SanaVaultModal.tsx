@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { VaultFileExplorer } from './VaultFileExplorer';
@@ -41,6 +41,46 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
   const [selectedDocVersion, setSelectedDocVersion] = useState<{ category: string; docId: string; title: string } | null>(null);
   const [versionHistory, setVersionHistory] = useState<VaultVersionRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Horizontal tab slider scroll & drag state
+  const navTabsRef = useRef<HTMLDivElement>(null);
+  const [isMouseDown, setIsMouseDown] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeftState, setScrollLeftState] = useState(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!navTabsRef.current) return;
+    setIsMouseDown(true);
+    setStartX(e.pageX - navTabsRef.current.offsetLeft);
+    setScrollLeftState(navTabsRef.current.scrollLeft);
+  };
+
+  const handleMouseLeaveOrUp = () => {
+    setIsMouseDown(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDown || !navTabsRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - navTabsRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    navTabsRef.current.scrollLeft = scrollLeftState - walk;
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (navTabsRef.current && e.deltaY !== 0) {
+      navTabsRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
+  const scrollNav = (direction: 'left' | 'right') => {
+    if (navTabsRef.current) {
+      navTabsRef.current.scrollBy({
+        left: direction === 'left' ? -180 : 180,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   useEffect(() => {
     if (isOpen && userId) {
@@ -132,31 +172,60 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
           </div>
 
           {/* Navigation Bar */}
-          <div className="px-6 py-2 bg-slate-100/60 border-b border-slate-200/60 flex items-center space-x-1.5 overflow-x-auto no-scrollbar">
-            {[
-              { id: 'overview', label: 'Overview', icon: 'solar:widget-3-linear' },
-              { id: 'files', label: 'Files & Portals', icon: 'solar:laptop-minimalistic-linear' },
-              { id: 'sessions', label: 'Sessions', icon: 'solar:chat-round-line-linear' },
-              { id: 'identity', label: 'User Data', icon: 'solar:user-hand-up-linear' },
-              { id: 'skin_profile', label: 'Skin Profile', icon: 'solar:face-scan-circle-linear' },
-              { id: 'incidents', label: 'Incidents', icon: 'solar:danger-triangle-linear' },
-              { id: 'events', label: 'Events', icon: 'solar:calendar-mark-linear' },
-              { id: 'goals', label: 'Goals', icon: 'solar:target-linear' },
-              { id: 'search', label: 'Search', icon: 'solar:magnifier-linear' }
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id as VaultTab)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-                  activeTab === t.id
-                    ? 'bg-[#121316] text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-200/60'
-                }`}
-              >
-                <Icon icon={t.icon} className="w-3.5 h-3.5" />
-                <span>{t.label}</span>
-              </button>
-            ))}
+          <div className="relative bg-slate-100/80 border-b border-slate-200/80 flex items-center px-2 py-1">
+            <button
+              type="button"
+              onClick={() => scrollNav('left')}
+              className="p-1.5 rounded-full bg-white/90 hover:bg-white text-slate-600 shadow-2xs border border-slate-200/80 shrink-0 transition-all cursor-pointer opacity-80 hover:opacity-100 mr-1 active:scale-95"
+              title="Scroll left"
+            >
+              <Icon icon="solar:alt-arrow-left-linear" className="w-3.5 h-3.5" />
+            </button>
+
+            <div
+              ref={navTabsRef}
+              onMouseDown={handleMouseDown}
+              onMouseLeave={handleMouseLeaveOrUp}
+              onMouseUp={handleMouseLeaveOrUp}
+              onMouseMove={handleMouseMove}
+              onWheel={handleWheel}
+              className="py-1 flex items-center space-x-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain select-none flex-1 scroll-smooth"
+              style={{ cursor: isMouseDown ? 'grabbing' : 'grab' }}
+            >
+              {[
+                { id: 'overview', label: 'Overview', icon: 'solar:widget-3-linear' },
+                { id: 'files', label: 'Files & Portals', icon: 'solar:laptop-minimalistic-linear' },
+                { id: 'sessions', label: 'Sessions', icon: 'solar:chat-round-line-linear' },
+                { id: 'identity', label: 'User Data', icon: 'solar:user-hand-up-linear' },
+                { id: 'skin_profile', label: 'Skin Profile', icon: 'solar:face-scan-circle-linear' },
+                { id: 'incidents', label: 'Incidents', icon: 'solar:danger-triangle-linear' },
+                { id: 'events', label: 'Events', icon: 'solar:calendar-mark-linear' },
+                { id: 'goals', label: 'Goals', icon: 'solar:target-linear' },
+                { id: 'search', label: 'Search', icon: 'solar:magnifier-linear' }
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id as VaultTab)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
+                    activeTab === t.id
+                      ? 'bg-[#121316] text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-200/60 bg-white/60'
+                  }`}
+                >
+                  <Icon icon={t.icon} className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => scrollNav('right')}
+              className="p-1.5 rounded-full bg-white/90 hover:bg-white text-slate-600 shadow-2xs border border-slate-200/80 shrink-0 transition-all cursor-pointer opacity-80 hover:opacity-100 ml-1 active:scale-95"
+              title="Scroll right"
+            >
+              <Icon icon="solar:alt-arrow-right-linear" className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Content Body */}
