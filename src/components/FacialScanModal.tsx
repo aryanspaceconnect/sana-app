@@ -57,6 +57,9 @@ interface FacialScanModalProps {
   userProfile: UserProfile | null;
   onScanComplete: (result: FacialScanResult) => void;
   pastScans?: FacialScanResult[];
+  mode?: 'ritual' | 'onboarding';
+  scanTitle?: string;
+  onContinueOnboarding?: () => void;
 }
 
 export const FacialScanModal: React.FC<FacialScanModalProps> = ({
@@ -64,7 +67,10 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   onClose,
   userProfile,
   onScanComplete,
-  pastScans = []
+  pastScans = [],
+  mode = 'ritual',
+  scanTitle,
+  onContinueOnboarding
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,6 +80,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanUiError, setScanUiError] = useState<ScanUiError | null>(null);
+  const [retryCount, setRetryCount] = useState<number>(0);
   
   // Scan Type state
   const [scanType, setScanType] = useState<'daily_scan' | 'intermediate_scan'>('daily_scan');
@@ -797,10 +804,41 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                     </p>
 
                     <div className="flex items-center space-x-2.5">
-                      {scanUiError.action === 'retry' ? (
+                      {scanUiError.action === 'wait' || retryCount >= 2 ? (
+                        mode === 'onboarding' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScanUiError(null);
+                              if (onContinueOnboarding) {
+                                onContinueOnboarding();
+                              } else {
+                                onClose();
+                              }
+                            }}
+                            className="px-5 py-2.5 rounded-xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                          >
+                            <span>Continue</span>
+                            <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScanUiError(null);
+                              onClose();
+                            }}
+                            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
+                          >
+                            <Icon icon="solar:home-2-bold" className="w-4 h-4" />
+                            <span>Home</span>
+                          </button>
+                        )
+                      ) : scanUiError.action === 'retry' ? (
                         <button
                           type="button"
                           onClick={() => {
+                            setRetryCount(prev => prev + 1);
                             setScanUiError(null);
                             if (capturedImage) {
                               processScanImage(capturedImage);
@@ -811,12 +849,13 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                           className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center space-x-1.5"
                         >
                           <Icon icon="solar:restart-bold" className="w-4 h-4" />
-                          <span>Try Again</span>
+                          <span>Retake Scan</span>
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => {
+                            setRetryCount(prev => prev + 1);
                             setScanUiError(null);
                             setCapturedImage(null);
                             startCamera();
@@ -881,11 +920,11 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           )) : (
             /* Clean User Skin Health Report View - Matching Hand-Drawn Sketch Design */
             <div className="w-full flex-1 flex flex-col space-y-4 overflow-y-auto max-h-[78vh] no-scrollbar pr-0.5 pb-2">
-              {/* Top Title (Time-Aware: Morning Scan / Afternoon Scan / Evening Scan / Night Scan) */}
+              {/* Top Title */}
               <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 shrink-0">
                 <div>
                   <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                    {getScanTitle(scanResult)}
+                    {scanTitle || (mode === 'onboarding' ? 'Your First Scan' : getScanTitle(scanResult))}
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     {new Date(scanResult.timestamp || Date.now()).toLocaleDateString(undefined, {
@@ -1000,30 +1039,49 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                 )}
               </div>
 
-              {/* Bottom Action Buttons: Ask SANA and Done (At the end of the scrollable flow) */}
+              {/* Bottom Action Buttons */}
               <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200/80 shrink-0 mt-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
-                    window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
-                      detail: { sessionId, reportText: scanResult.reportText || scanResult.summary }
-                    }));
-                    onClose();
-                  }}
-                  className="flex-1 py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs border border-slate-200/80 transition-all cursor-pointer text-center active:scale-95 flex items-center justify-center space-x-1.5 shadow-xs"
-                >
-                  <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4 text-slate-800" />
-                  <span>Ask SANA</span>
-                </button>
+                {mode === 'onboarding' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onContinueOnboarding) {
+                        onContinueOnboarding();
+                      } else {
+                        onClose();
+                      }
+                    }}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white font-bold text-xs transition-all cursor-pointer text-center active:scale-95 shadow-md flex items-center justify-center space-x-2"
+                  >
+                    <span>Continue</span>
+                    <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sessionId = scanResult.reportSessionId || `session_scan_report_${Date.now()}`;
+                        window.dispatchEvent(new CustomEvent('sana:open_chat_session', {
+                          detail: { sessionId, reportText: scanResult.reportText || scanResult.summary }
+                        }));
+                        onClose();
+                      }}
+                      className="flex-1 py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-xs border border-slate-200/80 transition-all cursor-pointer text-center active:scale-95 flex items-center justify-center space-x-1.5 shadow-xs"
+                    >
+                      <Icon icon="solar:chat-round-dots-bold" className="w-4 h-4 text-slate-800" />
+                      <span>Ask SANA</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex-1 py-3 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer text-center active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
-                >
-                  <span>Done</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="flex-1 py-3 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all cursor-pointer text-center active:scale-95 shadow-md flex items-center justify-center space-x-1.5"
+                    >
+                      <span>Done</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}

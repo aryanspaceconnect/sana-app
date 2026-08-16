@@ -84,6 +84,7 @@ interface PillNavigationProps {
   onOpenSettings?: () => void;
   onOpenReports?: () => void;
   onOpenVault?: () => void;
+  onOpenScanHistory?: () => void;
   theme?: 'light' | 'dark' | 'auto';
   onThemeChange?: (theme: 'light' | 'dark' | 'auto') => void;
 }
@@ -95,6 +96,7 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
   onRestorePill,
   userProfile,
   onOpenVault,
+  onOpenScanHistory,
   onOpenSettings,
   theme = 'light',
   onThemeChange
@@ -338,6 +340,18 @@ export const PillNavigation: React.FC<PillNavigationProps> = ({
                         >
                           <Icon icon="solar:safe-square-linear" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
                           <span className="flex-1">Vault</span>
+                        </button>
+
+                        {/* Scan History */}
+                        <button
+                          onClick={() => {
+                            if (onOpenScanHistory) onOpenScanHistory();
+                            setIsExpanded(false);
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-2xl flex items-center space-x-3 text-slate-800 hover:bg-[#f4f6f9] transition-all cursor-pointer font-medium text-sm text-left group"
+                        >
+                          <Icon icon="solar:history-bold" className="w-5 h-5 text-slate-600 group-hover:text-slate-900" />
+                          <span className="flex-1">Scan History</span>
                         </button>
 
                         {/* User Profile */}

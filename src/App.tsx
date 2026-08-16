@@ -16,6 +16,7 @@ import { FacialScanModal } from './components/FacialScanModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SanaVaultModal } from './components/SanaVaultModal';
+import { ScanHistoryModal } from './components/ScanHistoryModal';
 import { AuthScreen } from './components/AuthScreen';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { SanaLogoIcon } from './components/SanaLogoIcon';
@@ -33,6 +34,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isScanHistoryOpen, setIsScanHistoryOpen] = useState(false);
 
   // Facial Scan & Daily Data
   const [latestScan, setLatestScan] = useState<FacialScanResult | null>(null);
@@ -508,6 +510,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenReports={() => setIsReportsOpen(true)}
         onOpenVault={() => setIsVaultOpen(true)}
+        onOpenScanHistory={() => setIsScanHistoryOpen(true)}
         theme={userProfile?.settings?.theme || 'light'}
         onThemeChange={(newTheme) => {
           if (userProfile) {
@@ -529,6 +532,7 @@ export default function App() {
         onOpenReports={() => setIsReportsOpen(true)}
         onOpenRoutine={() => setActiveTab('home')}
         onOpenVault={() => setIsVaultOpen(true)}
+        onOpenScanHistory={() => setIsScanHistoryOpen(true)}
       />
 
       {/* PopUp Notification Card (Daily Check-in) */}
@@ -602,6 +606,13 @@ export default function App() {
         isOpen={isVaultOpen}
         onClose={() => setIsVaultOpen(false)}
         userId={userProfile?.uid || 'guest_user'}
+      />
+
+      {/* Scan History Modal */}
+      <ScanHistoryModal
+        isOpen={isScanHistoryOpen}
+        onClose={() => setIsScanHistoryOpen(false)}
+        userProfile={userProfile}
       />
     </MobileContainer>
   );

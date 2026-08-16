@@ -12,6 +12,7 @@ interface ExtendedMenuDrawerProps {
   onOpenReports: () => void;
   onOpenRoutine: () => void;
   onOpenVault: () => void;
+  onOpenScanHistory?: () => void;
 }
 
 export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
@@ -22,7 +23,8 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
   onOpenSettings,
   onOpenReports,
   onOpenRoutine,
-  onOpenVault
+  onOpenVault,
+  onOpenScanHistory
 }) => {
   const [dragStartY, setDragStartY] = useState<number | null>(null);
 
@@ -179,6 +181,25 @@ export const ExtendedMenuDrawer: React.FC<ExtendedMenuDrawerProps> = ({
                   </div>
                 </div>
                 <Icon icon="solar:alt-arrow-right-linear" className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+
+              <button
+                onClick={() => {
+                  onClose();
+                  if (onOpenScanHistory) onOpenScanHistory();
+                }}
+                className="w-full p-4 rounded-[22px] bg-white border border-[#eef1f5] shadow-xs hover:border-[#d0d5dd] hover:bg-[#f8f9fa] transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 rounded-2xl bg-[#f0f4f8] text-[#1a1c1e] group-hover:bg-[#1a1c1e] group-hover:text-white transition-colors">
+                    <Icon icon="solar:history-bold" className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[14px] font-semibold text-[#1a1c1e]">Scan History & Sessions</p>
+                    <p className="text-[12px] text-[#787f8d]">View gallery overlays & AI reports</p>
+                  </div>
+                </div>
+                <Icon icon="solar:alt-arrow-right-linear" className="w-5 h-5 text-[#a0a7b4] group-hover:translate-x-0.5 transition-transform" />
               </button>
 
               <button

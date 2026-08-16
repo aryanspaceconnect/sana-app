@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
-import { UserProfile, OnboardingProfile, UserSettings } from '../types';
+import { UserProfile, OnboardingProfile, UserSettings, FacialScanResult } from '../types';
 import { syncUserProfile, saveFacialScan, createChatSession } from '../lib/firebase';
 import { SanaLogoIcon } from './SanaLogoIcon';
+import { FacialScanModal } from './FacialScanModal';
 
 interface OnboardingScreenProps {
   userProfile: UserProfile;
@@ -248,24 +249,18 @@ const EDUCATIONAL_CASCADE_CARDS: EducationalCard[] = [
   }
 ];
 
-// Quick Keywords Chips for Step 2
-const QUICK_KEYWORD_OPTIONS = [
-  { id: 'tzone_shine', label: 'T-Zone Shine', insertText: 'My T-zone gets shiny by midday.' },
-  { id: 'sensitive_barrier', label: 'Sensitive Barrier', insertText: 'My skin barrier stings easily after cleansing.' },
-  { id: 'dehydration_lines', label: 'Dehydration Lines', insertText: 'I notice tight fine dehydration lines on my cheeks.' },
-  { id: 'post_acne_marks', label: 'Post-Acne Dark Spots', insertText: 'I have post-acne dark spots that fade slowly.' },
-  { id: 'hormonal_breakouts', label: 'Hormonal Flare-ups', insertText: 'I experience hormonal chin breakouts before my period.' },
-  { id: 'redness_flushing', label: 'Redness & Flushing', insertText: 'My nose and cheeks flush red in cold or hot weather.' },
-  { id: 'rough_texture', label: 'Rough Surface Texture', insertText: 'My skin surface feels bumpy or uneven to touch.' },
-  { id: 'enlarged_pores', label: 'Enlarged Pores', insertText: 'I want to tighten visible pores on my nose and cheeks.' }
-];
-
-const HORMONAL_FACTOR_OPTIONS = [
-  { id: 'premenstrual_flareups', label: 'Pre-menstrual chin breakouts', text: 'Pre-menstrual breakouts around chin and jawline' },
-  { id: 'contraceptive_shifts', label: 'Contraceptive / hormonal therapy', text: 'Oral contraceptive / hormonal therapy skin sensitivity' },
-  { id: 'post_workout_flushing', label: 'Thermal / post-workout flushing', text: 'Post-workout thermal flushing and capillary reactivity' },
-  { id: 'cortisol_stress', label: 'Stress / Cortisol flare-ups', text: 'Stress-induced barrier disruption & breakouts' },
-  { id: 'no_known_hormonal', label: 'No major hormonal sensitivity', text: 'No major hormonal factors noticed' }
+// Unified Skin Descriptors for Step 2
+const UNIFIED_SKIN_DESCRIPTORS = [
+  { id: 'tzone_shine', label: 'T-Zone Shine', insertText: 'My T-zone gets shiny by midday.', isHormonal: false },
+  { id: 'sensitive_barrier', label: 'Sensitive Barrier', insertText: 'My skin barrier stings easily after cleansing.', isHormonal: false },
+  { id: 'dehydration_lines', label: 'Dehydration Lines', insertText: 'I notice fine dehydration lines on my cheeks.', isHormonal: false },
+  { id: 'post_acne_marks', label: 'Post-Acne Dark Spots', insertText: 'I have post-acne dark spots that fade slowly.', isHormonal: false },
+  { id: 'hormonal_breakouts', label: 'Hormonal Chin Breakouts', insertText: 'I experience hormonal chin breakouts before my period.', isHormonal: true, hormonalText: 'Pre-menstrual breakouts around chin and jawline' },
+  { id: 'redness_flushing', label: 'Redness & Flushing', insertText: 'My nose and cheeks flush red easily.', isHormonal: false },
+  { id: 'rough_texture', label: 'Rough Surface Texture', insertText: 'My skin surface feels bumpy or uneven.', isHormonal: false },
+  { id: 'enlarged_pores', label: 'Enlarged Pores', insertText: 'Visible enlarged pores on my nose and cheeks.', isHormonal: false },
+  { id: 'cortisol_stress', label: 'Stress / Cortisol Flare-ups', insertText: 'Stress causes barrier disruption and sudden flare-ups.', isHormonal: true, hormonalText: 'Stress-induced cortisol barrier disruption' },
+  { id: 'thermal_flushing', label: 'Post-Workout Flushing', insertText: 'I get persistent thermal flushing after workouts.', isHormonal: true, hormonalText: 'Post-workout thermal capillary flushing' }
 ];
 
 export function OnboardingScreen({ userProfile, onCompleteOnboarding }: OnboardingScreenProps) {
@@ -315,11 +310,17 @@ export function OnboardingScreen({ userProfile, onCompleteOnboarding }: Onboardi
     userProfile.settings?.skinPriorities || userProfile.skinPriorities || 'Strengthen skin barrier & even skin tone'
   );
 
+  // Scan Modal State for Onboarding
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+
   // Validation Error State
   const [validationErrorList, setValidationErrorList] = useState<string[]>([]);
 
   // Tooltip UI State
   const [activeTooltip, setActiveTooltip] = useState<'location' | 'biological' | 'goals' | null>(null);
+
+  // Textarea ref for auto-expanding height in Step 2
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Main scroll container ref for smooth regulated scrolling without scrollbars
   const mainContainerRef = useRef<HTMLDivElement>(null);
@@ -334,35 +335,51 @@ export function OnboardingScreen({ userProfile, onCompleteOnboarding }: Onboardi
     }
   }, [step]);
 
-  // Toggle Quick Chip in Step 2
-  const handleToggleChip = (chip: typeof QUICK_KEYWORD_OPTIONS[0]) => {
-    if (selectedChips.includes(chip.id)) {
-      setSelectedChips(prev => prev.filter(c => c !== chip.id));
-      setUserPerceptionText(prev => prev.replace(chip.insertText, '').trim());
-    } else {
+  // Sync auto-expanding height for Step 2 borderless textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.max(110, textareaRef.current.scrollHeight)}px`;
+    }
+  }, [userPerceptionText, step]);
+
+  // Sync selectedChips with userPerceptionText content so erased chip text brings chips back
+  useEffect(() => {
+    setSelectedChips(prev =>
+      prev.filter(id => {
+        const chip = UNIFIED_SKIN_DESCRIPTORS.find(c => c.id === id);
+        return chip ? userPerceptionText.includes(chip.insertText) : false;
+      })
+    );
+  }, [userPerceptionText]);
+
+  // Toggle Quick Chip in Step 2 (Adds text & chip disappears)
+  const handleToggleChip = (chip: typeof UNIFIED_SKIN_DESCRIPTORS[0]) => {
+    if (!selectedChips.includes(chip.id)) {
       setSelectedChips(prev => [...prev, chip.id]);
       setUserPerceptionText(prev => {
         const clean = prev.trim();
         return clean.length > 0 ? `${clean} ${chip.insertText}` : chip.insertText;
       });
+      if (chip.isHormonal && chip.hormonalText) {
+        setHormonalFactors(prev => {
+          if (!prev || prev === 'General daily skin observations') return chip.hormonalText!;
+          if (prev.includes(chip.hormonalText!)) return prev;
+          return `${prev}, ${chip.hormonalText!}`;
+        });
+      }
     }
-  };
-
-  // Select Hormonal Chip in Step 2
-  const handleSelectHormonalOption = (text: string) => {
-    setHormonalFactors(text);
   };
 
   // Validate Step 2 before advancing
   const handleAdvanceFromStep2 = () => {
     setStep2Error(null);
     if (!userPerceptionText || userPerceptionText.trim().length < 5) {
-      setStep2Error('Please provide a brief description of your skin observations (at least 5 characters).');
+      setStep2Error('Please select key descriptors or type a brief skin observation (at least 5 characters).');
       return;
     }
     if (!hormonalFactors || hormonalFactors.trim().length === 0) {
-      setStep2Error('Please specify or select your hormonal factors / skin cycle sensitivity.');
-      return;
+      setHormonalFactors('General daily skin observations and cycle sensitivity');
     }
     setStep(3);
   };
@@ -769,126 +786,99 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
             </motion.div>
           )}
 
-          {/* STEP 2: USER'S PERCEPTION OF THEIR SKIN & HORMONAL FACTORS */}
-          {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-5"
-            >
-              <div>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
-                  How much do you know about your skin right now?
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Tell us what you observe day-to-day. You can type freely or tap key descriptors to build your summary.
-                </p>
-              </div>
+          {/* STEP 2: USER'S PERCEPTION OF THEIR SKIN */}
+          {step === 2 && (() => {
+            const visibleDescriptors = UNIFIED_SKIN_DESCRIPTORS.filter(
+              chip => !selectedChips.includes(chip.id) && !userPerceptionText.includes(chip.insertText)
+            );
 
-              {/* Step 2 Inline Validation Banner */}
-              {step2Error && (
-                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2">
-                  <Icon icon="solar:danger-circle-bold" className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{step2Error}</span>
+            return (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="flex flex-col min-h-[68vh] justify-between space-y-6 py-2"
+              >
+                <div className="space-y-6">
+                  {/* Centered Writer-Crafted Question (No Subtitle) */}
+                  <div className="pt-2">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#121316] text-center leading-snug">
+                      How is your skin feeling right now?
+                    </h2>
+                  </div>
+
+                  {/* Step 2 Inline Validation Banner */}
+                  {step2Error && (
+                    <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2">
+                      <Icon icon="solar:danger-circle-bold" className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{step2Error}</span>
+                    </div>
+                  )}
+
+                  {/* Meaningful Whitespace & Borderless Containerless Text Area */}
+                  <div className="mt-4 sm:mt-6 mb-2">
+                    <textarea
+                      ref={textareaRef}
+                      rows={3}
+                      value={userPerceptionText}
+                      onChange={(e) => setUserPerceptionText(e.target.value)}
+                      placeholder="my tzone gets super oily around 2pm specially on nose, n then my cheeks feel dry n itchy after washing face. also get small bumps on chin when period comes"
+                      className="w-full bg-transparent text-sm sm:text-base text-[#121316] font-normal leading-relaxed focus:outline-none focus:ring-0 resize-none border-none p-0 placeholder:text-slate-400/70 placeholder:font-normal"
+                    />
+                  </div>
                 </div>
-              )}
 
-              {/* Quick Keywords Chips */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-2">
-                  Tap to Quick-Add Key Descriptors:
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_KEYWORD_OPTIONS.map(chip => {
-                    const isSelected = selectedChips.includes(chip.id);
-                    return (
-                      <button
-                        key={chip.id}
-                        type="button"
-                        onClick={() => handleToggleChip(chip)}
-                        className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer flex items-center space-x-1 ${
-                          isSelected
-                            ? 'bg-[#121316] text-white border-[#121316] shadow-xs'
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{isSelected ? '✓' : '+'}</span>
-                        <span>{chip.label}</span>
-                      </button>
-                    );
-                  })}
+                {/* Bottom Options & Actions */}
+                <div className="space-y-6 pt-4">
+                  {/* Descriptor Pills (Disappearing on Select) */}
+                  {visibleDescriptors.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        <AnimatePresence>
+                          {visibleDescriptors.map(chip => (
+                            <motion.button
+                              key={chip.id}
+                              layout
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.15 } }}
+                              type="button"
+                              onClick={() => handleToggleChip(chip)}
+                              className="px-3.5 py-2 rounded-2xl text-xs font-medium border border-slate-200/90 bg-white/90 text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-all cursor-pointer flex items-center space-x-1.5 shadow-2xs active:scale-95"
+                            >
+                              <span className="text-slate-400 font-semibold text-xs">+</span>
+                              <span>{chip.label}</span>
+                            </motion.button>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-98"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAdvanceFromStep2}
+                      className="flex-1 py-3.5 px-5 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                    >
+                      <span>Save & Prepare for Scan</span>
+                      <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              {/* Text Area with Light Highlighted Example Hint */}
-              <div className="relative">
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1.5">
-                  Describe Your Skin Observation: <span className="text-rose-500">*</span>
-                </label>
-
-                <textarea
-                  rows={3}
-                  value={userPerceptionText}
-                  onChange={(e) => setUserPerceptionText(e.target.value)}
-                  placeholder="e.g., My T-zone gets shiny by midday, but my cheeks feel tight after cleansing. I also notice sudden redness around my nose when it's cold, and occasional chin breakouts..."
-                  className="w-full p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all leading-relaxed placeholder:text-slate-400/80"
-                />
-              </div>
-
-              {/* Hormonal Factors Section */}
-              <div className="space-y-2 pt-1 border-t border-slate-100">
-                <label className="block text-[11px] font-semibold text-slate-600">
-                  Hormonal Factors & Skin Cycle Sensitivity <span className="text-rose-500">*</span>
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {HORMONAL_FACTOR_OPTIONS.map(hOpt => {
-                    const isSelected = hormonalFactors.includes(hOpt.text);
-                    return (
-                      <button
-                        key={hOpt.id}
-                        type="button"
-                        onClick={() => handleSelectHormonalOption(hOpt.text)}
-                        className={`px-2.5 py-1 rounded-xl text-[10.5px] font-semibold border transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#121316] text-white border-[#121316] shadow-xs'
-                            : 'bg-slate-100/80 text-slate-700 border-slate-200/80 hover:bg-slate-200/60'
-                        }`}
-                      >
-                        {isSelected ? '✓ ' : ''}{hOpt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <input
-                  type="text"
-                  value={hormonalFactors}
-                  onChange={(e) => setHormonalFactors(e.target.value)}
-                  placeholder="e.g., Pre-menstrual breakouts around chin, oral contraceptives, post-workout flushing"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="flex items-center space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAdvanceFromStep2}
-                  className="flex-1 py-3 px-4 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
-                >
-                  <span>Save & Prepare for Scan</span>
-                  <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
-                </button>
-              </div>
-            </motion.div>
-          )}
+              </motion.div>
+            );
+          })()}
 
           {/* STEP 3: PREPARATION FOR FACIAL SKIN SCAN */}
           {step === 3 && (
@@ -897,60 +887,57 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="space-y-5"
+              className="flex flex-col min-h-[68vh] justify-between space-y-6 py-2"
             >
-              <div>
-                <h2 className="text-xl font-bold tracking-tight text-[#121316]">
-                  Let's see what your skin really says
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  We are ready to initiate your baseline facial scan to uncover micro-hydration, barrier clarity, and surface texture.
-                </p>
-              </div>
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#121316]">
+                    Let's see what your skin really says
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    We are ready to initiate your baseline facial scan to uncover micro-hydration, barrier clarity, and surface texture.
+                  </p>
+                </div>
 
-              {/* Camera Preview / Instruction Box */}
-              <div className="relative rounded-3xl bg-slate-900 overflow-hidden border border-slate-800 aspect-square max-h-64 mx-auto flex items-center justify-center shadow-inner">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover transform -scale-x-100"
-                />
-                {/* Guide Oval */}
-                <div className="absolute inset-0 border-2 border-dashed border-white/40 rounded-full m-8 pointer-events-none flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                {/* Polite & Condensed Tips */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                  <div className="flex items-center space-x-2 text-xs font-bold text-slate-800">
+                    <Icon icon="solar:sparkles-bold" className="w-4 h-4 text-amber-500" />
+                    <span>Preparing for your scan</span>
+                  </div>
+                  <ul className="space-y-2 text-xs text-slate-600">
+                    <li className="flex items-start space-x-2">
+                      <span className="text-amber-500 font-bold">•</span>
+                      <span>Bare skin without heavy makeup</span>
+                    </li>
+                    <li className="flex items-start space-x-2">
+                      <span className="text-amber-500 font-bold">•</span>
+                      <span>Even lighting without harsh shadows</span>
+                    </li>
+                    <li className="flex items-start space-x-2">
+                      <span className="text-amber-500 font-bold">•</span>
+                      <span>Neutral expression centered in guide</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
 
-              {/* Volunteer-Inspiring Instructions */}
-              <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 space-y-2 text-xs text-indigo-950">
-                <div className="flex items-center space-x-2 font-bold">
-                  <Icon icon="solar:lightbulb-bold" className="w-4 h-4 text-indigo-600" />
-                  <span>How to Get the Most Accurate Scan</span>
-                </div>
-                <ul className="space-y-1 text-[11px] text-indigo-900/80 list-disc list-inside">
-                  <li>Sit in a brightly, evenly lit room so our camera sensor can register your natural skin surface texture and micro-hydration clearly.</li>
-                  <li>Position your face centered in the guide frame without heavy makeup for clinical accuracy.</li>
-                  <li>Hold a neutral expression for optimal facial region alignment.</li>
-                </ul>
-              </div>
-
-              <div className="flex items-center space-x-3 pt-1">
+              {/* Bottom Action Bar */}
+              <div className="flex items-center space-x-3 pt-4 mt-auto">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
+                  className="px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-98"
                 >
                   Back
                 </button>
                 <button
                   type="button"
-                  onClick={handleInitiateScan}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98] cursor-pointer"
+                  onClick={() => setIsScanModalOpen(true)}
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
                 >
-                  <Icon icon="solar:scanner-bold-duotone" className="w-4 h-4 text-emerald-300" />
-                  <span>Initiate Face Scan Now</span>
+                  <span>Start Scan</span>
+                  <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
                 </button>
               </div>
             </motion.div>
@@ -1293,6 +1280,22 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
           )}
         </AnimatePresence>
       </div>
+
+      {/* Onboarding Facial Scan Modal */}
+      <FacialScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        mode="onboarding"
+        scanTitle="Your First Scan"
+        userProfile={userProfile}
+        onScanComplete={(result) => {
+          setScanResultData(result);
+        }}
+        onContinueOnboarding={() => {
+          setIsScanModalOpen(false);
+          setStep(4);
+        }}
+      />
     </div>
   );
 }
