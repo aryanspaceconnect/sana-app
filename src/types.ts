@@ -180,11 +180,22 @@ export interface ThinkingMeta {
   elapsedSeconds?: number;
 }
 
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'document';
+  url: string;
+  mimeType?: string;
+  size?: number;
+  textContent?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  attachments?: ChatAttachment[];
   thinkingMeta?: ThinkingMeta;
   actionProposal?: any;
   passOnTrace?: any[];

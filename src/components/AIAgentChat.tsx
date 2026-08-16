@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import Markdown from 'react-markdown';
-import { UserProfile, ChatMessage, ChatSession } from '../types';
+import { UserProfile, ChatMessage, ChatSession, ChatAttachment } from '../types';
 import { 
   createChatSession, 
   saveChatSessionData, 
@@ -107,8 +107,29 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
         className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} my-1 w-full`}
       >
         {isUser ? (
-          <div className="max-w-[85%] px-4 py-3 rounded-[20px] rounded-br-xs bg-[#1a1c1e] text-white text-[13.5px] leading-relaxed shadow-xs">
-            <p className="whitespace-pre-wrap">{msg.text}</p>
+          <div className="max-w-[85%] px-4 py-3 rounded-[20px] rounded-br-xs bg-[#1a1c1e] text-white text-[13.5px] leading-relaxed shadow-xs flex flex-col space-y-1.5">
+            {msg.attachments && msg.attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-1">
+                {msg.attachments.map((att) => (
+                  <div key={att.id} className="rounded-xl overflow-hidden bg-black/40 border border-white/20 p-1 shrink-0">
+                    {att.type === 'image' ? (
+                      <img
+                        src={att.url}
+                        alt={att.name}
+                        onClick={() => window.open(att.url, '_blank')}
+                        className="max-w-[220px] max-h-44 rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      />
+                    ) : (
+                      <div className="flex items-center space-x-2 px-2.5 py-1.5 text-xs text-white/90">
+                        <Icon icon="solar:document-bold" className="w-4 h-4 text-emerald-300 shrink-0" />
+                        <span className="truncate max-w-[150px] font-medium">{att.name}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
             <span className="text-[10px] mt-1 block text-right font-medium text-white/60">
               {msg.timestamp}
             </span>
@@ -279,6 +300,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
   // Input & Stream state
   const [inputText, setInputText] = useState('');
+  const [selectedAttachments, setSelectedAttachments] = useState<ChatAttachment[]>([]);
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'loading' | 'working'>('idle');
   const [liveTraceRows, setLiveTraceRows] = useState<TraceRow[]>([]);
   const requestStartTimeRef = useRef<number>(0);
@@ -354,29 +376,54 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     refreshVault();
   }, [userId]);
 
-  // Handle file uploads into Agent Vault
+  // Handle document file uploads into selectedAttachments
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const textContent = event.target?.result as string || '';
-      const promptText = `I am uploading a clinical document for my Agent Memory Vault: "${file.name}". Please analyze and ingest this:\n\n${textContent.substring(0, 3000)}`;
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const textContent = (event.target?.result as string) || '';
+        const newAttachment: ChatAttachment = {
+          id: `att_doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          type: 'document',
+          url: textContent,
+          mimeType: file.type || 'text/plain',
+          size: file.size,
+          textContent: textContent
+        };
+        setSelectedAttachments(prev => [...prev, newAttachment]);
+      };
+      reader.readAsText(file);
+    }
 
-      handleSendMessage(promptText);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Handle skin photo uploads for visual diagnosis/notes
+  // Handle skin photo / image uploads into selectedAttachments
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    const promptText = `I am attaching a skin photo / product snapshot: "${file.name}". Please analyze the skin condition or formulation details.`;
-    handleSendMessage(promptText);
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = (event.target?.result as string) || '';
+        const newAttachment: ChatAttachment = {
+          id: `att_img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          type: 'image',
+          url: dataUrl,
+          mimeType: file.type || 'image/jpeg',
+          size: file.size
+        };
+        setSelectedAttachments(prev => [...prev, newAttachment]);
+      };
+      reader.readAsDataURL(file);
+    }
+
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
@@ -427,19 +474,23 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const currentTitle = currentSession?.title || (messages.length > 0 ? (messages[0]?.text?.slice(0, 30) || 'Active Consultation') : 'New Consultation');
 
   const handleSendMessage = async (textToSend?: string) => {
-    const text = textToSend || inputText;
-    if (!text.trim() || processingStatus !== 'idle') return;
+    const text = textToSend !== undefined ? textToSend : inputText;
+    const currentAttachments = textToSend !== undefined ? [] : [...selectedAttachments];
+
+    if ((!text.trim() && currentAttachments.length === 0) || processingStatus !== 'idle') return;
 
     const userMsg: ChatMessage = {
       id: `usr_${Date.now()}`,
       role: 'user',
       text: text.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined
     };
 
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInputText('');
+    setSelectedAttachments([]);
     
     // Start initial loading state ("Funneling request")
     setProcessingStatus('loading');
@@ -448,10 +499,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
 
     // Auto-derive title if this is the first user message in a new session
     const isFirstTurn = messages.length === 0;
+    const titleSource = text.trim() || (currentAttachments.length > 0 ? `Attached: ${currentAttachments[0].name}` : 'Skin Consultation');
     const sessionTitle = isFirstTurn
-      ? text.trim().length > 35
-        ? `${text.trim().slice(0, 35)}...`
-        : text.trim()
+      ? titleSource.length > 35
+        ? `${titleSource.slice(0, 35)}...`
+        : titleSource
       : currentSession?.title || 'Skin Consultation';
 
     // Persist immediately to Firestore
@@ -473,15 +525,37 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     abortControllerRef.current = controller;
 
     try {
+      // Build composite message for SanaAgent backend including attached files/images
+      let apiMessageText = text.trim();
+      if (currentAttachments.length > 0) {
+        const attachmentDetails = currentAttachments.map(att => {
+          if (att.type === 'document' && att.textContent) {
+            return `[ATTACHED CLINICAL DOCUMENT "${att.name}"]:\n${att.textContent.substring(0, 3000)}`;
+          } else if (att.type === 'image') {
+            return `[ATTACHED SKIN/PRODUCT IMAGE "${att.name}"]`;
+          }
+          return `[ATTACHED FILE "${att.name}"]`;
+        }).join('\n\n');
+
+        apiMessageText = apiMessageText
+          ? `${apiMessageText}\n\n${attachmentDetails}`
+          : `Please analyze the attached image/file(s):\n${attachmentDetails}`;
+      }
+
       const response = await fetch('/api/sana', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
           userId,
-          message: text.trim(),
+          message: apiMessageText,
           sessionId: activeSessionId,
-          history: updatedMessages.map(m => ({ role: m.role, text: m.text }))
+          attachments: currentAttachments,
+          history: updatedMessages.map(m => ({
+            role: m.role,
+            text: m.text,
+            attachments: m.attachments
+          }))
         })
       });
 
@@ -720,7 +794,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
-        accept=".txt,.md,.pdf,.json,.csv"
+        accept=".txt,.md,.pdf,.json,.csv,.doc,.docx"
+        multiple
         className="hidden"
       />
       <input
@@ -728,6 +803,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         ref={imageInputRef}
         onChange={handleImageUpload}
         accept="image/*"
+        multiple
         className="hidden"
       />
 
@@ -738,39 +814,75 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             e.preventDefault();
             handleSendMessage();
           }}
-          className="w-full max-w-[84%] sm:max-w-[380px] flex items-center space-x-1.5 p-1.5 pl-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-md transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-lg"
+          className="w-full max-w-[84%] sm:max-w-[380px] flex flex-col p-1.5 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-md transition-all duration-300 focus-within:ring-2 focus-within:ring-[#1a1c1e]/15 focus-within:border-[#1a1c1e]/50 focus-within:shadow-lg"
         >
-          <PlusMenu
-            onUploadDocument={() => fileInputRef.current?.click()}
-            onUploadImage={() => imageInputRef.current?.click()}
-            onOpenVault={() => setShowVaultModal(true)}
-          />
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Ask SANA or log a skin memory..."
-            className="flex-1 px-1.5 text-[13px] text-[#121316] font-medium bg-transparent focus:outline-none placeholder-[#94a3b8] min-w-0"
-          />
-          {processingStatus === 'idle' ? (
-            <button
-              type="submit"
-              disabled={!inputText.trim()}
-              title="Send message"
-              className="w-8.5 h-8.5 rounded-xl bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
-            >
-              <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleAbortRequest}
-              title="Terminate response request"
-              className="w-8.5 h-8.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xs shrink-0 active:scale-95 animate-pulse"
-            >
-              <Icon icon="solar:stop-bold" className="w-3.5 h-3.5" />
-            </button>
+          {/* Selected Attachments Preview Shelf */}
+          {selectedAttachments.length > 0 && (
+            <div className="w-full flex items-center space-x-2 overflow-x-auto no-scrollbar pb-2 px-1 border-b border-slate-100/80 mb-1.5">
+              {selectedAttachments.map((att) => (
+                <div key={att.id} className="relative shrink-0 group">
+                  {att.type === 'image' ? (
+                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative">
+                      <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAttachments(prev => prev.filter(a => a.id !== att.id))}
+                        className="absolute top-0.5 right-0.5 w-4.5 h-4.5 rounded-full bg-slate-900/80 text-white flex items-center justify-center hover:bg-slate-900 transition-colors shadow-xs"
+                      >
+                        <Icon icon="solar:close-circle-bold" className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-800 relative pr-6">
+                      <Icon icon="solar:document-bold" className="w-4 h-4 text-slate-600 shrink-0" />
+                      <span className="truncate max-w-[110px] text-[11px] font-medium">{att.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAttachments(prev => prev.filter(a => a.id !== att.id))}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        <Icon icon="solar:close-circle-bold" className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
+
+          <div className="flex items-center space-x-1.5 pl-1 w-full">
+            <PlusMenu
+              onUploadDocument={() => fileInputRef.current?.click()}
+              onUploadImage={() => imageInputRef.current?.click()}
+              onOpenVault={() => setShowVaultModal(true)}
+            />
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder={selectedAttachments.length > 0 ? "Add a message or press send..." : "Ask SANA or log a skin memory..."}
+              className="flex-1 px-1.5 text-[13px] text-[#121316] font-medium bg-transparent focus:outline-none placeholder-[#94a3b8] min-w-0"
+            />
+            {processingStatus === 'idle' ? (
+              <button
+                type="submit"
+                disabled={!inputText.trim() && selectedAttachments.length === 0}
+                title="Send message"
+                className="w-8.5 h-8.5 rounded-xl bg-[#1a1c1e] text-white flex items-center justify-center disabled:opacity-30 disabled:scale-95 transition-all duration-200 cursor-pointer shadow-xs shrink-0 hover:bg-black active:scale-95"
+              >
+                <Icon icon="solar:plain-2-bold" className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAbortRequest}
+                title="Terminate response request"
+                className="w-8.5 h-8.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xs shrink-0 active:scale-95 animate-pulse"
+              >
+                <Icon icon="solar:stop-bold" className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
