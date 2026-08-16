@@ -923,18 +923,26 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               </div>
 
               {/* Bottom Action Bar */}
-              <div className="flex items-center space-x-3 pt-4 mt-auto">
+              <div className="flex items-center space-x-2.5 pt-4 mt-auto">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-98"
+                  className="px-4 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-200/80 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-98"
                 >
                   Back
                 </button>
                 <button
                   type="button"
+                  onClick={() => setStep(4)}
+                  className="px-4 py-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 text-xs font-bold transition-all cursor-pointer active:scale-98 flex items-center space-x-1.5 shadow-2xs"
+                >
+                  <span>Skip</span>
+                  <Icon icon="solar:double-alt-arrow-right-bold" className="w-3.5 h-3.5 text-amber-600" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => setIsScanModalOpen(true)}
-                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
+                  className="flex-1 py-3.5 px-4 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
                 >
                   <span>Start Scan</span>
                   <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />

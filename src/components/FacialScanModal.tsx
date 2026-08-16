@@ -774,9 +774,28 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                       <span>Fill Light</span>
                     </button>
 
-                    {/* Live Face Ratio Indicator (Top-Right) */}
-                    <div className="px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-[10px] font-mono text-zinc-100 shadow-md">
-                      FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
+                    {/* Live Face Ratio Indicator & Skip Scan Button (Top-Right) */}
+                    <div className="flex items-center space-x-2">
+                      {mode === 'onboarding' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            stopCamera();
+                            if (onContinueOnboarding) {
+                              onContinueOnboarding();
+                            } else {
+                              onClose();
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-amber-500/90 hover:bg-amber-500 backdrop-blur-md border border-amber-300/40 text-[11px] font-bold text-slate-950 shadow-md transition-all active:scale-95 cursor-pointer flex items-center space-x-1"
+                        >
+                          <span>Skip Scan</span>
+                          <Icon icon="solar:double-alt-arrow-right-bold" className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <div className="px-2.5 py-1 rounded-full bg-zinc-900/90 backdrop-blur-md border border-white/20 text-[10px] font-mono text-zinc-100 shadow-md">
+                        FACE: {Math.round((faceAssessment.faceRatio || 0) * 100)}%
+                      </div>
                     </div>
                   </div>
                 </div>
