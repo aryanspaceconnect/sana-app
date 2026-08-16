@@ -1562,7 +1562,7 @@ export async function saveSkinScanToVault(
   userId: string,
   scanData: {
     scanId: string;
-    scanType: 'daily_scan' | 'intermediate_scan';
+    scanType: 'daily_scan' | 'intermediate_scan' | 'onboarding_scan';
     timestamp?: string;
     rawMetrics?: any;
     scoreInfo?: any;
@@ -1574,7 +1574,7 @@ export async function saveSkinScanToVault(
     concernImages?: Record<string, any>;
   }
 ): Promise<VaultFileRecord> {
-  const folderName = scanData.scanType === 'intermediate_scan' ? 'intermediate_scans' : 'daily_scans';
+  const folderName = scanData.scanType === 'intermediate_scan' ? 'intermediate_scans' : (scanData.scanType === 'onboarding_scan' ? 'onboarding_scans' : 'daily_scans');
   const folderPath = `/${folderName}`;
   
   // Ensure virtual folder exists

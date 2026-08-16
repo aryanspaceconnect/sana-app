@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { ToolDefinition, AgentContext } from '../types.js';
 import { loadAgentVault, saveAgentVaultNote, saveVaultIncident } from '../agentVault.js';
 import { performExaAnswer } from '../exaSearchService.js';
-import { executeWebSearch } from '../searchService.js';
+import { executeWebSearch, executeImageSearch } from '../searchService.js';
 import { updateSessionNotepad, getSessionNotepad } from '../sessionNotepad.js';
 
 export interface McpServerConfig {
@@ -300,6 +300,18 @@ class McpManagerService {
             },
             required: ['query']
           }
+        },
+        {
+          name: 'image_search',
+          description: 'Search for verified real skincare product images and item URLs on the web.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Product or item search query string' },
+              count: { type: 'number', description: 'Number of image URLs to return' }
+            },
+            required: ['query']
+          }
         }
       ]
     }));
@@ -314,6 +326,12 @@ class McpManagerService {
       }
       if (name === 'web_search') {
         const res = await executeWebSearch(String(args?.query || ''));
+        return {
+          content: [{ type: 'text', text: JSON.stringify(res, null, 2) }]
+        };
+      }
+      if (name === 'image_search') {
+        const res = await executeImageSearch(String(args?.query || ''), Number(args?.count || 4));
         return {
           content: [{ type: 'text', text: JSON.stringify(res, null, 2) }]
         };

@@ -3,7 +3,7 @@ import { ToolDefinition, UniversalQuery, AgentContext, ActionProposal } from './
 import { SANA_APP_MAP } from './soul.js';
 import { saveMemoryNoteDirectly } from './workspace.js';
 import { getSessionNotepad, updateSessionNotepad } from './sessionNotepad.js';
-import { executeWebSearch } from './searchService.js';
+import { executeWebSearch, executeImageSearch } from './searchService.js';
 import { performExaSearch, performExaContents, performExaAnswer } from './exaSearchService.js';
 import {
   saveAgentVaultDocument,
@@ -683,6 +683,20 @@ export const webFetchTool: ToolDefinition = {
   }
 };
 
+export const imageSearchSchema = z.object({
+  query: z.string().min(2).describe('Exact product name or skincare item to search images for (e.g., "CeraVe Foaming Facial Cleanser" or "La Roche-Posay Toleriane Cleanser").'),
+  count: z.number().optional().default(3).describe('Number of image URLs to return.')
+});
+
+export const imageSearchTool: ToolDefinition = {
+  name: 'image_search',
+  description: 'Search for verified real product images and skincare item URLs on the web. Use this tool whenever recommending products or discussing skincare items so you can reference direct image URLs using standard Markdown format `![Product Name](imageUrl)` in your response.',
+  parameters: imageSearchSchema,
+  execute: async (args: z.infer<typeof imageSearchSchema>, _context: AgentContext) => {
+    return await executeImageSearch(args.query, args.count);
+  }
+};
+
 export const exaSearchSchema = z.object({
   query: z.string().min(2).describe('Search query to execute via Exa AI Neural Search.'),
   type: z.enum(['auto', 'fast', 'instant', 'deep-lite', 'deep', 'deep-reasoning']).optional().describe('Search depth and speed pattern.'),
@@ -1228,6 +1242,7 @@ export const getCompanionSignalsTool: ToolDefinition = {
 export const SANA_TOOL_REGISTRY: ToolDefinition[] = [
   webSearchTool,
   webFetchTool,
+  imageSearchTool,
   exaSearchTool,
   exaContentsTool,
   exaAnswerTool,

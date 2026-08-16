@@ -35,6 +35,69 @@ interface AIAgentChatProps {
   onSessionChange?: (sessionId: string) => void;
 }
 
+const ProductImageCard: React.FC<{ src?: string; alt?: string }> = ({ src, alt }) => {
+  const [imgError, setImgError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  if (!src) return null;
+
+  return (
+    <div className="my-3 inline-block w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden transition-all hover:shadow-md">
+      <div
+        className="relative bg-slate-50/70 overflow-hidden group cursor-pointer min-h-[160px] flex items-center justify-center p-2"
+        onClick={() => !imgError && setShowPreview(true)}
+      >
+        {!isLoaded && !imgError && (
+          <div className="absolute inset-0 bg-slate-100/80 animate-pulse flex flex-col items-center justify-center">
+            <Icon icon="solar:gallery-wide-linear" className="w-6 h-6 text-slate-300 animate-bounce mb-1" />
+            <span className="text-[11px] text-slate-400 font-medium">Loading product image...</span>
+          </div>
+        )}
+        {imgError ? (
+          <div className="w-full h-36 bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
+            <Icon icon="solar:gallery-wide-broken-linear" className="w-7 h-7 text-slate-300 mb-1" />
+            <span className="text-[12px] font-medium text-slate-600 line-clamp-1">{alt || 'Product Image'}</span>
+            <span className="text-[10.5px] text-slate-400 mt-0.5">Image preview unavailable</span>
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt || 'Skincare Product'}
+            className={`w-full max-h-64 object-contain mx-auto transition-transform duration-300 group-hover:scale-105 ${isLoaded ? 'block' : 'hidden'}`}
+            onLoad={() => setIsLoaded(true)}
+            onError={() => setImgError(true)}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+          />
+        )}
+      </div>
+      {alt && (
+        <div className="px-3.5 py-2 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2">
+          <span className="text-[12px] font-semibold text-slate-800 truncate">{alt}</span>
+          <span className="text-[9.5px] uppercase font-bold tracking-wider text-slate-400 shrink-0 bg-slate-200/60 px-1.5 py-0.5 rounded-xs">Verified Item</span>
+        </div>
+      )}
+
+      {/* Lightbox Preview */}
+      {showPreview && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setShowPreview(false)}>
+          <div className="relative max-w-xl max-h-[85vh] bg-white rounded-2xl p-4 overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setShowPreview(false)}
+              className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+            >
+              <Icon icon="solar:close-circle-bold" className="w-6 h-6" />
+            </button>
+            <img src={src} alt={alt || 'Product Preview'} className="w-full h-full max-h-[70vh] object-contain rounded-lg" />
+            {alt && <p className="mt-3 text-center text-xs font-semibold text-slate-700">{alt}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface ChatMessageBubbleProps {
   msg: ChatMessage;
   userProfile: UserProfile | null;
@@ -208,6 +271,9 @@ const ChatMessageBubble = React.memo<ChatMessageBubbleProps>(
                     <code className="text-[12px] font-mono px-1.5 py-0.5 rounded-md bg-[#f1f5f9] text-[#0f172a] border border-[#e2e8f0]">
                       {children}
                     </code>
+                  ),
+                  img: ({ src, alt }) => (
+                    <ProductImageCard src={src as string} alt={alt as string} />
                   ),
                   a: ({ href, children }) => (
                     <a

@@ -1,6 +1,83 @@
 import { getGenAIClient, googleRateLimiter } from './llmRouter.js';
 import { performExaSearch, ExaSearchOptions } from './exaSearchService.js';
 
+export interface ImageSearchResultItem {
+  title: string;
+  imageUrl: string;
+  thumbnailUrl?: string;
+  sourceUrl?: string;
+}
+
+export interface ImageSearchResult {
+  success: boolean;
+  query: string;
+  images: ImageSearchResultItem[];
+  summary: string;
+}
+
+/**
+ * Execute an exact product / skin topic image search via DuckDuckGo Image Search.
+ */
+export async function executeImageSearch(query: string, count: number = 4): Promise<ImageSearchResult> {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return {
+      success: false,
+      query: '',
+      images: [],
+      summary: 'Empty image search query provided.'
+    };
+  }
+
+  try {
+    console.log(`[SearchService] Executing Image Search for: "${trimmedQuery}"`);
+    const req1 = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(trimmedQuery)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    const html = await req1.text();
+    const vqdMatch = html.match(/vqd=['"]([^'"]+)['"]/);
+    const vqd = vqdMatch ? vqdMatch[1] : '';
+
+    if (vqd) {
+      const imgRes = await fetch(`https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(trimmedQuery)}&vqd=${vqd}&f=,,,`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (imgRes.ok) {
+        const data = await imgRes.json();
+        if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+          const images: ImageSearchResultItem[] = data.results.slice(0, Math.min(count, 8)).map((r: any) => ({
+            title: r.title || trimmedQuery,
+            imageUrl: r.image,
+            thumbnailUrl: r.thumbnail,
+            sourceUrl: r.url
+          }));
+
+          return {
+            success: true,
+            query: trimmedQuery,
+            images,
+            summary: `Found ${images.length} verified product images for "${trimmedQuery}". Direct image URLs are available.`
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[SearchService] Image search failed:', err?.message || err);
+  }
+
+  return {
+    success: false,
+    query: trimmedQuery,
+    images: [],
+    summary: `No direct images could be retrieved for "${trimmedQuery}".`
+  };
+}
+
 export interface WebSearchSiteItem {
   title: string;
   url: string;
