@@ -720,7 +720,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                 s === step
                   ? 'w-6 bg-[#121316]'
                   : s < step
-                  ? 'w-2 bg-emerald-500'
+                  ? 'w-2 bg-amber-500'
                   : 'w-2 bg-slate-200'
               }`}
             />
@@ -763,7 +763,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                     <p className="text-[10px] text-slate-500 leading-tight">Judgment-free guidance tailored to your skin.</p>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                    <Icon icon="solar:scanner-bold-duotone" className="w-5 h-5 text-indigo-500" />
+                    <Icon icon="solar:scanner-bold-duotone" className="w-5 h-5 text-amber-500" />
                     <p className="text-[11px] font-bold text-[#121316]">Dermal Vision</p>
                     <p className="text-[10px] text-slate-500 leading-tight">Powered by Perfect Corp skin analysis.</p>
                   </div>
@@ -989,7 +989,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
 
               {/* Preferred Name */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Preferred Name <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -997,7 +997,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={preferredName}
                   onChange={(e) => setPreferredName(e.target.value)}
                   placeholder="What name should SANA call you?"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Preferred Name") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
@@ -1006,12 +1006,12 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               {/* Environmental / Geological Location with Tooltip */}
               <div className="relative">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1">
+                  <label className="text-[11px] font-semibold text-slate-700 flex items-center space-x-1">
                     <span>Geological / Climate Location <span className="text-rose-500">*</span></span>
                     <button
                       type="button"
                       onClick={() => setActiveTooltip(activeTooltip === 'location' ? null : 'location')}
-                      className="text-indigo-600 hover:text-indigo-800 cursor-pointer p-0.5"
+                      className="text-slate-500 hover:text-slate-800 cursor-pointer p-0.5 transition-colors"
                     >
                       <Icon icon="solar:question-circle-bold-duotone" className="w-4 h-4" />
                     </button>
@@ -1019,7 +1019,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                 </div>
 
                 {activeTooltip === 'location' && (
-                  <div className="p-3 mb-2 rounded-2xl bg-indigo-600 text-white text-[11px] leading-relaxed shadow-lg relative">
+                  <div className="p-3 mb-2 rounded-2xl bg-[#121316] text-slate-100 text-[11px] leading-relaxed shadow-xl border border-slate-800 relative">
                     We cross-reference live Open-Meteo UV index, humidity, dew point, and air quality in your area to shield your skin barrier against local climate stressors.
                   </div>
                 )}
@@ -1029,7 +1029,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
                   placeholder="e.g., San Francisco, London, Tokyo..."
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Geological / Climate Location") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
@@ -1038,12 +1038,12 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               {/* Height & Biological Gender */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1">
+                  <label className="text-[11px] font-semibold text-slate-700 flex items-center space-x-1">
                     <span>Height & Biological Profile <span className="text-rose-500">*</span></span>
                     <button
                       type="button"
                       onClick={() => setActiveTooltip(activeTooltip === 'biological' ? null : 'biological')}
-                      className="text-indigo-600 hover:text-indigo-800 cursor-pointer p-0.5"
+                      className="text-slate-500 hover:text-slate-800 cursor-pointer p-0.5 transition-colors"
                     >
                       <Icon icon="solar:question-circle-bold-duotone" className="w-4 h-4" />
                     </button>
@@ -1051,7 +1051,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                 </div>
 
                 {activeTooltip === 'biological' && (
-                  <div className="p-3 mb-2 rounded-2xl bg-indigo-600 text-white text-[11px] leading-relaxed shadow-lg relative">
+                  <div className="p-3 mb-2 rounded-2xl bg-[#121316] text-slate-100 text-[11px] leading-relaxed shadow-xl border border-slate-800 relative">
                     Helps calculate daily hydration metrics, collagen synthesis rates, and skin cycle fluctuations.
                   </div>
                 )}
@@ -1062,14 +1062,14 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                     value={heightCm}
                     onChange={(e) => setHeightCm(e.target.value)}
                     placeholder="Height in cm (e.g. 170)"
-                    className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                    className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                       validationErrorList.includes("Valid Height (in cm)") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                     }`}
                   />
                   <select
                     value={genderProfile}
                     onChange={(e) => setGenderProfile(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all"
+                    className="w-full px-3 py-2.5 bg-slate-50/80 border border-slate-200 rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all"
                   >
                     <option value="Female">Female</option>
                     <option value="Male">Male</option>
@@ -1081,7 +1081,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
 
               {/* Hormonal Factors Field */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Hormonal Factors & Cycle Sensitivity <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -1089,7 +1089,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={hormonalFactors}
                   onChange={(e) => setHormonalFactors(e.target.value)}
                   placeholder="e.g. Pre-menstrual breakouts around chin, oral contraceptive shift"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Hormonal Factors & Cycle Sensitivity") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
@@ -1098,12 +1098,12 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
               {/* Skincare Goals Field */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1">
+                  <label className="text-[11px] font-semibold text-slate-700 flex items-center space-x-1">
                     <span>Skincare Goals <span className="text-rose-500">*</span></span>
                     <button
                       type="button"
                       onClick={() => setActiveTooltip(activeTooltip === 'goals' ? null : 'goals')}
-                      className="text-indigo-600 hover:text-indigo-800 cursor-pointer p-0.5"
+                      className="text-slate-500 hover:text-slate-800 cursor-pointer p-0.5 transition-colors"
                     >
                       <Icon icon="solar:question-circle-bold-duotone" className="w-4 h-4" />
                     </button>
@@ -1111,7 +1111,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                 </div>
 
                 {activeTooltip === 'goals' && (
-                  <div className="p-3 mb-2 rounded-2xl bg-indigo-600 text-white text-[11px] leading-relaxed shadow-lg relative">
+                  <div className="p-3 mb-2 rounded-2xl bg-[#121316] text-slate-100 text-[11px] leading-relaxed shadow-xl border border-slate-800 relative">
                     These goals shape your AI routine recommendation matrix and daily ingredient target suggestions.
                   </div>
                 )}
@@ -1121,7 +1121,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={skincareGoals}
                   onChange={(e) => setSkincareGoals(e.target.value)}
                   placeholder="e.g. Restore skin barrier, fade post-acne dark spots, reduce dehydration lines"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Skincare Goals") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
@@ -1129,7 +1129,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
 
               {/* Skin Focus Priority */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Skin Focus Priority <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -1137,7 +1137,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={skinPriorities}
                   onChange={(e) => setSkinPriorities(e.target.value)}
                   placeholder="e.g. Strengthen skin barrier & even skin tone"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Skin Focus Priority") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
@@ -1145,7 +1145,7 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
 
               {/* Target Event Timeline */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Upcoming Event / Skin Target Timeline <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -1153,17 +1153,17 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   value={upcomingEvent}
                   onChange={(e) => setUpcomingEvent(e.target.value)}
                   placeholder="e.g. Wedding in 3 weeks, Beach vacation, Daily barrier glow"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
+                  className={`w-full px-3.5 py-2.5 bg-slate-50/80 border rounded-2xl text-xs text-[#121316] focus:outline-none focus:border-[#121316] focus:bg-white transition-all ${
                     validationErrorList.includes("Upcoming Event / Target Timeline") ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
                   }`}
                 />
               </div>
 
-              <div className="flex items-center space-x-3 pt-2">
+              <div className="flex items-center space-x-3 pt-3">
                 <button
                   type="button"
                   onClick={() => setStep(3)}
-                  className="px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
+                  className="px-4 py-3.5 rounded-2xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
                 >
                   Back
                 </button>
@@ -1171,14 +1171,14 @@ Tone: Deeply empathetic, human touch, no AI jargon, non-judgmental, making the u
                   type="button"
                   onClick={handleFinalizeOnboarding}
                   disabled={loading}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md shadow-indigo-600/20 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                  className="flex-1 py-3.5 px-4 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                 >
                   {loading ? (
                     <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      <span>Synchronize & Complete Onboarding</span>
-                      <Icon icon="solar:check-circle-bold" className="w-4 h-4 text-emerald-300" />
+                      <span>Complete Onboarding</span>
+                      <Icon icon="solar:check-circle-bold" className="w-4 h-4 text-amber-300" />
                     </>
                   )}
                 </button>
