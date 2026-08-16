@@ -42,11 +42,6 @@ export const GEMINI_MODEL_CASCADE = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
-  'gemma-4-31b-it',
-  'gemma-4-26b-moe',
-  'gemma-3-27b-it',
-  'gemma-2-27b-it',
-  'gemma-2-9b-it',
   'gemini-2.5-pro'
 ];
 

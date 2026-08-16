@@ -11,7 +11,7 @@ import {
   finalizeNode
 } from './nodes.js';
 
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 7;
 
 // Persistent memory checkpointer for state checkpointing across thread sessions
 export const checkpointer = new MemorySaver();

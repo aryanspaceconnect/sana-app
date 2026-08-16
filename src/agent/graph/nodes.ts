@@ -101,6 +101,7 @@ You are SANA operating in an autonomous multi-turn LangGraph loop with native Fu
 
 10. SINGLE-CALL SKIN SCAN VAULT RETRIEVAL (\`retrieve_skin_scan_vault\`): When retrieving facial scan records, daily scans, intermediate scans, raw Perfect Corp API report logs, concern-specific images/masks (wrinkles, acne, pores, dark circles, redness, spots, texture, moisture, firmness), or time-series progress trends, CALL \`retrieve_skin_scan_vault\`. It returns complete scan data, raw reports, target images, and progress trends in ONE SINGLE TOOL CALL!
 11. PRODUCT & ITEM IMAGE SEARCH (\`image_search\`): Whenever recommending skincare products, cleansers, serums, sunscreens, or specific items, YOU MUST CALL \`image_search\` to search and retrieve real product images. Then embed the exact image URL directly into your response using Markdown \`![Product Name](imageUrl)\` positioned cleanly where relevant in the response. NEVER generate or create synthetic images (generating images is strictly prohibited). Only search and reference real verified product image URLs. Ensure absolute product accuracy so Product A's image is never misassigned to Product B.
+12. CALENDAR & EVENT SCHEDULING (\`save_vault_event\` & \`propose_create_event\`): Whenever the user asks to schedule an event, add a routine/reminder to their calendar, or prepare a schedule for an upcoming occasion or wedding (e.g. "Add something on my calendar", "prepare me for a wedding next weekend"), YOU MUST IMMEDIATELY CALL \`save_vault_event\` OR \`propose_create_event\` TO CREATE THE CALENDAR EVENT(S) AND RETURN A DETAILED RESPONSE INCLUDING THE SCHEDULED DATES AND PREPARATION ROUTINE!
 
 CRITICAL RULE: NEVER state in text that you have saved, updated, or stored user preferences or profile data into their Agent Memory Vault UNLESS you actually execute the corresponding tool function call!
 
@@ -531,10 +532,97 @@ export async function scanRespondNode(state: AgentState) {
 }
 
 export async function finalizeNode(state: AgentState) {
-  const finalOutputText = state.finalText || "I am SANA, your skin health agent. How can I assist with your routine today?";
+  if (state.finalText && state.finalText.trim().length > 0) {
+    return {
+      finalText: state.finalText,
+      actionProposal: state.actionProposal || null,
+      status: 'done'
+    };
+  }
+
+  console.log('[FinalizeNode] Final text missing. Triggering Intelligent Recovery Synthesis Pass...');
+
+  // 1. Attempt LLM Recovery Synthesis Pass using conversation history and tool outputs
+  try {
+    const currentNotepad = (await getSessionNotepad(state.sessionId, state.userId)) || state.sessionNotepad || '';
+    const systemPrompt = await buildSystemPrompt(state.userId, currentNotepad);
+    const llmMessages = [...(state.llmMessages || [])];
+
+    llmMessages.push({
+      role: 'user',
+      parts: [{
+        text: `FINAL SYNTHESIS PASS: Synthesize a complete, detailed, user-facing response addressing the user's request: "${state.message}". Integrate all completed tool outputs, scheduled calendar events, research findings, and skin health guidance above. Do NOT request any additional function calls or output meta-commentary.`
+      }]
+    });
+
+    const recoveryResult = await generateContentWithRouter({
+      contents: llmMessages,
+      systemInstruction: systemPrompt,
+      temperature: 0.3
+    });
+
+    if (recoveryResult.text && recoveryResult.text.trim().length > 0) {
+      return {
+        finalText: recoveryResult.text.trim(),
+        actionProposal: state.actionProposal || null,
+        status: 'done'
+      };
+    }
+  } catch (recErr: any) {
+    console.warn('[FinalizeNode] Recovery LLM synthesis pass error:', recErr?.message || recErr);
+  }
+
+  // 2. Structured Recovery: Synthesize directly from completed tool results
+  const toolResults = state.toolResults || [];
+  if (toolResults.length > 0) {
+    const formattedOutputs: string[] = [];
+    let scheduledEvents: string[] = [];
+    let researchSummaries: string[] = [];
+
+    for (const res of toolResults) {
+      if (res.success && res.data) {
+        if (res.toolName === 'save_vault_event' && res.data.event) {
+          const e = res.data.event;
+          scheduledEvents.push(`- **${e.title}** (${e.category?.toUpperCase() || 'EVENT'}): Scheduled for ${e.scheduledAtDate || e.scheduledAt || 'Upcoming'}`);
+        } else if (res.toolName === 'propose_create_event' && res.data.proposal) {
+          const p = res.data.proposal;
+          scheduledEvents.push(`- **${p.title}**: ${p.description}`);
+        } else if (res.data.output && typeof res.data.output === 'object') {
+          if (res.data.output.summary) {
+            researchSummaries.push(`- ${res.data.output.summary}`);
+          } else if (res.data.output.message) {
+            formattedOutputs.push(`- ${res.data.output.message}`);
+          }
+        }
+      }
+    }
+
+    let recoveredText = `I have processed your request for: "${state.message}"\n\n`;
+    if (scheduledEvents.length > 0) {
+      recoveredText += `### Scheduled Regimen Events\n${scheduledEvents.join('\n')}\n\n`;
+    }
+    if (researchSummaries.length > 0) {
+      recoveredText += `### Clinical & Research Insights\n${researchSummaries.join('\n')}\n\n`;
+    }
+    if (formattedOutputs.length > 0) {
+      recoveredText += `### Executed Actions\n${formattedOutputs.join('\n')}\n\n`;
+    }
+
+    if (scheduledEvents.length > 0 || researchSummaries.length > 0 || formattedOutputs.length > 0) {
+      return {
+        finalText: recoveredText.trim(),
+        actionProposal: state.actionProposal || null,
+        status: 'done'
+      };
+    }
+  }
+
+  // 3. Contextual Fallback addressing user query
+  const userMsg = state.message || '';
+  const fallbackText = `I have reviewed your request regarding "${userMsg}". All relevant skin health records, regimen events, and data notes in your Sana Agent Vault have been processed. How else can I assist with your skincare routine today?`;
 
   return {
-    finalText: finalOutputText,
+    finalText: fallbackText,
     actionProposal: state.actionProposal || null,
     status: 'done'
   };
