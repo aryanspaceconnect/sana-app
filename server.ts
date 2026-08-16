@@ -24,7 +24,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "15mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Initialize Gemini SDK lazily / safely
 function getGeminiClient() {
@@ -296,7 +297,7 @@ Always address the user warmly using their Preferred Name if available. Never us
 // SANA Multi-step Agent Protocol Endpoint
 app.post("/api/sana", async (req, res) => {
   try {
-    const { userId = "guest_user", message, sessionId, history } = req.body;
+    const { userId = "guest_user", message, sessionId, history, attachments } = req.body;
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Missing required string field 'message'" });
     }
@@ -305,6 +306,7 @@ app.post("/api/sana", async (req, res) => {
       userId,
       message,
       sessionId,
+      attachments,
       history
     });
 

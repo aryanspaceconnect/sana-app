@@ -6,7 +6,11 @@ export const AgentStateAnnotation = Annotation.Root({
   userId: Annotation<string>(),
   sessionId: Annotation<string>(),
   message: Annotation<string>(),
-  history: Annotation<Array<{ role: 'user' | 'model'; text: string }>>({
+  attachments: Annotation<Array<{ id: string; name: string; type: 'image' | 'document'; url: string; mimeType?: string; textContent?: string }>>({
+    value: (x, y) => (y !== undefined ? y : x),
+    default: () => []
+  }),
+  history: Annotation<Array<{ role: 'user' | 'model'; text: string; attachments?: any[] }>>({
     value: (x, y) => (y !== undefined ? y : x),
     default: () => []
   }),

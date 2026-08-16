@@ -117,6 +117,41 @@ export async function initializeNode(state: AgentState) {
   // Get session scratchpad
   const sessionNotepad = await getSessionNotepad(state.sessionId, state.userId);
 
+  // Helper to construct Gemini message parts including inline image attachments
+  const buildPartsFromMessageAndAttachments = (text: string, attachments?: any[]) => {
+    const parts: any[] = [{ text: text || '' }];
+    if (attachments && Array.isArray(attachments)) {
+      for (const att of attachments) {
+        if (att.type === 'image' && att.url) {
+          let base64Data = '';
+          let mimeType = att.mimeType || 'image/jpeg';
+          if (att.url.startsWith('data:')) {
+            const matches = att.url.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+              mimeType = matches[1];
+              base64Data = matches[2];
+            }
+          } else {
+            base64Data = att.url;
+          }
+          if (base64Data) {
+            parts.push({
+              inlineData: {
+                mimeType,
+                data: base64Data
+              }
+            });
+          }
+        } else if (att.type === 'document' && att.textContent) {
+          parts.push({
+            text: `\n[Attached Document "${att.name}"]: ${att.textContent}`
+          });
+        }
+      }
+    }
+    return parts;
+  };
+
   // Construct initial Gemini conversation messages if not already present
   let llmMessages = state.llmMessages || [];
   if (llmMessages.length === 0) {
@@ -128,16 +163,17 @@ export async function initializeNode(state: AgentState) {
       for (const item of historyWindow) {
         llmMessages.push({
           role: item.role === 'model' ? 'model' : 'user',
-          parts: [{ text: item.text }]
+          parts: buildPartsFromMessageAndAttachments(item.text, item.attachments)
         });
       }
     }
 
-    // Add current user message with context prefix
+    // Add current user message with context prefix and any current turn image attachments
     const contextSummary = `[User Context: ID=${state.userId}, Session=${state.sessionId}, Profile=${JSON.stringify(loadedContext.profile || {})}]`;
+    const userPromptText = `${contextSummary}\nUser Message: "${state.message}"`;
     llmMessages.push({
       role: 'user',
-      parts: [{ text: `${contextSummary}\nUser Message: "${state.message}"` }]
+      parts: buildPartsFromMessageAndAttachments(userPromptText, state.attachments)
     });
   }
 

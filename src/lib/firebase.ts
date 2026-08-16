@@ -358,7 +358,6 @@ export const createChatSession = async (
     title: sessionData?.title || 'New Skin Consultation',
     sessionType: sessionData?.sessionType || 'chat',
     sessionNotepad: sessionData?.sessionNotepad || '',
-    messages: sanitizeForFirestore(sessionData?.initialMessages || []),
     messageCount: sessionData?.initialMessages?.length || 0,
     lastMessage: sessionData?.initialMessages && sessionData.initialMessages.length > 0
       ? String(sessionData.initialMessages[sessionData.initialMessages.length - 1].text || '').slice(0, 120)
@@ -373,29 +372,21 @@ export const createChatSession = async (
     const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
     await setDoc(sessionRef, newSessionDoc, { merge: true });
 
-    // Also mirror to chats collection for backward compatibility
-    const chatRef = doc(db, "chats", sessionId);
-    await setDoc(chatRef, {
-      userId: safeUid,
-      sessionId,
-      title: newSessionDoc.title,
-      messages: newSessionDoc.messages,
-      sessionNotepad: newSessionDoc.sessionNotepad,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+    if (sessionData?.initialMessages && sessionData.initialMessages.length > 0) {
+      for (const msg of sessionData.initialMessages) {
+        if (msg.id) {
+          const cleanMsg = sanitizeForFirestore({ ...msg });
+          delete cleanMsg.actionProposal;
+          delete cleanMsg.thinkingMeta;
+          const msgRef = doc(db, "users", safeUid, "agent_sessions", sessionId, "messages", msg.id);
+          await setDoc(msgRef, cleanMsg, { merge: true });
+        }
+      }
+    }
 
     return {
-      id: sessionId,
-      userId: safeUid,
-      title: newSessionDoc.title,
-      sessionType: newSessionDoc.sessionType,
-      sessionNotepad: newSessionDoc.sessionNotepad,
-      messages: newSessionDoc.messages,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      lastActiveAt: nowIso,
-      messageCount: newSessionDoc.messageCount,
-      lastMessage: newSessionDoc.lastMessage
+      ...newSessionDoc,
+      messages: sessionData?.initialMessages || []
     };
   } catch (err) {
     console.error("Failed to create chat session in Firestore:", err);
@@ -435,35 +426,33 @@ export const saveChatSessionData = async (
     serverTimestamp: serverTimestamp()
   };
 
-  if (updates.messages !== undefined) {
-    payload.messages = sanitizeForFirestore(updates.messages);
-    payload.messageCount = updates.messages.length;
-    if (updates.messages.length > 0) {
-      const last = updates.messages[updates.messages.length - 1];
-      payload.lastMessage = String(last.text || '').slice(0, 120);
-    }
-  }
+  if (updates.title) payload.title = updates.title;
+  if (updates.sessionNotepad !== undefined) payload.sessionNotepad = updates.sessionNotepad;
+  if (updates.sessionType) payload.sessionType = updates.sessionType;
 
-  if (updates.title) {
-    payload.title = updates.title;
-  }
-  if (updates.sessionNotepad !== undefined) {
-    payload.sessionNotepad = updates.sessionNotepad;
-  }
-  if (updates.sessionType) {
-    payload.sessionType = updates.sessionType;
+  if (updates.messages !== undefined && updates.messages.length > 0) {
+    payload.messageCount = updates.messages.length;
+    const last = updates.messages[updates.messages.length - 1];
+    payload.lastMessage = String(last.text || '').slice(0, 120);
   }
 
   try {
     const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
     await setDoc(sessionRef, payload, { merge: true });
 
-    // Also mirror to chats collection for backward compatibility
-    const chatRef = doc(db, "chats", sessionId);
-    await setDoc(chatRef, {
-      userId: safeUid,
-      ...payload
-    }, { merge: true });
+    // Save each provided message into subcollection users/{userId}/agent_sessions/{sessionId}/messages/{msg.id}
+    if (updates.messages && updates.messages.length > 0) {
+      const msgPromises = updates.messages.map(async (msg) => {
+        if (!msg || !msg.id) return;
+        const cleanMsg = sanitizeForFirestore({ ...msg });
+        delete cleanMsg.actionProposal;
+        delete cleanMsg.thinkingMeta;
+
+        const msgRef = doc(db, "users", safeUid, "agent_sessions", sessionId, "messages", msg.id);
+        await setDoc(msgRef, cleanMsg, { merge: true });
+      });
+      await Promise.all(msgPromises);
+    }
   } catch (err) {
     console.error("Failed to save chat session data:", err);
   }
@@ -495,7 +484,15 @@ export const getChatSession = async (userId: string, sessionId: string) => {
     const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
     const snap = await getDoc(sessionRef);
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data() } as any;
+      const data = { id: snap.id, ...snap.data() } as any;
+      const msgsColRef = collection(db, "users", safeUid, "agent_sessions", sessionId, "messages");
+      const msgsSnap = await getDocs(msgsColRef);
+      if (!msgsSnap.empty) {
+        const msgs = msgsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        msgs.sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+        data.messages = msgs;
+      }
+      return data;
     }
     // Fallback to chats collection
     const chatRef = doc(db, "chats", sessionId);
@@ -556,7 +553,6 @@ export const subscribeUserSessions = (
             title: legacyData.title || 'Initial Skin Consultation',
             sessionType: 'chat',
             sessionNotepad: legacyData.sessionNotepad || '',
-            messages: legacyData.messages || [],
             messageCount: legacyData.messages?.length || 0,
             lastMessage: legacyData.messages?.[legacyData.messages.length - 1]?.text || '',
             createdAt: new Date().toISOString(),
@@ -567,6 +563,14 @@ export const subscribeUserSessions = (
 
           const newDocRef = doc(db, "users", safeUid, "agent_sessions", legacySessionId);
           await setDoc(newDocRef, migratedSession, { merge: true });
+
+          for (const msg of (legacyData.messages || [])) {
+            if (msg.id) {
+              const msgRef = doc(db, "users", safeUid, "agent_sessions", legacySessionId, "messages", msg.id);
+              await setDoc(msgRef, sanitizeForFirestore(msg), { merge: true });
+            }
+          }
+
           callback([migratedSession]);
           return;
         }
@@ -592,16 +596,34 @@ export const subscribeChatSession = (
   }
   const safeUid = userId || 'guest_user';
   const sessionRef = doc(db, "users", safeUid, "agent_sessions", sessionId);
+  const messagesColRef = collection(db, "users", safeUid, "agent_sessions", sessionId, "messages");
 
-  return onSnapshot(sessionRef, (docSnap) => {
+  let sessionData: any = null;
+  let subcollectionMessages: any[] = [];
+
+  const updateAndEmit = () => {
+    if (!sessionData) return;
+    const finalMessages = subcollectionMessages.length > 0
+      ? subcollectionMessages
+      : (Array.isArray(sessionData.messages) ? sessionData.messages : []);
+
+    callback({
+      ...sessionData,
+      messages: finalMessages
+    });
+  };
+
+  const unsubDoc = onSnapshot(sessionRef, (docSnap) => {
     if (docSnap.exists()) {
-      callback({ id: docSnap.id, ...docSnap.data() });
+      sessionData = { id: docSnap.id, ...docSnap.data() };
+      updateAndEmit();
     } else {
       // Fallback check to chats collection
       const chatRef = doc(db, "chats", sessionId);
       getDoc(chatRef).then(cSnap => {
         if (cSnap.exists()) {
-          callback({ id: cSnap.id, ...cSnap.data() });
+          sessionData = { id: cSnap.id, ...cSnap.data() };
+          updateAndEmit();
         } else {
           callback(null);
         }
@@ -611,6 +633,26 @@ export const subscribeChatSession = (
     console.warn("Firestore subscribeChatSession error:", err);
     callback(null);
   });
+
+  const unsubMsgs = onSnapshot(messagesColRef, (msgSnap) => {
+    if (!msgSnap.empty) {
+      const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      msgs.sort((a: any, b: any) => {
+        const tA = new Date(a.timestamp || 0).getTime();
+        const tB = new Date(b.timestamp || 0).getTime();
+        return tA - tB;
+      });
+      subcollectionMessages = msgs;
+      updateAndEmit();
+    }
+  }, (err) => {
+    console.warn("Firestore messages subcollection snapshot error:", err);
+  });
+
+  return () => {
+    unsubDoc();
+    unsubMsgs();
+  };
 };
 
 // Legacy Chat Persistence Helpers (mirrored with session architecture)

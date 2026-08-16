@@ -10,6 +10,7 @@ export async function runSanaAgentGraph(params: AgentRunParams): Promise<AgentRu
     userId: params.userId,
     sessionId,
     message: params.message,
+    attachments: params.attachments || [],
     history: params.history || [],
     passOn: null,
     passOnTrace: [],

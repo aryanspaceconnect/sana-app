@@ -376,6 +376,41 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     refreshVault();
   }, [userId]);
 
+  // Helper to compress and downscale uploaded images to prevent payload & firestore bloat
+  const compressImageFile = (file: File, maxDimension = 1024, quality = 0.82): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else {
+            resolve((e.target?.result as string) || '');
+          }
+        };
+        img.onerror = () => resolve((e.target?.result as string) || '');
+        img.src = (e.target?.result as string) || '';
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Handle document file uploads into selectedAttachments
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -385,14 +420,15 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       const reader = new FileReader();
       reader.onload = (event) => {
         const textContent = (event.target?.result as string) || '';
+        const safeContent = textContent.length > 15000 ? textContent.substring(0, 15000) + '... [truncated]' : textContent;
         const newAttachment: ChatAttachment = {
           id: `att_doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           name: file.name,
           type: 'document',
-          url: textContent,
+          url: safeContent,
           mimeType: file.type || 'text/plain',
           size: file.size,
-          textContent: textContent
+          textContent: safeContent
         };
         setSelectedAttachments(prev => [...prev, newAttachment]);
       };
@@ -408,20 +444,20 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     if (files.length === 0) return;
 
     for (const file of files) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = (event.target?.result as string) || '';
+      try {
+        const compressedDataUrl = await compressImageFile(file);
         const newAttachment: ChatAttachment = {
           id: `att_img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           name: file.name,
           type: 'image',
-          url: dataUrl,
-          mimeType: file.type || 'image/jpeg',
+          url: compressedDataUrl,
+          mimeType: 'image/jpeg',
           size: file.size
         };
         setSelectedAttachments(prev => [...prev, newAttachment]);
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Failed to process image file:', err);
+      }
     }
 
     if (imageInputRef.current) imageInputRef.current.value = '';
@@ -512,11 +548,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         id: activeSessionId,
         title: sessionTitle,
         sessionType: 'chat',
-        initialMessages: updatedMessages
+        initialMessages: [userMsg]
       });
     } else {
       await saveChatSessionData(userId, activeSessionId, {
-        messages: updatedMessages,
+        messages: [userMsg],
         title: sessionTitle
       });
     }
@@ -655,7 +691,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       setMessages(finalMessages);
 
       await saveChatSessionData(userId, activeSessionId, {
-        messages: finalMessages,
+        messages: [modelMsg],
         title: sessionTitle
       });
 
@@ -671,7 +707,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         };
         const finalMessages = [...updatedMessages, cancelMsg];
         setMessages(finalMessages);
-        await saveChatSessionData(userId, activeSessionId, { messages: finalMessages });
+        await saveChatSessionData(userId, activeSessionId, { messages: [cancelMsg] });
         return;
       }
       console.error('SanaAgent Chat error:', err);
