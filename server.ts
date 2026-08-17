@@ -677,28 +677,39 @@ app.post("/api/facial-scan", async (req, res) => {
       console.warn("[FacialScanPipeline] Agent Vault save warning:", vaultErr);
     }
 
-    // STEP 4: Asynchronous Agent Scan Report Generation (Non-blocking)
-    const activeDocId = savedDocId;
-    (async () => {
+    // STEP 4: Synchronous Genuine Agent Scan Report Generation
+    let finalReportText: string | null = null;
+    let finalReportStatus: string = 'running';
+
+    try {
+      console.log(`[ScanReport] Generating inline agent report for scan ${formattedScanId}...`);
+      
+      // Fetch context cleanly, handling Firestore availability gracefully
+      let pastScansList: any[] = [];
       try {
-        console.log(`[ScanReportAsyncWorker] Generating agent report for scan ${formattedScanId}...`);
-        
-        // Fetch past scans for user
-        const pastScansList = await getPastScansForUser(userId, 15);
-        // Fetch universal notepad
-        const universalNotepad = await getUniversalNotepad(userId);
+        pastScansList = await getPastScansForUser(userId, 15);
+      } catch (e) {
+        console.warn("[ScanReport] Note: past scans read skipped or offline:", e);
+      }
 
-        // Build text-only context pack (Latest + Past 2 distinct calendar days + 3-week trend + universal notepad + style)
-        const contextPack = SkinContextManager.buildAgentScanContext(
-          rawPerfectCorpOutput,
-          { integrityStatus: 'VALID', passedChecks: ['Format Validated', 'Metric Ranges Passed'], integrityErrors: [], schemaVerified: true, directUploadFlag: false, validatedAt: new Date().toISOString() },
-          pastScansList,
-          [],
-          universalNotepad,
-          responseStyle
-        );
+      let universalNotepad = "";
+      try {
+        universalNotepad = await getUniversalNotepad(userId);
+      } catch (e) {
+        console.warn("[ScanReport] Note: universal notepad read skipped or offline:", e);
+      }
 
-        const dailyContextBlock = dailyContext ? `
+      // Build text-only context pack
+      const contextPack = SkinContextManager.buildAgentScanContext(
+        rawPerfectCorpOutput,
+        { integrityStatus: 'VALID', passedChecks: ['Format Validated', 'Metric Ranges Passed'], integrityErrors: [], schemaVerified: true, directUploadFlag: false, validatedAt: new Date().toISOString() },
+        pastScansList,
+        [],
+        universalNotepad,
+        responseStyle
+      );
+
+      const dailyContextBlock = dailyContext ? `
 ### USER DAILY EXPOSOME & LIFESTYLE SURVEY DATA
 - Gender Profile Mode: ${dailyContext.gender || 'General'}
 - Sleep & Rest Quality: ${dailyContext.sleep || 'Not provided'}
@@ -708,70 +719,68 @@ app.post("/api/facial-scan", async (req, res) => {
 ${dailyContext.optionalNote ? `- User Observation Note: "${dailyContext.optionalNote}"` : ''}
 ` : '';
 
-        const isOnboarding = scanTypeClean === 'onboarding_scan' || scanType === 'onboarding' || (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0);
-        const selectedPrompt = isOnboarding ? ONBOARDING_REPORT_SYSTEM_PROMPT : POST_SCAN_REPORT_SYSTEM_PROMPT;
+      const isOnboarding = scanTypeClean === 'onboarding_scan' || scanType === 'onboarding' || (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0);
+      const selectedPrompt = isOnboarding ? ONBOARDING_REPORT_SYSTEM_PROMPT : POST_SCAN_REPORT_SYSTEM_PROMPT;
 
-        const onboardingBlock = (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0) ? `
+      const onboardingBlock = (onboardingResponses && Array.isArray(onboardingResponses) && onboardingResponses.length > 0) ? `
 ### ONBOARDING SURVEY QUESTIONS & USER ANSWERS (TAGGED CONTEXT)
 ${onboardingResponses.map((item: any) => `- [QUESTION: ${item.question || item.q}] -> [USER ANSWER: ${item.answer || item.a}]`).join('\n')}
 ` : '';
 
-        const agentPrompt = `${contextPack}
+      const agentPrompt = `${contextPack}
 ${dailyContextBlock}
 ${onboardingBlock}
 
 TASK: Generate a post-scan skin report according to your system prompt rules. Respond directly to the user following all length, voice, style adherence, and content priority rules.`;
 
-        const routerRes = await generateContentWithRouter({
-          contents: agentPrompt,
-          systemInstruction: selectedPrompt,
-          temperature: 0.6,
-          timeoutMs: 30000
-        });
+      const routerRes = await generateContentWithRouter({
+        contents: agentPrompt,
+        systemInstruction: selectedPrompt,
+        temperature: 0.6
+      });
 
-        const reportText = routerRes.text;
-        if (!reportText) {
-          throw new Error("No report text produced by LLM model cascade");
-        }
+      if (routerRes.text && routerRes.text.trim().length > 0) {
+        finalReportText = routerRes.text;
+        finalReportStatus = 'ready';
+      }
 
-        // Update scan checkpoint with ready report
-        if (activeDocId) {
-          await updateFacialScanReport(activeDocId, {
+      // Save report to Firestore checkpoint if database is online
+      if (savedDocId && finalReportText) {
+        try {
+          await updateFacialScanReport(savedDocId, {
             reportStatus: 'ready',
-            reportText,
+            reportText: finalReportText,
             reportSessionId
           });
+        } catch (dbErr) {
+          console.warn("[ScanReport] Note: Firestore checkpoint update skipped (offline/quota):", dbErr);
         }
 
-        // Save assistant message to scan_report chat session history
-        await saveChatMessage(userId, reportSessionId, [
-          {
-            id: `msg_user_prompt_${Date.now()}`,
-            role: 'user',
-            text: `Generate scan report for scan #${formattedScanId}`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          },
-          {
-            id: `msg_report_${Date.now()}`,
-            role: 'assistant',
-            text: reportText,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            passOnTrace: routerRes.thoughts?.[0] || 'router_direct'
-          }
-        ]);
-
-        console.log(`[ScanReportAsyncWorker] Report completed and saved for scan ${formattedScanId}`);
-      } catch (asyncErr: any) {
-        console.error("[ScanReportAsyncWorker] Error generating scan report:", asyncErr);
-        if (activeDocId) {
-          await updateFacialScanReport(activeDocId, {
-            reportStatus: 'ready',
-            reportText: `## Dermatological Facial Scan Report\n\n**Overall Health Score:** ${scoreSnapshot.overall}/100\n- **Estimated Skin Age:** ${scoreSnapshot.skinAge} years\n- **Moisture Retention:** ${scoreSnapshot.moisture}/100\n- **Barrier Redness:** ${scoreSnapshot.barrierRedness}/100\n\nRoutine recommendation: Continue gentle hydration and daily broad-spectrum SPF 50.`,
-            reportSessionId
-          });
+        try {
+          await saveChatMessage(userId, reportSessionId, [
+            {
+              id: `msg_user_prompt_${Date.now()}`,
+              role: 'user',
+              text: `Generate scan report for scan #${formattedScanId}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            },
+            {
+              id: `msg_report_${Date.now()}`,
+              role: 'assistant',
+              text: finalReportText,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              passOnTrace: routerRes.thoughts?.[0] || 'router_direct'
+            }
+          ]);
+        } catch (dbErr) {
+          console.warn("[ScanReport] Note: Chat message save skipped (offline/quota):", dbErr);
         }
       }
-    })();
+
+      console.log(`[ScanReport] Synchronous AI report completed successfully for scan ${formattedScanId}`);
+    } catch (reportErr: any) {
+      console.error("[ScanReport] Error generating scan report:", reportErr);
+    }
 
     // Assemble final response with EXACT raw Perfect Corp API payload + masks + report metadata
     let parsedRawJson = null;
@@ -790,9 +799,9 @@ TASK: Generate a post-scan skin report according to your system prompt rules. Re
       fileId: rawPerfectCorpOutput.fileId,
       provider: rawPerfectCorpOutput.provider,
       timestamp: now.toISOString(),
-      reportStatus: 'running',
+      reportStatus: finalReportStatus,
       reportSessionId,
-      reportText: null,
+      reportText: finalReportText,
       scoreSnapshot,
       rawMetrics: rawPerfectCorpOutput.rawMetrics,
       scoreInfo: rawPerfectCorpOutput.scoreInfo,

@@ -482,7 +482,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          className="w-full max-w-2xl sm:max-w-3xl min-h-[84vh] rounded-[44px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 sm:p-8 relative flex flex-col justify-between space-y-4 my-auto"
+          className="w-full max-w-2xl sm:max-w-3xl max-h-[88vh] rounded-[44px] bg-white/95 backdrop-blur-xl border border-slate-200/80 text-slate-900 overflow-hidden shadow-2xl p-6 sm:p-8 relative flex flex-col space-y-4 my-auto"
         >
           {!scanResult ? (
             isSurveySlideActive ? (
@@ -1063,7 +1063,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               </div>
 
               {/* Bottom Action Buttons */}
-              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200/80 shrink-0 mt-auto">
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200/80 shrink-0 mt-2">
                 {mode === 'onboarding' ? (
                   <button
                     type="button"
