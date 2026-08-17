@@ -47,10 +47,14 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       }
     } catch (err: any) {
       console.error("Google sign in error:", err);
+      const errMsg = err?.message || String(err || '');
       if (err?.code === 'auth/popup-closed-by-user') {
         setError("Sign-in cancelled. Please try again.");
+      } else if (errMsg.includes('Database is closing') || errMsg.includes('Database is hidden') || errMsg.includes('IndexedDB')) {
+        // Ignore background IndexedDB closure on popup redirect; do not display cryptic browser message
+        setError("Sign-in interrupted. Please tap 'Sign in with Google' again.");
       } else {
-        setError(err?.message || "Failed to sign in with Google. Please try manual email login.");
+        setError(errMsg || "Failed to sign in with Google. Please try manual email login.");
       }
     } finally {
       setGoogleLoading(false);
