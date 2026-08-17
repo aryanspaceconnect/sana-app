@@ -324,19 +324,29 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
 
     const isDay = current.is_day === 1;
 
+    // Compute current local ISO hour string: YYYY-MM-DDTHH
+    const nowLocal = new Date();
+    const yr = nowLocal.getFullYear();
+    const mo = String(nowLocal.getMonth() + 1).padStart(2, '0');
+    const dy = String(nowLocal.getDate()).padStart(2, '0');
+    const hr = String(nowLocal.getHours()).padStart(2, '0');
+    const localIsoHour = `${yr}-${mo}-${dy}T${hr}`;
+
     // Find current hour UV from hourly data
     let currentUvIndex = 0.0;
     let currentUvIndexClearSky = 0.0;
 
-    if (isDay && hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
-      const nowIsoHour = new Date().toISOString().slice(0, 13); // 'YYYY-MM-DDTHH'
-      const matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(nowIsoHour));
-      const idxToUse = matchedIdx >= 0 ? matchedIdx : (new Date().getHours() % hourly.uv_index.length);
-      
-      currentUvIndex = Number((hourly.uv_index[idxToUse] ?? 0).toFixed(1));
-      currentUvIndexClearSky = Number((hourly.uv_index_clear_sky?.[idxToUse] ?? currentUvIndex).toFixed(1));
-      
-      if (currentUvIndex < 0) currentUvIndex = 0.0;
+    if (hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
+      let matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(localIsoHour));
+      if (matchedIdx < 0) {
+        const localH = nowLocal.getHours();
+        matchedIdx = (localH >= 0 && localH < hourly.uv_index.length) ? localH : 0;
+      }
+      const rawUv = hourly.uv_index[matchedIdx] ?? 0;
+      const rawClear = hourly.uv_index_clear_sky?.[matchedIdx] ?? rawUv;
+
+      currentUvIndex = Number(Math.max(0, rawUv).toFixed(1));
+      currentUvIndexClearSky = Number(Math.max(0, rawClear).toFixed(1));
     } else {
       currentUvIndex = 0.0;
       currentUvIndexClearSky = 0.0;
@@ -608,13 +618,24 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
       let uvIndex = 0.0;
       let uvIndexClearSky = 0.0;
 
-      if (isDay && hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
-        const nowIsoHour = new Date().toISOString().slice(0, 13);
-        const matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(nowIsoHour));
-        const idxToUse = matchedIdx >= 0 ? matchedIdx : (new Date().getHours() % hourly.uv_index.length);
-        uvIndex = Number((hourly.uv_index[idxToUse] ?? 0).toFixed(1));
-        uvIndexClearSky = Number((hourly.uv_index_clear_sky?.[idxToUse] ?? uvIndex).toFixed(1));
-        if (uvIndex < 0) uvIndex = 0.0;
+      const nowLoc2 = new Date();
+      const yr2 = nowLoc2.getFullYear();
+      const mo2 = String(nowLoc2.getMonth() + 1).padStart(2, '0');
+      const dy2 = String(nowLoc2.getDate()).padStart(2, '0');
+      const hr2 = String(nowLoc2.getHours()).padStart(2, '0');
+      const localIsoHour2 = `${yr2}-${mo2}-${dy2}T${hr2}`;
+
+      if (hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
+        let matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(localIsoHour2));
+        if (matchedIdx < 0) {
+          const localH = nowLoc2.getHours();
+          matchedIdx = (localH >= 0 && localH < hourly.uv_index.length) ? localH : 0;
+        }
+        const rawUv = hourly.uv_index[matchedIdx] ?? 0;
+        const rawClear = hourly.uv_index_clear_sky?.[matchedIdx] ?? rawUv;
+
+        uvIndex = Number(Math.max(0, rawUv).toFixed(1));
+        uvIndexClearSky = Number(Math.max(0, rawClear).toFixed(1));
       } else {
         uvIndex = 0.0;
         uvIndexClearSky = 0.0;

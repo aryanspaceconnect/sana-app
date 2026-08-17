@@ -404,31 +404,76 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     }
   }, [activeSessionIdProp]);
 
-  // Subscribe to all sessions list
+  // Subscribe to all sessions list (with LocalStorage fallback)
   useEffect(() => {
+    let localSessions: any[] = [];
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = localStorage.getItem('sana_local_sessions_list');
+        if (raw) localSessions = JSON.parse(raw);
+      }
+    } catch {}
+
     const unsubscribe = subscribeUserSessions(userId, (sessionList) => {
-      setSessions(sessionList);
-      // If we don't have an active session yet and there is at least one session, set it if not initiating new
-      if (sessionList.length > 0 && !activeSessionId) {
-        setActiveSessionId(sessionList[0].id);
+      // Merge Firestore session list with local cached sessions
+      const mergedMap = new Map<string, any>();
+      sessionList.forEach(s => mergedMap.set(s.id, s));
+      localSessions.forEach(s => {
+        if (!mergedMap.has(s.id)) mergedMap.set(s.id, s);
+      });
+      const combined = Array.from(mergedMap.values());
+      setSessions(combined);
+
+      // If we don't have an active session yet and there is at least one session, set it
+      if (combined.length > 0 && !activeSessionId) {
+        setActiveSessionId(combined[0].id);
       }
     });
 
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, activeSessionId]);
 
-  // Subscribe to the active session document
+  // Subscribe to the active session document (with LocalStorage cache fallback)
   useEffect(() => {
     if (!activeSessionId) return;
 
+    let cachedMsgs: ChatMessage[] | null = null;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = localStorage.getItem(`sana_chat_session_${activeSessionId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+            cachedMsgs = parsed.messages;
+            setMessages(cachedMsgs);
+          }
+        }
+      }
+    } catch {}
+
     const unsubscribe = subscribeChatSession(userId, activeSessionId, (sessionData) => {
-      if (sessionData && Array.isArray(sessionData.messages)) {
+      if (sessionData && Array.isArray(sessionData.messages) && sessionData.messages.length > 0) {
         setMessages(sessionData.messages);
         setSessionNotepadText(sessionData.sessionNotepad || '');
+
+        // Persist to LocalStorage cache
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem(`sana_chat_session_${activeSessionId}`, JSON.stringify({
+              id: activeSessionId,
+              title: sessionData.title || 'Chat Session',
+              createdAt: sessionData.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              messages: sessionData.messages
+            }));
+          }
+        } catch {}
       } else {
-        // If session document does not exist yet (brand new session), start with zero messages
-        setMessages([]);
-        setSessionNotepadText('');
+        // If Firestore document doesn't exist or returned empty, retain cached messages if available
+        if (!cachedMsgs || cachedMsgs.length === 0) {
+          setMessages([]);
+          setSessionNotepadText('');
+        }
       }
     });
 
@@ -439,8 +484,57 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   useEffect(() => {
     const handleOpenSession = (e: any) => {
       if (e.detail?.sessionId) {
-        setActiveSessionId(e.detail.sessionId);
-        if (onSessionChange) onSessionChange(e.detail.sessionId);
+        const sid = e.detail.sessionId;
+        setActiveSessionId(sid);
+        if (onSessionChange) onSessionChange(sid);
+
+        const reportText = e.detail.reportText;
+        const scanId = e.detail.scanId || sid;
+
+        if (reportText) {
+          const userPromptText = e.detail.initialQuery || `Generate scan report for scan #${scanId}`;
+          const initialMsgs: ChatMessage[] = [
+            {
+              id: `msg_user_prompt_${Date.now()}`,
+              role: 'user',
+              text: userPromptText,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              createdAt: new Date().toISOString()
+            },
+            {
+              id: `msg_report_${Date.now()}`,
+              role: 'model',
+              text: reportText,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              createdAt: new Date().toISOString()
+            }
+          ];
+
+          // Store in LocalStorage cache for immediate display and offline persistence
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              const sessionObj = {
+                id: sid,
+                title: 'Clinical Facial Scan Report',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                messages: initialMsgs
+              };
+              localStorage.setItem(`sana_chat_session_${sid}`, JSON.stringify(sessionObj));
+
+              const listRaw = localStorage.getItem('sana_local_sessions_list');
+              let list = listRaw ? JSON.parse(listRaw) : [];
+              if (!list.some((s: any) => s.id === sid)) {
+                list = [{ id: sid, title: 'Clinical Facial Scan Report', createdAt: new Date().toISOString() }, ...list];
+                localStorage.setItem('sana_local_sessions_list', JSON.stringify(list));
+              }
+            }
+          } catch (err) {
+            console.warn("[AIAgentChat] LocalStorage cache write error:", err);
+          }
+
+          setMessages(initialMsgs);
+        }
       }
     };
     window.addEventListener('sana:open_chat_session', handleOpenSession);
