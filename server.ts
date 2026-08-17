@@ -1015,16 +1015,14 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = fs.existsSync(path.join(process.cwd(), "dist", "index.html"))
-      ? path.join(process.cwd(), "dist")
-      : (fs.existsSync(path.join(__dirname, "index.html")) ? __dirname : path.join(process.cwd(), "dist"));
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      const indexPath = path.join(distPath, "index.html");
+    const distDir = path.resolve(process.cwd(), "dist");
+    app.use(express.static(distDir));
+    app.get("*all", (_req, res) => {
+      const indexPath = path.join(distDir, "index.html");
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.sendFile(path.join(process.cwd(), "index.html"));
+        res.status(404).send("Application dist/index.html not found");
       }
     });
   }

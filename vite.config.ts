@@ -17,13 +17,15 @@ export default defineConfig(() => {
     build: {
       outDir: 'dist',
       sourcemap: true,
+      chunkSizeWarningLimit: 1600,
       rollupOptions: {
         output: {
           manualChunks: {
             'vendor-react': ['react', 'react-dom', 'motion/react'],
             'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-            'vendor-icons': ['@iconify/react', 'lucide-react'],
-            'vendor-markdown': ['react-markdown']
+            'vendor-icons': ['lucide-react'],
+            'vendor-markdown': ['react-markdown'],
+            'vendor-[#recharts]': ['recharts']
           }
         }
       }
