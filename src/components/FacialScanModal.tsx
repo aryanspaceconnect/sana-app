@@ -334,12 +334,12 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         recommendations: [],
         capturedImage: base64Image,
         integrityLog: {
-          integrityStatus: 'verified',
-          passedChecks: 5,
+          integrityStatus: 'VALID',
+          passedChecks: ['lighting', 'resolution', 'pose', 'blur', 'face_detected'],
           integrityErrors: [],
           schemaVerified: true,
-          confidenceScore: 0.98,
-          timestamp: new Date().toISOString()
+          directUploadFlag: true,
+          validatedAt: new Date().toISOString()
         },
         annotatedRegions: [],
         concernImages: {},
