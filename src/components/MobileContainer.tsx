@@ -15,9 +15,9 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({
 }) => {
   return (
     <div className="w-full h-screen min-h-screen bg-[#f8f9fb] flex items-center justify-center overflow-hidden font-sans select-none">
-      {/* Clean Web Container (Native Web Application without synthetic phone bezel frames) */}
+      {/* Clean Web Container with safe top inset padding to avoid browser address bar / URL header overlap */}
       <div 
-        className="w-full h-full max-w-lg mx-auto bg-[#f8f9fb] relative overflow-hidden flex flex-col justify-between"
+        className="w-full h-full max-w-lg mx-auto bg-[#f8f9fb] relative overflow-hidden flex flex-col justify-between pt-[env(safe-area-inset-top,44px)]"
       >
         {/* Screen Content Wrapper */}
         <div className="flex-1 w-full h-full overflow-hidden relative">
