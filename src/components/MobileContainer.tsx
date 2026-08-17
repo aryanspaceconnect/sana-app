@@ -14,10 +14,10 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({
   onTabChange
 }) => {
   return (
-    <div className="w-full h-screen min-h-screen bg-[#f8f9fb] flex items-center justify-center overflow-hidden font-sans select-none">
-      {/* Clean Web Container with safe top inset padding to avoid browser address bar / URL header overlap */}
+    <div className="fixed inset-0 w-full h-full min-h-[100dvh] bg-[#f8f9fb] flex items-center justify-center overflow-hidden font-sans select-none">
+      {/* Fixed application container explicitly bounded below browser native UI header */}
       <div 
-        className="w-full h-full max-w-lg mx-auto bg-[#f8f9fb] relative overflow-hidden flex flex-col justify-between pt-[env(safe-area-inset-top,44px)]"
+        className="w-full h-full max-w-lg mx-auto bg-[#f8f9fb] relative overflow-hidden flex flex-col justify-between pt-[max(env(safe-area-inset-top),48px)]"
       >
         {/* Screen Content Wrapper */}
         <div className="flex-1 w-full h-full overflow-hidden relative">
