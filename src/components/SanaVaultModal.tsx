@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Icon } from '@iconify/react';
 import { VaultFileExplorer } from './VaultFileExplorer';
+import { SkinHealthTrendGraph } from './SkinHealthTrendGraph';
+import { getPastScansForUser } from '../lib/firebase';
+import { FacialScanResult } from '../types';
 import {
   loadFullAgentVault,
   getVaultHistory,
@@ -29,6 +32,7 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<VaultTab>('overview');
   const [vaultData, setVaultData] = useState<AgentVaultData | null>(null);
+  const [userScans, setUserScans] = useState<FacialScanResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
   // Search state
@@ -91,8 +95,12 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
   const fetchVault = async () => {
     setLoading(true);
     try {
-      const data = await loadFullAgentVault(userId);
+      const [data, scans] = await Promise.all([
+        loadFullAgentVault(userId),
+        getPastScansForUser(userId).catch(() => [])
+      ]);
       setVaultData(data);
+      setUserScans(scans || []);
     } catch (err) {
       console.warn('Error loading Agent Vault:', err);
     } finally {
@@ -454,6 +462,15 @@ export const SanaVaultModal: React.FC<SanaVaultModalProps> = ({
                 {/* TAB: SKIN PROFILE */}
                 {activeTab === 'skin_profile' && vaultData && (
                   <div className="space-y-6">
+                    {/* Minimalist Aesthetic Skin Health Graph */}
+                    <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+                      <SkinHealthTrendGraph
+                        scans={userScans}
+                        title="Skin Telemetry & Longitudinal Trend Graph"
+                        subtitle="Plotted directly from verified facial scan metrics (Read-Only AI Agent Input)"
+                      />
+                    </div>
+
                     {/* Skin Composition Card */}
                     <div className="p-5 rounded-2xl bg-[#121316] text-white space-y-4 shadow-xs">
                       <div className="flex items-center justify-between border-b border-slate-800 pb-3">

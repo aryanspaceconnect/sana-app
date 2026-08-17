@@ -172,7 +172,7 @@ export async function executeWebSearch(query: string, options?: Partial<ExaSearc
       await googleRateLimiter.acquire();
       console.log(`[SearchService] Executing Google Search Grounding for: "${trimmedQuery}"`);
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.7-flash',
         contents: `Search Google for current clinical dermatology research, ingredient safety, formulation guidelines, or medical evidence regarding: "${trimmedQuery}". Provide a clear evidence-based summary.`,
         config: {
           tools: [{ googleSearch: {} }] as any

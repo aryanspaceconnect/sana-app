@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import { UserProfile, FacialScanResult } from '../types';
 import { subscribeFacialScans } from '../lib/firebase';
 import { parseTimestampToDate } from '../utils/dateUtils';
+import { SkinHealthTrendGraph } from './SkinHealthTrendGraph';
 
 interface ScanHistoryModalProps {
   isOpen: boolean;
@@ -77,6 +78,17 @@ export const ScanHistoryModal: React.FC<ScanHistoryModalProps> = ({
 
           {/* Session List Container */}
           <div className="flex-1 overflow-y-auto no-scrollbar space-y-3.5 pr-0.5">
+            {scanSessions.length > 0 && (
+              <div className="p-4 rounded-2xl bg-[#f8f9fb] border border-[#eaedf1] mb-2">
+                <SkinHealthTrendGraph
+                  scans={scanSessions as any}
+                  title="Skin Telemetry Trend"
+                  subtitle="Read-only data points generated from scan history"
+                  compact={true}
+                />
+              </div>
+            )}
+
             {scanSessions.length === 0 ? (
               <div className="py-12 px-6 rounded-3xl bg-[#f8f9fb] border border-[#eaedf1] text-center space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/60 text-amber-600 flex items-center justify-center mx-auto">

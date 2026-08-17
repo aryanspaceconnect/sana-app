@@ -57,7 +57,7 @@ interface FacialScanModalProps {
   userProfile: UserProfile | null;
   onScanComplete: (result: FacialScanResult) => void;
   pastScans?: FacialScanResult[];
-  mode?: 'ritual' | 'onboarding';
+  mode?: 'ritual' | 'onboarding' | 'agent';
   scanTitle?: string;
   onContinueOnboarding?: () => void;
 }
@@ -310,20 +310,82 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           scanType,
           scanId: formattedScanId,
           responseStyle: userProfile?.settings?.responseStyle || 'professional_medical',
-          dailyContext: dailyContextData
+          dailyContext: dailyContextData,
+          stream: true
         })
       });
 
-      const data = await response.json();
+      if (!response.body) throw new Error('No readable stream available');
 
-      if (!response.ok || data.error) {
-        const mappedErr = mapPerfectCorpError(data.error, data.details);
-        setScanUiError(mappedErr);
-        setIsAnalyzing(false);
-        return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+
+      let data: any = null;
+      let accumulatedReportText = "";
+      let buffer = '';
+
+      // Set initial result structure so UI can render while streaming
+      let currentResult: FacialScanResult = {
+        id: formattedScanId,
+        userId: userProfile?.uid || 'guest_user',
+        scanId: formattedScanId,
+        scanType,
+        summary: 'Direct response from Perfect Corp S2S API',
+        recommendations: [],
+        capturedImage: base64Image,
+        integrityLog: {
+          integrityStatus: 'verified',
+          passedChecks: 5,
+          integrityErrors: [],
+          schemaVerified: true,
+          confidenceScore: 0.98,
+          timestamp: new Date().toISOString()
+        },
+        annotatedRegions: [],
+        concernImages: {},
+        s2sStepLogs: [],
+        rawResponseLog: '',
+        rawJson: {},
+        reportStatus: 'running',
+        reportText: '',
+        reportSessionId: `session_scan_report_${Date.now()}`,
+        masks: [],
+        timestamp: new Date().toISOString()
+      };
+
+      setScanResult(currentResult);
+      setActiveTab('report');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const eventStr = line.substring(6).trim();
+            if (!eventStr) continue;
+            try {
+              const event = JSON.parse(eventStr);
+              if (event.type === 'report_chunk') {
+                accumulatedReportText += event.chunk;
+                setScanResult(prev => prev ? { ...prev, reportText: accumulatedReportText } : prev);
+              } else if (event.type === 'done') {
+                data = event.result;
+              } else if (event.type === 'error') {
+                throw new Error(event.error);
+              }
+            } catch (e) { }
+          }
+        }
       }
 
-      const result: FacialScanResult = {
+      if (!data) throw new Error('Stream ended without returning final result');
+
+      currentResult = {
         id: data.id || data.scanId || formattedScanId,
         userId: userProfile?.uid || 'guest_user',
         scanId: data.scanId || formattedScanId,
@@ -343,18 +405,17 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         rawJson: data.rawJson || data.rawPerfectCorpOutput?.rawJson || data,
         rawMetrics: data.rawMetrics || data.rawPerfectCorpOutput?.rawMetrics,
         scoreInfo: data.scoreInfo || data.rawPerfectCorpOutput?.scoreInfo,
-        reportStatus: data.reportStatus || 'running',
-        reportText: data.reportText || '',
+        reportStatus: data.reportStatus || 'ready',
+        reportText: accumulatedReportText || data.reportText || '',
         reportSessionId: data.reportSessionId || `session_scan_report_${Date.now()}`,
         masks: data.masks || [],
         timestamp: data.timestamp || new Date().toISOString()
       };
 
-      setScanResult(result);
-      setActiveTab('report');
-      onScanComplete(result);
+      setScanResult(currentResult);
+      onScanComplete(currentResult);
+      await saveFacialScan(userProfile?.uid || 'guest_user', currentResult);
 
-      await saveFacialScan(userProfile?.uid || 'guest_user', result);
     } catch (err: any) {
       console.error("Facial scan error:", err);
       setCameraError(err?.message || "Scan processing error. Please try again.");
@@ -1078,6 +1139,24 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
                   >
                     <span>Continue</span>
                     <Icon icon="solar:arrow-right-linear" className="w-4 h-4 text-amber-300" />
+                  </button>
+                ) : mode === 'agent' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const scanMsg = `[SANA AGENT CONTEXT UPDATE]\nFacial Scan completed successfully.\n\nLatest Telemetry:\n${scanResult.reportText || scanResult.summary || JSON.stringify(scanResult.rawJson)}\n\nPlease proceed with your analysis based on this new data.`;
+                      // Switch to agent tab
+                      window.dispatchEvent(new CustomEvent('sana:open_chat_session'));
+                      // Send message
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('sana:send_message', { detail: { message: scanMsg } }));
+                      }, 50);
+                      onClose();
+                    }}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-[#121316] hover:bg-[#20232a] text-white font-bold text-xs transition-all cursor-pointer text-center active:scale-95 shadow-md flex items-center justify-center space-x-2"
+                  >
+                    <span>Continue to Chat</span>
+                    <Icon icon="solar:chat-round-line-duotone" className="w-5 h-5 text-amber-300" />
                   </button>
                 ) : (
                   <>

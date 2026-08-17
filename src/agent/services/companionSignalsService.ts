@@ -439,8 +439,12 @@ export async function getOrGenerateCompanionSignals(
         }
       }
     }
-  } catch (err) {
-    console.warn("[CompassionSignalsService] Firestore read warning:", err);
+  } catch (err: any) {
+    if (err?.message?.includes('Quota limit exceeded') || err?.code === 'resource-exhausted') {
+      console.warn("[CompassionSignalsService] Firestore read skipped: daily free tier quota limit reached.");
+    } else {
+      console.warn("[CompassionSignalsService] Firestore read warning:", err);
+    }
   }
 
   // Gather Context
@@ -491,7 +495,7 @@ export async function getOrGenerateCompanionSignals(
   const uvIdx = envData ? envData.currentExposome.uvIndex : 5.0;
   const dewPt = envData ? `${envData.currentExposome.dewPointC}°C` : '22°C';
   const humidity = envData?.currentExposome?.humidityPercent ?? 70;
-  const aqi = envData?.airQuality?.usAqi ?? 65;
+  const aqi = envData?.airQuality?.usAqi ?? 0;
 
   const peakUvToday = envData?.solarRadiationAndClouds?.uvIndexMaxToday ?? (uvIdx + 1.5);
   const maxTempToday = envData?.hourlyForecastNext24h?.peakTempHour?.tempC
@@ -667,8 +671,12 @@ Generate 2 to 3 concise lines (each under 80 chars, absolute max 90). JSON array
         createdAt: serverTimestamp()
       }));
     }
-  } catch (fsErr) {
-    console.warn("[CompassionSignalsService] Firestore persist warning:", fsErr);
+  } catch (fsErr: any) {
+    if (fsErr?.message?.includes('Quota limit exceeded') || fsErr?.code === 'resource-exhausted') {
+      console.warn("[CompassionSignalsService] Firestore persist skipped: daily free tier quota limit reached.");
+    } else {
+      console.warn("[CompassionSignalsService] Firestore persist warning:", fsErr);
+    }
   }
 
   return resultObj;

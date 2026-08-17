@@ -29,21 +29,25 @@ export interface LLMRouterResult {
  * 1. gemini-3.7-flash (Default primary: next-gen Flash intelligence)
  * 2. gemini-3.6-flash (Primary Tier 2)
  * 3. gemini-3.5-flash (Primary Tier 3)
- * 4. gemini-3.1-pro (High intelligence Pro Tier)
- * 5. gemini-3.1-flash-lite (High quota tier: 15 RPM, 500 RPD)
- * 6. gemini-2.5-flash (Standard Flash tier: 5 RPM, 20 RPD)
- * 7. gemini-2.0-flash (Fast throughput tier: 15 RPM, 500 RPD)
- * 8. gemini-2.5-pro (Deep reasoning fallback tier)
+ * 4. gemini-3.1-flash-lite (High quota tier)
+ * 5. gemini-2.5-flash (Standard Flash tier)
+ * 6. gemini-2.0-flash (Fast throughput tier)
+ * 7. gemini-2.0-flash-lite (High quota tier: 15 RPM, 1500 RPD)
+ * 8. gemini-1.5-flash (Standard Flash fallback)
+ * 9. gemini-2.5-pro (Deep reasoning Pro tier)
+ * 10. gemini-1.5-pro (Pro fallback)
  */
 export const GEMINI_MODEL_CASCADE = [
   'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
-  'gemini-3.1-pro',
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
-  'gemini-2.5-pro'
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-2.5-pro',
+  'gemini-1.5-pro'
 ];
 
 export class RateLimiterTimeoutError extends Error {
@@ -108,14 +112,16 @@ export interface ModelLimitSpec {
 
 // Exact Free Tier specifications derived from user API dashboard, configured with safe buffers
 const MODEL_LIMIT_MAP: Record<string, ModelLimitSpec> = {
-  'gemini-3.7-flash': { maxRpm: 4, maxRpd: 18 },
-  'gemini-3.6-flash': { maxRpm: 4, maxRpd: 18 },
-  'gemini-3.5-flash': { maxRpm: 4, maxRpd: 18 },
-  'gemini-3.1-pro': { maxRpm: 4, maxRpd: 18 },
-  'gemini-3.1-flash-lite': { maxRpm: 12, maxRpd: 450 },
-  'gemini-2.5-flash': { maxRpm: 4, maxRpd: 18 },
-  'gemini-2.0-flash': { maxRpm: 12, maxRpd: 450 },
-  'gemini-2.5-pro': { maxRpm: 4, maxRpd: 18 },
+  'gemini-3.7-flash': { maxRpm: 10, maxRpd: 100 },
+  'gemini-3.6-flash': { maxRpm: 10, maxRpd: 100 },
+  'gemini-3.5-flash': { maxRpm: 10, maxRpd: 100 },
+  'gemini-3.1-flash-lite': { maxRpm: 15, maxRpd: 500 },
+  'gemini-2.5-flash': { maxRpm: 5, maxRpd: 20 },
+  'gemini-2.0-flash': { maxRpm: 15, maxRpd: 500 },
+  'gemini-2.0-flash-lite': { maxRpm: 30, maxRpd: 1500 },
+  'gemini-1.5-flash': { maxRpm: 15, maxRpd: 1500 },
+  'gemini-2.5-pro': { maxRpm: 2, maxRpd: 15 },
+  'gemini-1.5-pro': { maxRpm: 2, maxRpd: 50 },
   'z-ai/glm-5.2': { maxRpm: 32, maxRpd: 100000 }
 };
 
@@ -212,31 +218,70 @@ export class AllModelsExhaustedError extends Error {
 }
 
 /**
+ * Helper to clean and convert Gemini/JSON schema objects into OpenAI-compliant parameters
+ */
+function normalizeSchemaForOpenAI(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema;
+  const copy = Array.isArray(schema) ? [...schema] : { ...schema };
+
+  delete copy.$schema;
+
+  if (typeof copy.type === 'string') {
+    copy.type = copy.type.toLowerCase();
+  }
+
+  if (copy.properties && typeof copy.properties === 'object') {
+    const cleanProps: Record<string, any> = {};
+    for (const [k, v] of Object.entries(copy.properties)) {
+      cleanProps[k] = normalizeSchemaForOpenAI(v);
+    }
+    copy.properties = cleanProps;
+  }
+
+  if (copy.items) {
+    copy.items = normalizeSchemaForOpenAI(copy.items);
+  }
+
+  return copy;
+}
+
+/**
  * Format messages into OpenAI chat structure for ChatNVIDIA (z-ai/glm-5.2)
  */
 export function formatContentsForNvidia(contents: any, systemInstruction?: string) {
   const messages: { role: string; content: string }[] = [];
-  if (systemInstruction) {
-    messages.push({ role: 'system', content: systemInstruction });
+  if (systemInstruction && systemInstruction.trim()) {
+    messages.push({ role: 'system', content: systemInstruction.trim() });
   }
 
   if (Array.isArray(contents)) {
     for (const msg of contents) {
       if (typeof msg === 'string') {
-        messages.push({ role: 'user', content: msg });
+        if (msg.trim()) messages.push({ role: 'user', content: msg.trim() });
       } else if (msg.role && Array.isArray(msg.parts)) {
-        const textParts = msg.parts
-          .map((p: any) => (typeof p === 'string' ? p : p.text || ''))
-          .filter(Boolean)
-          .join('\n');
-        const role = msg.role === 'model' ? 'assistant' : msg.role;
-        messages.push({ role, content: textParts });
+        const partsText: string[] = [];
+        for (const p of msg.parts) {
+          if (typeof p === 'string') {
+            if (p.trim()) partsText.push(p.trim());
+          } else if (p.text) {
+            if (p.text.trim()) partsText.push(p.text.trim());
+          } else if (p.functionCall) {
+            partsText.push(`[Tool Request: ${p.functionCall.name}(${JSON.stringify(p.functionCall.args || {})})]`);
+          } else if (p.functionResponse) {
+            partsText.push(`[Tool Output for ${p.functionResponse.name}: ${JSON.stringify(p.functionResponse.response || {})}]`);
+          } else if (p.inlineData) {
+            partsText.push(`[Attached Media: ${p.inlineData.mimeType || 'image'}]`);
+          }
+        }
+        const textContent = partsText.join('\n').trim();
+        const role = msg.role === 'model' ? 'assistant' : (msg.role === 'function' ? 'user' : msg.role);
+        messages.push({ role: role || 'user', content: textContent || '[User data]' });
       } else if (msg.content) {
-        messages.push({ role: msg.role || 'user', content: String(msg.content) });
+        messages.push({ role: msg.role === 'model' ? 'assistant' : (msg.role || 'user'), content: String(msg.content).trim() || '[Message]' });
       }
     }
   } else if (typeof contents === 'string') {
-    messages.push({ role: 'user', content: contents });
+    messages.push({ role: 'user', content: contents.trim() || 'Hello' });
   }
 
   if (messages.length === 0) {
@@ -248,6 +293,7 @@ export function formatContentsForNvidia(contents: any, systemInstruction?: strin
 
 /**
  * NVIDIA Endpoint client for z-ai/glm-5.2 (Deep Reasoning Model, 35 RPM)
+ * Bulletproof execution guarantee: Retries without tools if payload rejected
  */
 export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLMRouterResult> {
   await nvidiaRateLimiter.acquire(5000);
@@ -280,7 +326,7 @@ export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLM
               function: {
                 name: fd.name,
                 description: fd.description,
-                parameters: fd.parameters
+                parameters: normalizeSchemaForOpenAI(fd.parameters)
               }
             });
           }
@@ -292,7 +338,7 @@ export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLM
       }
     }
 
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    let response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -301,6 +347,22 @@ export async function callNvidiaFallback(options: LLMRouterOptions): Promise<LLM
       body: JSON.stringify(bodyPayload),
       signal: controller.signal
     });
+
+    // Bulletproof Fail-Safe: If tools or payload rejected (HTTP 400), retry immediately without tools
+    if (!response.ok && bodyPayload.tools && response.status === 400) {
+      console.warn("[LLMRouter] GLM-5.2 rejected tools payload (HTTP 400). Retrying plain text fallback...");
+      delete bodyPayload.tools;
+      delete bodyPayload.tool_choice;
+      response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(bodyPayload),
+        signal: controller.signal
+      });
+    }
 
     clearTimeout(timer);
 
@@ -454,7 +516,7 @@ export async function generateContentWithRouter(
       return await callNvidiaFallback(options);
     } catch (nvErr) {
       // If NVIDIA also fails, wait 1s and try primary model as emergency attempt
-      candidateModels.push('gemini-3.7-flash', 'gemini-3.6-flash');
+      candidateModels.push('gemini-2.5-flash', 'gemini-2.0-flash');
     }
   }
 
@@ -565,9 +627,15 @@ export async function generateContentWithRouter(
         console.warn(`[LLMRouter] Model '${model}' failed:`, errMsg);
         lastError = err;
 
+        const isNotFound = /404|NOT_FOUND|not found/i.test(errMsg);
         const isRpdExhausted = /per day|RPD|daily quota/i.test(errMsg);
         const isQuotaExceeded = err instanceof RateLimiterTimeoutError || /429|RESOURCE_EXHAUSTED|RATE_LIMIT|quota|limit/i.test(errMsg);
         const isTransient = /503|UNAVAILABLE|500|high demand/i.test(errMsg);
+
+        if (isNotFound) {
+          modelQuotaTracker.markCooldown(model, 'RPD');
+          break; // Skip non-existent models permanently
+        }
 
         if (isQuotaExceeded || isRpdExhausted) {
           modelQuotaTracker.markCooldown(model, isRpdExhausted ? 'RPD' : 'RPM');

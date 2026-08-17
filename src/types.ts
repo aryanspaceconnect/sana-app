@@ -255,6 +255,7 @@ export interface DailyBriefing {
   windGusts?: number;
   vpdKpa?: number;
   uvIndexClearSky?: number;
+  peakUvIndex?: number;
 }
 
 export interface PopUpNotification {

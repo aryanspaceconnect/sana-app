@@ -115,19 +115,19 @@ interface ChatMessageBubbleProps {
 }
 
 const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: number } => {
-  const rows: TraceRow[] = [];
+  const rawRows: TraceRow[] = [];
 
   if (msg.passOnTrace && Array.isArray(msg.passOnTrace)) {
     msg.passOnTrace.forEach((p: any) => {
       if (p.thought) {
-        rows.push({
+        rawRows.push({
           primary: p.thought,
           type: 'Reasoning'
         });
       }
       if (p.nextTools && Array.isArray(p.nextTools)) {
         p.nextTools.forEach((tc: any) => {
-          rows.push({
+          rawRows.push({
             primary: `Tool: ${tc.name}`,
             secondary: tc.arguments ? JSON.stringify(tc.arguments).slice(0, 45) : undefined,
             mono: true,
@@ -140,10 +140,31 @@ const extractTraceRows = (msg: ChatMessage): { rows: TraceRow[]; elapsed?: numbe
 
   if (msg.thinkingMeta?.modelThoughts && Array.isArray(msg.thinkingMeta.modelThoughts)) {
     msg.thinkingMeta.modelThoughts.forEach((th: string) => {
-      if (th && !rows.some(r => r.primary === th)) {
-        rows.push({ primary: th, type: 'Reasoning' });
+      if (th && !rawRows.some(r => r.primary === th)) {
+        rawRows.push({ primary: th, type: 'Reasoning' });
       }
     });
+  }
+
+  // Deduplicate identical consecutive or duplicate trace rows to prevent inflated counts
+  const rows: TraceRow[] = [];
+  const seenKeys = new Set<string>();
+  for (const r of rawRows) {
+    const key = `${r.type}:${r.primary}:${r.secondary || ''}`;
+    // If it's a tool, allow unique tool calls or deduplicate exact repeats
+    if (r.type === 'Tool') {
+      const toolKey = r.primary;
+      // Count existing occurrences of this exact tool
+      const existingCount = rows.filter(row => row.primary === r.primary).length;
+      if (existingCount < 2) { // Cap each tool to max 2 entries per message trace
+        rows.push(r);
+      }
+    } else {
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        rows.push(r);
+      }
+    }
   }
 
   return {
@@ -538,7 +559,18 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       }
     };
     window.addEventListener('sana:open_chat_session', handleOpenSession);
-    return () => window.removeEventListener('sana:open_chat_session', handleOpenSession);
+    
+    const handleRemoteSend = (e: any) => {
+      if (e.detail?.message && handleSendMessageRef.current) {
+        handleSendMessageRef.current(e.detail.message);
+      }
+    };
+    window.addEventListener('sana:send_message', handleRemoteSend as any);
+
+    return () => {
+      window.removeEventListener('sana:open_chat_session', handleOpenSession);
+      window.removeEventListener('sana:send_message', handleRemoteSend as any);
+    };
   }, [onSessionChange]);
 
   // Load user's Agent Vault data
@@ -685,6 +717,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const currentSession = sessions.find(s => s.id === activeSessionId);
   const currentTitle = currentSession?.title || (messages.length > 0 ? (messages[0]?.text?.slice(0, 30) || 'Active Consultation') : 'New Consultation');
 
+  // Store handleSendMessage in a ref so event listeners can call the latest version
+  const handleSendMessageRef = useRef<((textToSend?: string) => Promise<void>) | undefined>(undefined);
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend !== undefined ? textToSend : inputText;
     const currentAttachments = textToSend !== undefined ? [] : [...selectedAttachments];
@@ -768,7 +803,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             role: m.role,
             text: m.text,
             attachments: m.attachments
-          }))
+          })),
+          stream: true
         })
       });
 
@@ -776,10 +812,66 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      const data = await response.json();
-
-      // Transition to working state as soon as LLM response payload arrives
+      if (!response.body) throw new Error('No readable stream available');
+      
       setProcessingStatus('working');
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      
+      const modelMsgId = `mod_${Date.now()}`;
+      let accumulatedText = "";
+      
+      // Append initial empty model message
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: modelMsgId,
+          role: 'model',
+          text: '',
+          elapsedSeconds: 0,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toISOString()
+        }
+      ]);
+
+      let data: any = null;
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const eventStr = line.substring(6).trim();
+            if (!eventStr) continue;
+            try {
+              const event = JSON.parse(eventStr);
+              if (event.type === 'text') {
+                accumulatedText += event.chunk;
+                setMessages((prev) => 
+                  prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m)
+                );
+              } else if (event.type === 'done') {
+                data = event.result;
+              } else if (event.type === 'error') {
+                throw new Error(event.error);
+              }
+            } catch (e) {
+              // Ignore invalid JSON from partial chunks if any (though line split should prevent it)
+            }
+          }
+        }
+      }
+      
+      if (!data) throw new Error('Stream ended without returning final result');
 
       // Extract real tool results & detected queries
       let detectedSearchQuery: string | undefined = undefined;
@@ -842,12 +934,13 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       }
 
       setLiveTraceRows(realTraceRows);
+
       const elapsedSeconds = (Date.now() - requestStartTimeRef.current) / 1000;
 
       const modelMsg: ChatMessage = {
-        id: `mod_${Date.now()}`,
+        id: modelMsgId,
         role: 'model',
-        text: data.text || "I am processing your skincare query with SanaAgent.",
+        text: data.text || accumulatedText || "I am processing your skincare query with SanaAgent.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         createdAt: new Date().toISOString(),
         actionProposal: data.actionProposal,
@@ -907,6 +1000,10 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       setProcessingStatus('idle');
     }
   };
+
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
 
   const suggestionChips = [
     "Retinol + Vitamin C safe combination?",

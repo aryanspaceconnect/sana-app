@@ -52,9 +52,10 @@ export const VaultFileExplorer: React.FC<VaultFileExplorerProps> = ({
 
     // Helper to ensure a folder exists in list
     const ensureFolder = (path: string, name: string, description: string) => {
-      if (!folders.some(f => f.path === path)) {
+      const folderId = `portal_fldr_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      if (!folders.some(f => f.path === path || f.id === folderId)) {
         folders.push({
-          id: `portal_fldr_${Buffer.from(path).toString('hex').substring(0, 12)}`,
+          id: folderId,
           name,
           path,
           parentPath: path.substring(0, path.lastIndexOf('/')) || '/',

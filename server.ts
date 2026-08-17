@@ -957,6 +957,7 @@ app.post("/api/daily-brief", async (req, res) => {
       windGusts: weather.windGustsKmH,
       vpdKpa: weather.vpdKpa,
       uvIndexClearSky: weather.uvIndexClearSky,
+      peakUvIndex: (weather as any).peakUvIndex,
       primaryReminders: [
         weather.uvIndex > 0
           ? `Apply broad-spectrum sunscreen before going outdoors (UV: ${weather.uvIndex} ${uvLevel})`

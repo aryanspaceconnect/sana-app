@@ -31,6 +31,7 @@ export default function App() {
 
   // Modals
   const [isScanOpen, setIsScanOpen] = useState(false);
+  const [scanMode, setScanMode] = useState<'ritual' | 'onboarding' | 'agent'>('ritual');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
@@ -58,7 +59,14 @@ export default function App() {
 
   // Listen for custom trigger events from agent / approval cards
   useEffect(() => {
-    const handleOpenScan = () => setIsScanOpen(true);
+    const handleOpenScan = (e: any) => {
+      if (e.detail?.initiatedBy === 'agent') {
+        setScanMode('agent');
+      } else {
+        setScanMode('ritual');
+      }
+      setIsScanOpen(true);
+    };
     const handleOpenChatSession = () => setActiveTab('agent');
 
     window.addEventListener('sana:open_facial_scan', handleOpenScan);
@@ -562,6 +570,7 @@ export default function App() {
       {/* Facial Skin Scanner Modal */}
       <FacialScanModal
         isOpen={isScanOpen}
+        mode={scanMode}
         onClose={() => setIsScanOpen(false)}
         userProfile={userProfile}
         onScanComplete={(result) => {

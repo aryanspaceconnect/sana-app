@@ -438,7 +438,7 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
 
     if (proposal) {
       if (proposal.actionType === 'TRIGGER_FACIAL_SCAN' || proposal.actionTarget === 'scan') {
-        window.dispatchEvent(new CustomEvent('sana:open_facial_scan'));
+        window.dispatchEvent(new CustomEvent('sana:open_facial_scan', { detail: { initiatedBy: 'agent' } }));
         setStatus('approved');
         setResultMessage('Facial scan camera launched successfully!');
         if (onExecuted) onExecuted({ success: true, message: 'Facial scan camera launched.' });

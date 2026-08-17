@@ -148,6 +148,7 @@ interface WeatherCache {
     vpdKpa: number;
     uvIndex: number;
     uvIndexClearSky: number;
+    peakUvIndex: number;
     cloudCoverPercent: number;
     precipMm: number;
     precipProbPercent: number;
@@ -165,7 +166,17 @@ interface WeatherCache {
 }
 
 let baselineCache: WeatherCache | null = null;
-const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes in-memory cache
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes in-memory cache
+
+function calculateUsAqiFromPm25(pm25: number): number {
+  if (pm25 == null || isNaN(pm25) || pm25 < 0) return 0;
+  if (pm25 <= 12.0) return Math.round((50 / 12.0) * pm25);
+  if (pm25 <= 35.4) return Math.round(50 + ((100 - 51) / (35.4 - 12.1)) * (pm25 - 12.1));
+  if (pm25 <= 55.4) return Math.round(101 + ((150 - 101) / (55.4 - 35.5)) * (pm25 - 35.5));
+  if (pm25 <= 150.4) return Math.round(151 + ((200 - 151) / (150.4 - 55.5)) * (pm25 - 55.5));
+  if (pm25 <= 250.4) return Math.round(201 + ((300 - 201) / (250.4 - 150.5)) * (pm25 - 150.5));
+  return Math.round(301 + ((500 - 301) / (500.4 - 250.5)) * (pm25 - 250.5));
+}
 
 /**
  * Search locations via Open-Meteo Geocoding API
@@ -303,8 +314,9 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     const params = [
       `latitude=${finalLat}`,
       `longitude=${finalLon}`,
-      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit',
+      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit,uv_index,uv_index_clear_sky',
       'hourly=uv_index,uv_index_clear_sky,is_day',
+      'daily=uv_index_max',
       'forecast_days=1',
       'timezone=auto'
     ].join('&');
@@ -315,6 +327,7 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     const json = await res.json();
 
     const current = json.current || {};
+    const daily = json.daily || {};
     const hourly = json.hourly || {};
     const condName = getWmoConditionName(current.weather_code ?? 2);
 
@@ -323,34 +336,9 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     }
 
     const isDay = current.is_day === 1;
-
-    // Compute current local ISO hour string: YYYY-MM-DDTHH
-    const nowLocal = new Date();
-    const yr = nowLocal.getFullYear();
-    const mo = String(nowLocal.getMonth() + 1).padStart(2, '0');
-    const dy = String(nowLocal.getDate()).padStart(2, '0');
-    const hr = String(nowLocal.getHours()).padStart(2, '0');
-    const localIsoHour = `${yr}-${mo}-${dy}T${hr}`;
-
-    // Find current hour UV from hourly data
-    let currentUvIndex = 0.0;
-    let currentUvIndexClearSky = 0.0;
-
-    if (hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
-      let matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(localIsoHour));
-      if (matchedIdx < 0) {
-        const localH = nowLocal.getHours();
-        matchedIdx = (localH >= 0 && localH < hourly.uv_index.length) ? localH : 0;
-      }
-      const rawUv = hourly.uv_index[matchedIdx] ?? 0;
-      const rawClear = hourly.uv_index_clear_sky?.[matchedIdx] ?? rawUv;
-
-      currentUvIndex = Number(Math.max(0, rawUv).toFixed(1));
-      currentUvIndexClearSky = Number(Math.max(0, rawClear).toFixed(1));
-    } else {
-      currentUvIndex = 0.0;
-      currentUvIndexClearSky = 0.0;
-    }
+    const currentUvIndex = Number(Math.max(0, current.uv_index ?? 0).toFixed(1));
+    const currentUvIndexClearSky = Number(Math.max(0, current.uv_index_clear_sky ?? current.uv_index ?? 0).toFixed(1));
+    const peakUvIndex = Number(Math.max(0, daily.uv_index_max?.[0] ?? 0).toFixed(1));
 
     // Quick AQI fetch for baseline prompt
     let aqiVal: number | undefined;
@@ -360,15 +348,20 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
     let no2Val: number | undefined;
 
     try {
-      const aqRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${finalLat}&longitude=${finalLon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide`);
+      const aqRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${finalLat}&longitude=${finalLon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto`);
       if (aqRes.ok) {
         const aqJson = await aqRes.json();
         const aqCurr = aqJson.current || {};
-        aqiVal = aqCurr.us_aqi;
-        pm25Val = aqCurr.pm2_5;
-        pm10Val = aqCurr.pm10;
-        o3Val = aqCurr.ozone;
-        no2Val = aqCurr.nitrogen_dioxide;
+        pm25Val = typeof aqCurr.pm2_5 === 'number' ? aqCurr.pm2_5 : undefined;
+        pm10Val = typeof aqCurr.pm10 === 'number' ? aqCurr.pm10 : undefined;
+        o3Val = typeof aqCurr.ozone === 'number' ? aqCurr.ozone : undefined;
+        no2Val = typeof aqCurr.nitrogen_dioxide === 'number' ? aqCurr.nitrogen_dioxide : undefined;
+        
+        if (typeof aqCurr.us_aqi === 'number' && !isNaN(aqCurr.us_aqi) && aqCurr.us_aqi > 0) {
+          aqiVal = Math.round(aqCurr.us_aqi);
+        } else if (pm25Val !== undefined) {
+          aqiVal = calculateUsAqiFromPm25(pm25Val);
+        }
       }
     } catch {
       // Non-blocking fallback
@@ -383,6 +376,7 @@ export async function getBaselineWeatherData(lat?: number, lon?: number, locatio
       vpdKpa: current.vapour_pressure_deficit ?? 0,
       uvIndex: currentUvIndex,
       uvIndexClearSky: currentUvIndexClearSky,
+      peakUvIndex: peakUvIndex,
       isDay: isDay ? 1 : 0,
       cloudCoverPercent: current.cloud_cover ?? 0,
       precipMm: current.precipitation ?? 0,
@@ -531,14 +525,21 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
         const aqParams = [
           `latitude=${finalLat}`,
           `longitude=${finalLon}`,
-          'current=us_aqi,pm2_5,pm10,nitrogen_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen'
+          'current=us_aqi,pm2_5,pm10,nitrogen_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen',
+          'timezone=auto'
         ].join('&');
 
         const aqRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${aqParams}`);
         if (aqRes.ok) {
           const aqJson = await aqRes.json();
           const curr = aqJson.current || {};
-          const aqi = curr.us_aqi ?? 65;
+          const rawPm25 = typeof curr.pm2_5 === 'number' ? curr.pm2_5 : 18.5;
+          let aqi = 50;
+          if (typeof curr.us_aqi === 'number' && !isNaN(curr.us_aqi) && curr.us_aqi > 0) {
+            aqi = Math.round(curr.us_aqi);
+          } else if (typeof curr.pm2_5 === 'number') {
+            aqi = calculateUsAqiFromPm25(curr.pm2_5);
+          }
 
           const alder = curr.alder_pollen ?? null;
           const birch = curr.birch_pollen ?? null;
@@ -587,7 +588,7 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
     const forecastParams = [
       `latitude=${finalLat}`,
       `longitude=${finalLon}`,
-      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit',
+      'current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,vapour_pressure_deficit,uv_index,uv_index_clear_sky',
       'hourly=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation_probability,uv_index,uv_index_clear_sky,vapour_pressure_deficit,cloud_cover,wind_speed_10m,wind_gusts_10m,soil_temperature_0_to_7cm,soil_moisture_0_to_7cm',
       'daily=temperature_2m_max,temperature_2m_min,uv_index_max,uv_index_clear_sky_max,precipitation_sum,precipitation_probability_max,weather_code',
       'past_days=1',
@@ -615,31 +616,8 @@ export async function fetchAdvancedEnvironmentalData(args: FetchAdvancedEnvironm
       const windSpeedKmH = current.wind_speed_10m ?? 10;
       const windGustsKmH = current.wind_gusts_10m ?? 18;
 
-      let uvIndex = 0.0;
-      let uvIndexClearSky = 0.0;
-
-      const nowLoc2 = new Date();
-      const yr2 = nowLoc2.getFullYear();
-      const mo2 = String(nowLoc2.getMonth() + 1).padStart(2, '0');
-      const dy2 = String(nowLoc2.getDate()).padStart(2, '0');
-      const hr2 = String(nowLoc2.getHours()).padStart(2, '0');
-      const localIsoHour2 = `${yr2}-${mo2}-${dy2}T${hr2}`;
-
-      if (hourly.time && hourly.uv_index && hourly.uv_index.length > 0) {
-        let matchedIdx = hourly.time.findIndex((t: string) => t.startsWith(localIsoHour2));
-        if (matchedIdx < 0) {
-          const localH = nowLoc2.getHours();
-          matchedIdx = (localH >= 0 && localH < hourly.uv_index.length) ? localH : 0;
-        }
-        const rawUv = hourly.uv_index[matchedIdx] ?? 0;
-        const rawClear = hourly.uv_index_clear_sky?.[matchedIdx] ?? rawUv;
-
-        uvIndex = Number(Math.max(0, rawUv).toFixed(1));
-        uvIndexClearSky = Number(Math.max(0, rawClear).toFixed(1));
-      } else {
-        uvIndex = 0.0;
-        uvIndexClearSky = 0.0;
-      }
+      const uvIndex = Number(Math.max(0, current.uv_index ?? 0).toFixed(1));
+      const uvIndexClearSky = Number(Math.max(0, current.uv_index_clear_sky ?? current.uv_index ?? 0).toFixed(1));
 
       let vpdCategory: AdvancedEnvironmentalResponse['currentExposome']['vpdCategory'] = 'Balanced / Optimal';
       if (vpdKpa < 0.5) vpdCategory = 'Low / Muggy';

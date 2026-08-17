@@ -221,7 +221,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     e.stopPropagation();
 
     const uvVal = dailyBrief.uvIndex !== undefined && dailyBrief.uvIndex !== null ? Number(dailyBrief.uvIndex) : 0;
-    const aqiVal = dailyBrief.airQualityAqi ?? 67;
+    const aqiVal = dailyBrief.airQualityAqi ?? 0;
     const humVal = dailyBrief.humidity || '78%';
     const feelsLikeVal = dailyBrief.feelsLike || dailyBrief.temperature || '29°C';
     const windVal = `${dailyBrief.windSpeed ?? 13.9} km/h`;
@@ -418,8 +418,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'uv')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#fffcf7] border border-[#fde8d0]/60 hover:bg-[#fff7ed] transition-all duration-200 cursor-pointer group"
           >
-            <span className="text-[12.5px] font-bold leading-none text-[#c2410c] tracking-tight">
-              UV {uvVal.toFixed(1)}
+            <span className="text-[18px] font-bold leading-none text-[#c2410c] tracking-tight flex items-baseline">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider mr-1 text-[#ea580c]/80">UV</span>
+              <span>{uvVal.toFixed(1)}</span>
             </span>
             <span className="text-[10px] font-semibold text-[#9a3412]/80 mt-1.5 truncate">
               {dailyBrief.uvLevel || (uvVal < 3 ? "Low" : uvVal < 6 ? "Moderate" : "High")}
@@ -431,11 +432,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'aqi')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f8fdf9] border border-[#d1fae5]/60 hover:bg-[#f0fdf4] transition-all duration-200 cursor-pointer group"
           >
-            <span className="text-[12.5px] font-bold leading-none text-[#15803d] tracking-tight">
-              AQI {aqiVal}
+            <span className="text-[18px] font-bold leading-none text-[#15803d] tracking-tight flex items-baseline">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider mr-1 text-[#16a34a]/80">AQI</span>
+              <span>{aqiVal}</span>
             </span>
             <span className="text-[10px] font-semibold text-[#166534]/80 mt-1.5 truncate">
-              {aqiVal <= 0 ? "Pending" : aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : "Sensitive"}
+              {aqiVal <= 0 ? "Pending" : aqiVal <= 50 ? "Clean" : aqiVal <= 100 ? "Moderate" : aqiVal <= 150 ? "Sensitive" : "Unhealthy"}
             </span>
           </div>
 
@@ -444,10 +446,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             onClick={(e) => handleMetricClick(e, 'humidity')}
             className="flex flex-col justify-between p-2.5 rounded-2xl bg-[#f7fbfe] border border-[#dbeafe]/60 hover:bg-[#eff6ff] transition-all duration-200 cursor-pointer group"
           >
-            <span className="text-[12px] font-bold leading-none text-[#0284c7] tracking-tight truncate">
+            <span className="text-[21px] font-bold leading-none text-[#0284c7] tracking-tight">
               {dailyBrief.humidity ? dailyBrief.humidity.replace(' Humidity', '').trim() : '--'}
             </span>
-            <span className="text-[9.5px] font-semibold text-[#0369a1]/80 mt-1.5 truncate">
+            <span className="text-[10px] font-semibold text-[#0369a1]/80 mt-1.5 truncate">
               {dailyBrief.precipProb !== undefined ? `${dailyBrief.precipProb}% rain` : '0% rain'}
             </span>
           </div>
@@ -563,7 +565,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <span className="truncate">Peak UV</span>
                   </span>
                   <span className="text-[12px] font-bold text-[#1e293b] block mt-0.5">
-                    {dailyBrief.uvIndexClearSky ?? (uvVal + 1.2).toFixed(1)}
+                    {dailyBrief.peakUvIndex ?? dailyBrief.uvIndexClearSky ?? (uvVal + 1.2).toFixed(1)}
                   </span>
                 </div>
 
