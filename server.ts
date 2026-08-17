@@ -722,14 +722,17 @@ ${onboardingBlock}
 
 TASK: Generate a post-scan skin report according to your system prompt rules. Respond directly to the user following all length, voice, style adherence, and content priority rules.`;
 
-        const agentRes = await runSanaAgent({
-          userId,
-          sessionId: reportSessionId,
-          message: agentPrompt,
-          systemPrompt: selectedPrompt
+        const routerRes = await generateContentWithRouter({
+          contents: agentPrompt,
+          systemInstruction: selectedPrompt,
+          temperature: 0.6,
+          timeoutMs: 30000
         });
 
-        const reportText = agentRes.text || `## Dermatological Facial Scan Report\n\n**Overall Health Score:** ${scoreSnapshot.overall}/100\n- **Estimated Skin Age:** ${scoreSnapshot.skinAge} years\n- **Barrier Redness:** ${scoreSnapshot.barrierRedness}/100\n- **Moisture Retention:** ${scoreSnapshot.moisture}/100\n\nMaintain gentle morning and evening routines with daily SPF 50.`;
+        const reportText = routerRes.text;
+        if (!reportText) {
+          throw new Error("No report text produced by LLM model cascade");
+        }
 
         // Update scan checkpoint with ready report
         if (activeDocId) {
@@ -753,7 +756,7 @@ TASK: Generate a post-scan skin report according to your system prompt rules. Re
             role: 'assistant',
             text: reportText,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            passOnTrace: agentRes.passOnTrace
+            passOnTrace: routerRes.thoughts?.[0] || 'router_direct'
           }
         ]);
 

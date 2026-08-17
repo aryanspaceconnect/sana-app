@@ -125,15 +125,46 @@ export const logoutUser = async () => {
 // Get User Profile from Firestore
 export const getUserProfileFromFirestore = async (uid: string) => {
   if (!uid) return null;
+
+  // Check LocalStorage cache first
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const cached = localStorage.getItem(`sana_profile_${uid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Serve cached if fresh or quota reached
+        return parsed;
+      }
+    } catch {}
+  }
+
   try {
     const userRef = doc(db, "users", uid);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
-      return snap.data();
+      const profile = snap.data();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.setItem(`sana_profile_${uid}`, JSON.stringify(profile));
+        } catch {}
+      }
+      return profile;
     }
-  } catch (err) {
-    console.warn("getUserProfileFromFirestore error:", err);
+  } catch (err: any) {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("getUserProfileFromFirestore error:", err?.message || err);
+    }
   }
+
+  // Fallback to cached profile if available
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const cached = localStorage.getItem(`sana_profile_${uid}`);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+  }
+
   return null;
 };
 
@@ -305,9 +336,16 @@ export const updateFacialScanReport = async (docId: string, updatePayload: { rep
   }
 };
 
+const PAST_SCANS_CACHE: Record<string, { scans: any[]; timestamp: number }> = {};
+
 // Get Past Scans for User (Promise)
 export const getPastScansForUser = async (userId: string, limitCount: number = 20): Promise<any[]> => {
   const safeUid = userId || 'guest_user';
+  const now = Date.now();
+  if (PAST_SCANS_CACHE[safeUid] && (now - PAST_SCANS_CACHE[safeUid].timestamp < 120000)) {
+    return PAST_SCANS_CACHE[safeUid].scans.slice(0, limitCount);
+  }
+
   try {
     const q = query(
       collection(db, "facial_scans"),
@@ -316,6 +354,7 @@ export const getPastScansForUser = async (userId: string, limitCount: number = 2
     );
     const snap = await getDocs(q);
     const scans = snap.docs.map(d => ({ id: d.id, ...d.data() })).slice(0, limitCount);
+    PAST_SCANS_CACHE[safeUid] = { scans, timestamp: now };
     if (typeof window !== 'undefined' && window.localStorage && scans.length > 0) {
       try {
         localStorage.setItem(`sana_scans_${safeUid}`, JSON.stringify(scans));
@@ -342,17 +381,35 @@ export const getPastScansForUser = async (userId: string, limitCount: number = 2
 
 // Subscribe to Facial Scan History
 export const subscribeFacialScans = (userId: string, callback: (scans: any[]) => void) => {
+  const safeUid = userId || 'guest_user';
+  const loadLocalScans = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const cached = localStorage.getItem(`sana_scans_${safeUid}`);
+        if (cached) callback(JSON.parse(cached));
+        else callback([]);
+      } catch { callback([]); }
+    } else { callback([]); }
+  };
+
   const q = query(
     collection(db, "facial_scans"),
-    where("userId", "==", userId),
+    where("userId", "==", safeUid),
     orderBy("timestamp", "desc")
   );
+
   return onSnapshot(q, (snapshot) => {
     const scans = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (typeof window !== 'undefined' && window.localStorage && scans.length > 0) {
+      try { localStorage.setItem(`sana_scans_${safeUid}`, JSON.stringify(scans)); } catch {}
+    }
     callback(scans);
-  }, (err) => {
-    console.warn("Firestore subscription error (facial_scans):", err);
-    callback([]);
+  }, (err: any) => {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("Firestore subscription error (facial_scans):", err?.message || err);
+    }
+    loadLocalScans();
   });
 };
 
@@ -562,62 +619,37 @@ export const subscribeUserSessions = (
   const safeUid = userId || 'guest_user';
   const sessionsCol = collection(db, "users", safeUid, "agent_sessions");
 
+  const loadLocalSessions = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const cached = localStorage.getItem(`sana_sessions_${safeUid}`);
+        if (cached) callback(JSON.parse(cached));
+        else callback([]);
+      } catch { callback([]); }
+    } else { callback([]); }
+  };
+
   return onSnapshot(sessionsCol, async (snapshot) => {
     if (!snapshot.empty) {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Sort descending by lastActiveAt or updatedAt
       list.sort((a: any, b: any) => {
         const timeA = new Date(a.lastActiveAt || a.updatedAt || a.createdAt || 0).getTime();
         const timeB = new Date(b.lastActiveAt || b.updatedAt || b.createdAt || 0).getTime();
         return timeB - timeA;
       });
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try { localStorage.setItem(`sana_sessions_${safeUid}`, JSON.stringify(list)); } catch {}
+      }
       callback(list);
     } else {
-      // Check if user has legacy chat in chats/chat_${safeUid} or chats/${safeUid} to auto-migrate into a unified session!
-      try {
-        let legacySnap = await getDoc(doc(db, "chats", `chat_${safeUid}`));
-        if (!legacySnap.exists()) {
-          legacySnap = await getDoc(doc(db, "chats", safeUid));
-        }
-
-        if (legacySnap.exists() && legacySnap.data()?.messages?.length > 0) {
-          const legacyData = legacySnap.data();
-          const legacySessionId = `session_initial_${safeUid}`;
-          const migratedSession = {
-            id: legacySessionId,
-            userId: safeUid,
-            title: legacyData.title || 'Initial Skin Consultation',
-            sessionType: 'chat',
-            sessionNotepad: legacyData.sessionNotepad || '',
-            messageCount: legacyData.messages?.length || 0,
-            lastMessage: legacyData.messages?.[legacyData.messages.length - 1]?.text || '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            lastActiveAt: new Date().toISOString(),
-            serverTimestamp: serverTimestamp()
-          };
-
-          const newDocRef = doc(db, "users", safeUid, "agent_sessions", legacySessionId);
-          await setDoc(newDocRef, migratedSession, { merge: true });
-
-          for (const msg of (legacyData.messages || [])) {
-            if (msg.id) {
-              const msgRef = doc(db, "users", safeUid, "agent_sessions", legacySessionId, "messages", msg.id);
-              await setDoc(msgRef, sanitizeForFirestore(msg), { merge: true });
-            }
-          }
-
-          callback([migratedSession]);
-          return;
-        }
-      } catch (migErr) {
-        console.warn("Legacy chat migration check error:", migErr);
-      }
       callback([]);
     }
-  }, (err) => {
-    console.warn("Firestore subscribeUserSessions error:", err);
-    callback([]);
+  }, (err: any) => {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn("Firestore subscribeUserSessions error:", err?.message || err);
+    }
+    loadLocalSessions();
   });
 };
 

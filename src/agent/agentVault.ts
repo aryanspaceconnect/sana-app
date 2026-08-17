@@ -1019,8 +1019,33 @@ export async function searchAgentVault(
 // 8. FULL AGENT VAULT LOADER
 // ==========================================
 
-export async function loadFullAgentVault(userId: string): Promise<AgentVaultData> {
+export async function loadFullAgentVault(userId: string, forceRefresh = false): Promise<AgentVaultData> {
   const cache = getOrCreateVaultCache(userId);
+
+  // If in-memory cache is fresh (less than 5 minutes old) and not forceRefresh, return immediately
+  if (!forceRefresh && cache.lastSynced) {
+    const ageMs = Date.now() - new Date(cache.lastSynced).getTime();
+    if (ageMs < 5 * 60 * 1000) {
+      return cache;
+    }
+  }
+
+  // Check LocalStorage backup cache
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const localVault = localStorage.getItem(`sana_vault_${userId}`);
+      if (localVault) {
+        const parsed = JSON.parse(localVault);
+        Object.assign(cache, parsed);
+        if (!forceRefresh && cache.lastSynced) {
+          const ageMs = Date.now() - new Date(cache.lastSynced).getTime();
+          if (ageMs < 5 * 60 * 1000) {
+            return cache;
+          }
+        }
+      }
+    } catch {}
+  }
 
   try {
     if (db) {
@@ -1088,9 +1113,18 @@ export async function loadFullAgentVault(userId: string): Promise<AgentVaultData
       }
 
       cache.lastSynced = new Date().toISOString();
+
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.setItem(`sana_vault_${userId}`, JSON.stringify(cache));
+        } catch {}
+      }
     }
-  } catch (err) {
-    console.warn(`[AgentVault] Firestore full load fallback for user ${userId}:`, err);
+  } catch (err: any) {
+    const isQuota = /quota/i.test(err?.message || String(err));
+    if (!isQuota) {
+      console.warn(`[AgentVault] Firestore full load fallback for user ${userId}:`, err?.message || err);
+    }
   }
 
   return cache;

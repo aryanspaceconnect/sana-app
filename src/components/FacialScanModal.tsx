@@ -198,6 +198,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   // Subscribe to real-time report status updates from Firestore database
   useEffect(() => {
     if (!scanResult?.id || !db) return;
+
     const docRef = doc(db, 'facial_scans', scanResult.id);
     const unsub = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
@@ -213,6 +214,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         }
       }
     }, (err) => console.warn("Report snapshot listener warning:", err));
+
     return () => unsub();
   }, [scanResult?.id]);
 
