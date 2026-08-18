@@ -26,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenSettings, onO
   };
 
   return (
-    <header className="relative w-full px-6 pt-5 pb-2 flex items-center justify-between z-20 pointer-events-auto">
+    <header className="relative w-full px-6 pt-5 pb-2 flex items-center justify-between z-20 pointer-events-auto shrink-0">
       {/* Interactive SANA Brand with SVG Logo & Natural In-Logo Slide + Blur */}
       <div
         className="flex items-center space-x-2 cursor-pointer select-none group py-1"

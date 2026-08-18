@@ -204,7 +204,7 @@ I am unable to assist with unrelated topics like software coding, automobile pur
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} my-1 w-full`}
+        className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} my-1 w-full select-text`}
       >
         {isUser ? (
           <div className="max-w-[85%] px-4 py-3 rounded-[20px] rounded-br-xs bg-[#1a1c1e] text-white text-[13.5px] leading-relaxed shadow-xs flex flex-col space-y-1.5">
@@ -415,6 +415,8 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUpRef = useRef<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -676,9 +678,38 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
     onMinimizeNavToggle(false);
   }, [onMinimizeNavToggle]);
 
+  // Track if user has deliberately scrolled up to read past messages
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    isUserScrolledUpRef.current = distanceFromBottom > 90;
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth', force = false) => {
+    if (messagesContainerRef.current) {
+      if (force || !isUserScrolledUpRef.current) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior
+        });
+      }
+    }
+  };
+
+  // Automatically scroll down when new messages or loading/reasoning updates appear
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, processingStatus]);
+    scrollToBottom('smooth');
+  }, [messages, processingStatus, liveTraceRows]);
+
+  // Reset scroll and force scroll to bottom on session switch
+  useEffect(() => {
+    isUserScrolledUpRef.current = false;
+    const timer = setTimeout(() => {
+      scrollToBottom('auto', true);
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [activeSessionId]);
 
   const handleAbortRequest = () => {
     if (abortControllerRef.current) {
@@ -975,7 +1006,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   ];
 
   return (
-    <div className="w-full flex-1 flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
+    <div className="w-full flex-1 min-h-0 flex flex-col pt-1 pb-24 px-4 overflow-hidden relative">
       {/* Minimal Top Header Bar: Side Panel Toggle & New Chat Action */}
       <div className="flex items-center justify-between py-2 px-1 shrink-0 mb-1">
         {/* Left Side Header Actions: History Panel Toggle & New Chat Button */}
@@ -1001,7 +1032,11 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1 flex flex-col">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 space-y-3.5 px-1 flex flex-col overscroll-contain"
+      >
         {messages.length === 0 ? (
           <motion.div
             key={`welcome_${activeSessionId}`}
@@ -1044,7 +1079,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
           </motion.div>
         )}
 
-        <div ref={chatEndRef} />
+        <div ref={chatEndRef} className="h-1 shrink-0" />
       </div>
 
       {/* Quick Suggestion Chips - Minimal Options for active chats */}

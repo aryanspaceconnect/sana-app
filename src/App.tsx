@@ -465,7 +465,7 @@ export default function App() {
   }
 
   return (
-    <div className="w-full min-h-screen bg-[#f8f9fb] flex flex-col font-sans text-[#121316] select-none antialiased relative">
+    <div className="w-full h-screen h-[100dvh] max-h-screen bg-[#f8f9fb] flex flex-col font-sans text-[#121316] select-none antialiased relative overflow-hidden">
       {/* Header Bar */}
       <Header
         userProfile={userProfile}
@@ -474,7 +474,7 @@ export default function App() {
       />
 
       {/* Main Screen Views */}
-      <div className="w-full flex-1 overflow-hidden relative flex flex-col">
+      <div className="w-full flex-1 min-h-0 overflow-hidden relative flex flex-col">
         {activeTab === 'home' && (
           <HomeDashboard
             userProfile={userProfile}
