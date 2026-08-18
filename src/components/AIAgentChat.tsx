@@ -804,7 +804,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
             text: m.text,
             attachments: m.attachments
           })),
-          stream: true
+          stream: false
         })
       });
 
@@ -812,15 +812,9 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      if (!response.body) throw new Error('No readable stream available');
-      
       setProcessingStatus('working');
       
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      
       const modelMsgId = `mod_${Date.now()}`;
-      let accumulatedText = "";
       
       // Append initial empty model message
       setMessages((prev) => [
@@ -835,41 +829,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
         }
       ]);
 
-      let data: any = null;
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        
-        // Keep the last incomplete line in the buffer
-        buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const eventStr = line.substring(6).trim();
-            if (!eventStr) continue;
-            try {
-              const event = JSON.parse(eventStr);
-              if (event.type === 'text') {
-                accumulatedText += event.chunk;
-                setMessages((prev) => 
-                  prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m)
-                );
-              } else if (event.type === 'done') {
-                data = event.result;
-              } else if (event.type === 'error') {
-                throw new Error(event.error);
-              }
-            } catch (e) {
-              // Ignore invalid JSON from partial chunks if any (though line split should prevent it)
-            }
-          }
-        }
-      }
+      const data = await response.json();
       
       if (!data) throw new Error('Stream ended without returning final result');
 
@@ -940,7 +900,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
       const modelMsg: ChatMessage = {
         id: modelMsgId,
         role: 'model',
-        text: data.text || accumulatedText || "I am processing your skincare query with SanaAgent.",
+        text: data.text || "I am processing your skincare query with SanaAgent.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         createdAt: new Date().toISOString(),
         actionProposal: data.actionProposal,
@@ -1015,7 +975,7 @@ export const AIAgentChat: React.FC<AIAgentChatProps> = ({
   ];
 
   return (
-    <div className="w-full h-full flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
+    <div className="w-full flex-1 flex flex-col justify-between pt-1 pb-24 px-4 overflow-hidden relative">
       {/* Minimal Top Header Bar: Side Panel Toggle & New Chat Action */}
       <div className="flex items-center justify-between py-2 px-1 shrink-0 mb-1">
         {/* Left Side Header Actions: History Panel Toggle & New Chat Button */}

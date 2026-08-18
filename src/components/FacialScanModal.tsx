@@ -311,29 +311,28 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           scanId: formattedScanId,
           responseStyle: userProfile?.settings?.responseStyle || 'professional_medical',
           dailyContext: dailyContextData,
-          stream: true
+          stream: false
         })
       });
 
-      if (!response.body) throw new Error('No readable stream available');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP error ${response.status}`);
+      }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-
-      let data: any = null;
-      let accumulatedReportText = "";
-      let buffer = '';
-
-      // Set initial result structure so UI can render while streaming
+      const data = await response.json();
       let currentResult: FacialScanResult = {
-        id: formattedScanId,
+        id: data.id || data.scanId || formattedScanId,
         userId: userProfile?.uid || 'guest_user',
-        scanId: formattedScanId,
-        scanType,
-        summary: 'Direct response from Perfect Corp S2S API',
-        recommendations: [],
-        capturedImage: base64Image,
-        integrityLog: {
+        scanId: data.scanId || formattedScanId,
+        scanType: data.scanType || scanType,
+        hydrationScore: data.hydrationScore ?? data.rawMetrics?.moistureScore ?? data.scoreInfo?.concerns?.moisture?.ui_score ?? null,
+        barrierScore: data.barrierScore ?? data.rawMetrics?.barrierRednessScore ?? data.scoreInfo?.concerns?.redness?.ui_score ?? null,
+        clarityScore: data.clarityScore ?? data.rawMetrics?.acneBlemishScore ?? data.scoreInfo?.concerns?.acne?.ui_score ?? null,
+        summary: data.summary || 'Direct response from Perfect Corp S2S API',
+        recommendations: data.recommendations || [],
+        rawPerfectCorpOutput: data.rawPerfectCorpOutput,
+        integrityLog: data.integrityLog || {
           integrityStatus: 'VALID',
           passedChecks: ['lighting', 'resolution', 'pose', 'blur', 'face_detected'],
           integrityErrors: [],
@@ -341,62 +340,6 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
           directUploadFlag: true,
           validatedAt: new Date().toISOString()
         },
-        annotatedRegions: [],
-        concernImages: {},
-        s2sStepLogs: [],
-        rawResponseLog: '',
-        rawJson: {},
-        reportStatus: 'running',
-        reportText: '',
-        reportSessionId: `session_scan_report_${Date.now()}`,
-        masks: [],
-        timestamp: new Date().toISOString()
-      };
-
-      setScanResult(currentResult);
-      setActiveTab('report');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const eventStr = line.substring(6).trim();
-            if (!eventStr) continue;
-            try {
-              const event = JSON.parse(eventStr);
-              if (event.type === 'report_chunk') {
-                accumulatedReportText += event.chunk;
-                setScanResult(prev => prev ? { ...prev, reportText: accumulatedReportText } : prev);
-              } else if (event.type === 'done') {
-                data = event.result;
-              } else if (event.type === 'error') {
-                throw new Error(event.error);
-              }
-            } catch (e) { }
-          }
-        }
-      }
-
-      if (!data) throw new Error('Stream ended without returning final result');
-
-      currentResult = {
-        id: data.id || data.scanId || formattedScanId,
-        userId: userProfile?.uid || 'guest_user',
-        scanId: data.scanId || formattedScanId,
-        scanType: data.scanType || scanType,
-        hydrationScore: data.rawMetrics?.moistureScore ?? data.scoreInfo?.concerns?.moisture?.ui_score ?? null,
-        barrierScore: data.rawMetrics?.barrierRednessScore ?? data.scoreInfo?.concerns?.redness?.ui_score ?? null,
-        clarityScore: data.rawMetrics?.acneBlemishScore ?? data.scoreInfo?.concerns?.acne?.ui_score ?? null,
-        summary: 'Direct response from Perfect Corp S2S API',
-        recommendations: [],
-        rawPerfectCorpOutput: data.rawPerfectCorpOutput,
-        integrityLog: data.integrityLog,
         annotatedRegions: data.annotatedRegions || [],
         concernImages: data.concernImages || {},
         capturedImage: base64Image,
@@ -406,13 +349,14 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         rawMetrics: data.rawMetrics || data.rawPerfectCorpOutput?.rawMetrics,
         scoreInfo: data.scoreInfo || data.rawPerfectCorpOutput?.scoreInfo,
         reportStatus: data.reportStatus || 'ready',
-        reportText: accumulatedReportText || data.reportText || '',
+        reportText: data.reportText || '',
         reportSessionId: data.reportSessionId || `session_scan_report_${Date.now()}`,
         masks: data.masks || [],
         timestamp: data.timestamp || new Date().toISOString()
       };
 
       setScanResult(currentResult);
+      setActiveTab('report');
       onScanComplete(currentResult);
       await saveFacialScan(userProfile?.uid || 'guest_user', currentResult);
 

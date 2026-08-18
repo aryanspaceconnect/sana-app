@@ -25,7 +25,7 @@ export default defineConfig(() => {
             'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
             'vendor-icons': ['lucide-react'],
             'vendor-markdown': ['react-markdown'],
-            'vendor-[#recharts]': ['recharts']
+            'vendor-recharts': ['recharts']
           }
         }
       }

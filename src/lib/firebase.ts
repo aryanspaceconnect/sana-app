@@ -8,6 +8,10 @@ import {
   updateProfile,
   signOut, 
   onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
   User 
 } from "firebase/auth";
 import { 
@@ -41,8 +45,13 @@ const firebaseConfig = {
 // Initialize App
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Auth
+// Initialize Auth with resilient persistence fallback
 export const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch(() => {
+  setPersistence(auth, browserSessionPersistence).catch(() => {
+    setPersistence(auth, inMemoryPersistence).catch((err) => console.warn("[Firebase Auth] Persistence fallback warning:", err));
+  });
+});
 export const googleProvider = new GoogleAuthProvider();
 
 // Utility to recursively remove undefined values which Firestore rejects
@@ -66,8 +75,8 @@ export function sanitizeForFirestore<T>(obj: T): T {
   return clean as T;
 }
 
-// Initialize Firestore with database ID specified in config if present and auto-detect long polling for robust connection
-const databaseId = firebaseConfigData.firestoreDatabaseId || "(default)";
+// Initialize Firestore with explicit named database ID
+const databaseId = firebaseConfigData.firestoreDatabaseId || "ai-studio-sana-e13933ed-b4aa-407d-b645-bea9ad388315";
 export const db = (() => {
   try {
     return initializeFirestore(app, {

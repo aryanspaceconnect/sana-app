@@ -4,7 +4,6 @@ import { auth, syncUserProfile, subscribeFacialScans, getUserProfileFromFirestor
 import { NavigationTab, UserProfile, UserSettings, FacialScanResult, DailyBriefing, PopUpNotification } from './types';
 
 // Components
-import { MobileContainer } from './components/MobileContainer';
 import { Header } from './components/Header';
 import { PillNavigation } from './components/PillNavigation';
 import { ExtendedMenuDrawer } from './components/ExtendedMenuDrawer';
@@ -466,7 +465,7 @@ export default function App() {
   }
 
   return (
-    <MobileContainer activeTab={activeTab} onTabChange={setActiveTab}>
+    <div className="w-full min-h-screen bg-[#f8f9fb] flex flex-col font-sans text-[#121316] select-none antialiased relative">
       {/* Header Bar */}
       <Header
         userProfile={userProfile}
@@ -475,7 +474,7 @@ export default function App() {
       />
 
       {/* Main Screen Views */}
-      <div className="w-full h-[calc(100%-60px)] overflow-hidden relative">
+      <div className="w-full flex-1 overflow-hidden relative flex flex-col">
         {activeTab === 'home' && (
           <HomeDashboard
             userProfile={userProfile}
@@ -623,6 +622,6 @@ export default function App() {
         onClose={() => setIsScanHistoryOpen(false)}
         userProfile={userProfile}
       />
-    </MobileContainer>
+    </div>
   );
 }

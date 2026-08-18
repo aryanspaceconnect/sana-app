@@ -346,7 +346,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const locationText = userProfile?.settings?.locationName || dailyBrief.locationName || 'Location Access Required';
 
   return (
-    <div className="w-full h-full px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">
+    <div className="w-full flex-1 px-5 pt-2 pb-28 space-y-4 overflow-y-auto no-scrollbar">
       {/* 1. Dynamic Warm Greeting with Live Time */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
