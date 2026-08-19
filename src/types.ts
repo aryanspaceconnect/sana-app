@@ -40,6 +40,17 @@ export interface UserSettings {
   skincareGoals?: string;
   upcomingEvent?: string;
   skinPriorities?: string;
+  isGuestTrial?: boolean;
+}
+
+export interface GuestScanAllowance {
+  maxScans: number; // 2
+  daysLimit: number; // 2
+  totalScansDone: number;
+  scansCount: number;
+  firstScanDate?: string | null;
+  lastScanDate?: string | null;
+  scanDates?: string[];
 }
 
 export interface UserProfile {
@@ -48,6 +59,10 @@ export interface UserProfile {
   email: string;
   photoURL?: string;
   isAnonymous: boolean;
+  isGuestTrial?: boolean;
+  accountType?: 'full' | 'guest_trial';
+  timezone?: string;
+  browserFingerprint?: Record<string, any>;
   preferredName?: string;
   locationName?: string;
   userPerceptionText?: string;
@@ -57,6 +72,7 @@ export interface UserProfile {
   upcomingEvent?: string;
   height?: string;
   gender?: string;
+  guestScanAllowance?: GuestScanAllowance;
   settings: UserSettings;
 }
 

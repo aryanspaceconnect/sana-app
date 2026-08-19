@@ -292,29 +292,58 @@ export const saveFacialScan = async (userId: string, scanData: any) => {
       console.warn("Subcollection save warning:", subErr);
     }
 
-    // MANDATORY DATABASE PERSISTENCE: Automatically record lastCompletedScanDate in Firestore
+    // MANDATORY DATABASE PERSISTENCE: Automatically record lastCompletedScanDate & guest scan allowance in Firestore
     try {
       const uId = userId || 'guest_user';
       const userRef = doc(db, "users", uId);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
-        const existingSettings = userSnap.data().settings || {};
+        const existingData = userSnap.data();
+        const existingSettings = existingData.settings || {};
+        const existingAllowance = existingData.guestScanAllowance || { maxScans: 2, daysLimit: 2, totalScansDone: 0, scanDates: [] };
+        const scanDates = Array.isArray(existingAllowance.scanDates) ? [...existingAllowance.scanDates] : [];
+        if (!scanDates.includes(todayStr)) {
+          scanDates.push(todayStr);
+        }
+        const updatedCount = (existingAllowance.totalScansDone || 0) + 1;
+        
         await updateDoc(userRef, {
           "settings": {
             ...existingSettings,
             lastCompletedScanDate: todayStr
+          },
+          "guestScanAllowance": {
+            maxScans: 2,
+            daysLimit: 2,
+            totalScansDone: updatedCount,
+            scansCount: updatedCount,
+            firstScanDate: existingAllowance.firstScanDate || todayStr,
+            lastScanDate: todayStr,
+            scanDates
           }
         });
       } else {
         await setDoc(userRef, {
-          displayName: "SANA User",
-          email: "guest@sana.app",
+          displayName: "Judge / Guest Explorer",
+          email: `${uId}@trial.sana.app`,
+          isAnonymous: true,
+          isGuestTrial: true,
           settings: {
             temperatureUnit: "C",
             scanNotificationTime: "00:00",
             scanReminderEnabled: true,
             theme: "light",
+            onboardingCompleted: true,
             lastCompletedScanDate: todayStr
+          },
+          guestScanAllowance: {
+            maxScans: 2,
+            daysLimit: 2,
+            totalScansDone: 1,
+            scansCount: 1,
+            firstScanDate: todayStr,
+            lastScanDate: todayStr,
+            scanDates: [todayStr]
           },
           createdAt: serverTimestamp()
         });

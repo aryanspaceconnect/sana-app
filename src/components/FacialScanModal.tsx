@@ -7,6 +7,7 @@ import { saveFacialScan, db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { mapPerfectCorpError, ScanUiError } from '../utils/perfectCorpErrorMapper';
 import { assessFaceOnElement, FaceBox, FaceAssessmentResult } from '../lib/faceDetection';
+import { checkGuestQuotaFromDb, evaluateGuestScanQuota, GuestQuotaResult } from '../lib/guestTrial';
 
 // Helper: Get scan title based on time or scan type
 function getScanTitle(scan: FacialScanResult | null): string {
@@ -88,6 +89,25 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
   
   // Flashlight state
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
+
+  // Guest Trial Quota State
+  const isGuest = Boolean(
+    userProfile?.isGuestTrial ||
+    userProfile?.settings?.isGuestTrial ||
+    userProfile?.uid?.startsWith('guest_') ||
+    userProfile?.accountType === 'guest_trial'
+  );
+  const [guestQuota, setGuestQuota] = useState<GuestQuotaResult | null>(null);
+
+  useEffect(() => {
+    if (isOpen && isGuest && userProfile?.uid) {
+      checkGuestQuotaFromDb(userProfile.uid)
+        .then((q) => setGuestQuota(q))
+        .catch(() => {
+          setGuestQuota(evaluateGuestScanQuota(pastScans, userProfile.guestScanAllowance));
+        });
+    }
+  }, [isOpen, isGuest, userProfile?.uid, pastScans]);
 
   // Survey Slide & Interstitial State
   const [isSurveySlideActive, setIsSurveySlideActive] = useState<boolean>(false);
@@ -305,6 +325,7 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
         body: JSON.stringify({
           imageBase64: base64Image,
           userId: userProfile?.uid || 'guest_user',
+          isGuestTrial: isGuest,
           pastScans,
           faceBox: faceBox || currentFaceBox || undefined,
           scanType,
@@ -709,31 +730,57 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
             ) : (
               <>
               {/* Guidance Advice Text & Back Button Above Camera Feed (Back button only on Ritual Scan cam feed page) */}
-              <div className="w-full flex items-center justify-between py-1 relative min-h-[36px]">
-                {mode === 'ritual' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      stopCamera();
-                      onClose();
-                    }}
-                    className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95 border border-slate-200/80 shadow-2xs z-20"
-                  >
-                    <Icon icon="solar:alt-arrow-left-linear" className="w-4 h-4 text-slate-700" />
-                    <span>Back</span>
-                  </button>
-                ) : (
-                  <div className="w-16 shrink-0" />
+              <div className="w-full flex flex-col space-y-1.5 py-1">
+                <div className="w-full flex items-center justify-between relative min-h-[36px]">
+                  {mode === 'ritual' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopCamera();
+                        onClose();
+                      }}
+                      className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95 border border-slate-200/80 shadow-2xs z-20"
+                    >
+                      <Icon icon="solar:alt-arrow-left-linear" className="w-4 h-4 text-slate-700" />
+                      <span>Back</span>
+                    </button>
+                  ) : (
+                    <div className="w-16 shrink-0" />
+                  )}
+
+                  <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight text-center flex-1 px-2">
+                    {guestQuota && !guestQuota.allowed
+                      ? guestQuota.status === 'DAILY_LIMIT_REACHED'
+                        ? "Today's Trial Scan Completed"
+                        : "Trial Limit Reached (2/2 Used)"
+                      : faceAssessment.canShutter || faceAssessment.status === 'ready'
+                      ? 'Look in camera'
+                      : faceAssessment.hint || 'Align face inside outline'}
+                  </p>
+
+                  {/* Balancing spacer or Guest Badge */}
+                  <div className="shrink-0 flex justify-end">
+                    {isGuest ? (
+                      <span className="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-[10px] font-semibold text-amber-800 tracking-wide">
+                        {guestQuota?.scansRemaining != null ? `${guestQuota.scansRemaining} Trial Scan Left` : 'Guest Trial'}
+                      </span>
+                    ) : (
+                      <div className="w-16 shrink-0" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Guest Quota Limit Notice Banner */}
+                {isGuest && guestQuota && !guestQuota.allowed && (
+                  <div className="w-full p-2.5 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 text-xs flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Icon icon="solar:info-circle-bold" className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-[11px] leading-tight font-medium">
+                        {guestQuota.message}
+                      </span>
+                    </div>
+                  </div>
                 )}
-
-                <p className="text-xs sm:text-sm font-semibold text-slate-700 tracking-tight text-center flex-1 px-2">
-                  {faceAssessment.canShutter || faceAssessment.status === 'ready'
-                    ? 'Look in camera'
-                    : faceAssessment.hint || 'Align face inside outline'}
-                </p>
-
-                {/* Balancing spacer so the guidance text stays strictly centered */}
-                <div className="w-16 shrink-0" />
               </div>
 
               {/* Squaricle Visual Camera Feed Viewport */}
@@ -919,27 +966,44 @@ export const FacialScanModal: React.FC<FacialScanModalProps> = ({
               {/* Shutter & Upload Controls - Centered without outer container */}
               <div className="flex items-center justify-center space-x-3 pt-3 pb-1 relative">
                 {/* Upload Photo Icon Button on Left (No text label) */}
-                <label className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200/80 text-slate-800 transition-all cursor-pointer flex items-center justify-center shadow-xs active:scale-95" title="Upload Photo">
+                <label
+                  className={`p-3 rounded-2xl border transition-all flex items-center justify-center shadow-xs ${
+                    guestQuota && !guestQuota.allowed
+                      ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed opacity-50'
+                      : 'bg-slate-100 hover:bg-slate-200/80 border-slate-200/80 text-slate-800 cursor-pointer active:scale-95'
+                  }`}
+                  title={guestQuota && !guestQuota.allowed ? guestQuota.message : "Upload Photo"}
+                >
                   <Icon icon="solar:upload-square-bold" className="w-5 h-5 text-slate-800" />
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    disabled={Boolean(guestQuota && !guestQuota.allowed)}
+                    className="hidden"
+                  />
                 </label>
 
-                {/* Scan Face Shutter Button in Center (Vibrant Emerald Color when ready, muted disabled when validating) */}
+                {/* Scan Face Shutter Button in Center (Vibrant Emerald Color when ready, muted disabled when validating or quota reached) */}
                 {(() => {
-                  const isReadyToCapture = faceAssessment.canShutter || faceAssessment.status === 'ready';
+                  const isBlockedByQuota = Boolean(guestQuota && !guestQuota.allowed);
+                  const isReadyToCapture = (faceAssessment.canShutter || faceAssessment.status === 'ready') && !isBlockedByQuota;
                   return (
                     <button
                       type="button"
                       onClick={handleCapture}
-                      disabled={isAnalyzing || !isReadyToCapture}
+                      disabled={isAnalyzing || !isReadyToCapture || isBlockedByQuota}
                       className={`py-3 px-8 rounded-2xl transition-all flex items-center space-x-2 text-xs font-bold shadow-md ${
-                        isReadyToCapture && !isAnalyzing
+                        isBlockedByQuota
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60 shadow-none border border-slate-200'
+                          : isReadyToCapture && !isAnalyzing
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer active:scale-95 shadow-emerald-500/20'
                           : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-70 shadow-none border border-slate-200'
                       }`}
+                      title={isBlockedByQuota ? guestQuota?.message : undefined}
                     >
                       <Icon icon="solar:camera-bold" className="w-4 h-4" />
-                      <span>Scan Face</span>
+                      <span>{isBlockedByQuota ? "Scan Quota Reached" : "Scan Face"}</span>
                     </button>
                   );
                 })()}

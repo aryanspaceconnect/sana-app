@@ -15,6 +15,7 @@ import { analyzeSkinWithPerfectCorp } from "./src/agent/services/perfectCorpServ
 import { SkinContextManager } from "./src/agent/services/skinContextManager.js";
 import { SkinTrendGraphEngine } from "./src/agent/services/skinTrendGraph.js";
 import { saveFacialScan, updateFacialScanReport, getPastScansForUser, saveChatMessage } from "./src/lib/firebase.js";
+import { evaluateGuestScanQuota } from "./src/lib/guestTrial.js";
 import { getUniversalNotepad } from "./src/agent/universalNotepad.js";
 import { saveSkinScanToVault } from "./src/agent/agentVault.js";
 import { getOrGenerateCompanionSignals } from "./src/agent/services/companionSignalsService.js";
@@ -578,12 +579,63 @@ app.post("/api/sana/execute", async (req, res) => {
   }
 });
 
+// Check Guest Scan Quota Status
+app.get("/api/guest-quota/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    let pastScansList: any[] = [];
+    try {
+      pastScansList = await getPastScansForUser(userId, 10);
+    } catch {}
+    const quota = evaluateGuestScanQuota(pastScansList);
+    return res.json({ success: true, quota });
+  } catch (error: any) {
+    console.error("Error in GET /api/guest-quota/:userId:", error);
+    return res.status(500).json({ error: "Failed to check guest quota", details: error?.message || String(error) });
+  }
+});
+
 // Facial Scan Analysis Endpoint - Complete Perfect Corp API & Context Manager Workflow
 app.post("/api/facial-scan", async (req, res) => {
   try {
     const { imageBase64, userId = "guest_user", pastScans = [], faceBox, scanType = "daily_scan", scanId: reqScanId, responseStyle = "professional_medical", dailyContext, onboardingResponses } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing image data" });
+    }
+
+    // GUEST TRIAL QUOTA ENFORCEMENT (2 scans total across 2 days, max 1 scan per day)
+    const isGuest = userId.startsWith('guest_') || userId === 'guest_user' || req.body.isGuestTrial;
+    if (isGuest) {
+      let quotaScansList: any[] = [];
+      try {
+        quotaScansList = await getPastScansForUser(userId, 10);
+      } catch (e) {
+        console.warn("[FacialScanQuota] Quota fetch note:", e);
+      }
+
+      // If client supplied pastScans, merge for maximum protection
+      const combinedScans = [...quotaScansList];
+      if (Array.isArray(pastScans)) {
+        pastScans.forEach((ps: any) => {
+          if (ps && !combinedScans.some((cs: any) => (cs.scanId || cs.id) === (ps.scanId || ps.id))) {
+            combinedScans.push(ps);
+          }
+        });
+      }
+
+      const quotaCheck = evaluateGuestScanQuota(combinedScans);
+      if (!quotaCheck.allowed) {
+        console.warn(`[FacialScanPipeline] Blocked guest scan (${quotaCheck.status}) for ${userId}: ${quotaCheck.message}`);
+        return res.status(403).json({
+          error: quotaCheck.message,
+          quotaExceeded: true,
+          quotaStatus: quotaCheck.status,
+          totalScansDone: quotaCheck.totalScansDone,
+          maxScans: quotaCheck.maxScans,
+          daysLimit: quotaCheck.daysLimit,
+          scansRemaining: quotaCheck.scansRemaining
+        });
+      }
     }
 
     const now = new Date();

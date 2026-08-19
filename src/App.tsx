@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, syncUserProfile, subscribeFacialScans, getUserProfileFromFirestore } from './lib/firebase';
+import { getStoredGuestId, initializeGuestTrialUser } from './lib/guestTrial';
 import { NavigationTab, UserProfile, UserSettings, FacialScanResult, DailyBriefing, PopUpNotification } from './types';
 
 // Components
@@ -151,8 +152,25 @@ export default function App() {
           }
         } else {
           if (isMounted) {
-            setUserProfile(null);
-            setForceOnboarding(false);
+            const storedGuestId = getStoredGuestId();
+            if (storedGuestId) {
+              try {
+                const guestProfile = await initializeGuestTrialUser();
+                if (isMounted) {
+                  setUserProfile(guestProfile);
+                  setForceOnboarding(false);
+                }
+              } catch (guestErr) {
+                console.warn("Could not restore guest trial user:", guestErr);
+                if (isMounted) {
+                  setUserProfile(null);
+                  setForceOnboarding(false);
+                }
+              }
+            } else {
+              setUserProfile(null);
+              setForceOnboarding(false);
+            }
           }
         }
       } catch (err) {
